@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+.venv/
+venv/
+env/
+.env
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging (PyInstaller)
+*.spec
+*.manifest
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+
+# === 機密・ローカル専用ファイルは絶対にコミットしない ===
+# --- 認証情報・secrets・鍵 ---
+*.pem
+*.key
+*.p12
+*.pfx
+*.ppk
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.env.*
+*.env
+secrets.*
+*secret*
+*credential*
+*token*
+.netrc
+.npmrc
+.pypirc
+
+# --- ローカル専用ファイル ---
+*.local
+*.local.*
+*.secret.*
+
+# docsweep の個人作業ログ（公開しない）
+docs/local/
+
+# docsweep 実行時の生成物（スキャン結果・履歴）
+INDEX.md
+INDEX.json
+.docsweep/
