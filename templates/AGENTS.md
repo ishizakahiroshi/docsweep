@@ -28,11 +28,11 @@ updated: 2026-06-12
 # [計画] タイトル
 ```
 
-ai-docs-sweep は H1 ラベル方式・フロントマター方式・ファイル名プレフィックス方式の
-いずれでも検出できます（`.ai-docs-sweep.yaml` の `status_detection` で切り替え）。
+docsweep は H1 ラベル方式・フロントマター方式・ファイル名プレフィックス方式の
+いずれでも検出できます（`.docsweep.yaml` の `status_detection` で切り替え）。
 
 ### 参照の起点
 
 - ルール本体: `./CLAUDE.md`
 - 命名・ラベル仕様の解説: `./docs/conventions.md`
-- 設定サンプル: `./templates/.ai-docs-sweep.yaml`
+- 設定サンプル: `./templates/.docsweep.yaml`
