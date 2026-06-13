@@ -33,6 +33,15 @@ desktop.ini
 .vscode/
 *.swp
 
+# AI ツールのローカル状態・生成物
+.claude/
+*.log
+*.jsonl
+*.tmp
+*.bak
+*.orig
+*.rej
+
 # === 機密・ローカル専用ファイルは絶対にコミットしない ===
 # --- 認証情報・secrets・鍵 ---
 *.pem
@@ -66,3 +75,9 @@ docs/local/
 INDEX.md
 INDEX.json
 .docsweep/
+
+# テスト用 fixture / golden は上の無視パターンより優先して追跡する。
+# docsweep は INDEX.md・*.jsonl（移動ログ）・各種 *.md を生成するため、
+# それらの期待値を testdata に置くと黙って脱落する。ディレクトリ単位で明示許可。
+!**/testdata/**
+!**/tests/fixtures/**
