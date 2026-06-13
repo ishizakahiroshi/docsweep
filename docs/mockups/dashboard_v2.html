@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<!--
+  ai-docs-sweep — ダッシュボード作り直し案 (アクション・インボックス型 / 静的モック)
+  - コンセプト: 「現状を見せる」→「今やるべき判断を片付ける」へ転換
+  - サーバー不要・データは全てダミー・操作しても実ファイルは動かない
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ai-docs-sweep — ダッシュボード v2</title>
+<style>
+  :root{
+    --bg:#0d1117; --bg-soft:#161b22; --bg-soft2:#1c2230; --border:#2a3038;
+    --fg:#e6edf3; --fg-dim:#8b949e; --fg-dim2:#6e7681; --accent:#58a6ff;
+    --plan:#d29922; --stale:#f85149; --pending:#a371f7; --done:#3fb950; --fix:#ec6547;
+    --mono:ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,monospace;
+    --sans:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;
+    display:grid;grid-template-columns:232px 1fr;grid-template-rows:100vh;overflow:hidden;}
+
+  /* sidebar */
+  aside{background:var(--bg-soft);border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:4px;}
+  .brand{display:flex;align-items:center;gap:9px;padding:4px 8px 14px;}
+  .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--pending));display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px;}
+  .brand b{font-size:14px;} .brand small{display:block;color:var(--fg-dim2);font-size:11px;font-family:var(--mono);}
+  .navlabel{color:var(--fg-dim2);font-size:11px;text-transform:uppercase;letter-spacing:.6px;padding:14px 8px 4px;}
+  .nav{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;color:var(--fg-dim);}
+  .nav.active{background:var(--bg-soft2);color:var(--fg);box-shadow:inset 2px 0 0 var(--accent);}
+  .nav .ic{width:17px;text-align:center;} .nav .ct{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--fg-dim2);background:var(--bg);padding:1px 7px;border-radius:10px;}
+  .sidefoot{margin-top:auto;padding:12px 8px 2px;color:var(--fg-dim2);font-size:11px;font-family:var(--mono);}
+  .sidefoot .dot{color:var(--done);}
+
+  main{overflow-y:auto;}
+  .topbar{position:sticky;top:0;z-index:5;background:rgba(13,17,23,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:14px 26px;display:flex;align-items:center;gap:14px;}
+  .topbar h1{font-size:16px;margin:0;font-weight:650;}
+  .topbar .sub{color:var(--fg-dim);font-size:12px;}
+  .scanbox{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--fg-dim);background:var(--bg-soft);border:1px solid var(--border);border-radius:7px;padding:6px 11px;}
+  .scanbox b{color:var(--fg);}
+  .wrap{padding:18px 26px 60px;}
+
+  /* ① サマリー帯（細い1行 / 脇役） */
+  .summary{display:flex;align-items:center;gap:8px;background:var(--bg-soft);border:1px solid var(--border);border-radius:9px;padding:8px 14px;margin-bottom:22px;font-size:12.5px;}
+  .summary .pill{display:flex;align-items:center;gap:6px;font-family:var(--mono);color:var(--fg-dim);cursor:pointer;padding:3px 9px;border-radius:6px;}
+  .summary .pill:hover{background:var(--bg-soft2);color:var(--fg);}
+  .summary .pill b{font-size:14px;}
+  .summary .pill .sq{width:9px;height:9px;border-radius:2px;display:inline-block;}
+  .summary .sep{width:1px;height:18px;background:var(--border);}
+  .summary .go{margin-left:auto;color:var(--accent);font-family:var(--mono);font-size:12px;cursor:pointer;}
+  .c-stale{color:var(--stale)!important;} .c-pending{color:var(--pending)!important;} .c-plan{color:var(--plan)!important;} .c-done{color:var(--done)!important;}
+  .bg-stale{background:var(--stale);} .bg-pending{background:var(--pending);} .bg-plan{background:var(--plan);} .bg-done{background:var(--done);}
+
+  /* セクション見出し */
+  .sec-head{display:flex;align-items:center;gap:10px;margin:6px 2px 12px;}
+  .sec-head .t{font-size:14px;font-weight:650;}
+  .sec-head .cnt{font-family:var(--mono);font-size:12px;color:var(--fg-dim2);background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:1px 9px;}
+  .sec-head .desc{color:var(--fg-dim2);font-size:12px;}
+  .sec-head .spacer{margin-left:auto;}
+  .btn{font-size:12px;font-weight:600;border-radius:7px;padding:6px 13px;cursor:pointer;border:1px solid var(--border);background:var(--bg-soft);color:var(--fg);}
+  .btn.danger{background:rgba(248,81,73,.14);border-color:var(--stale);color:var(--stale);}
+  .btn.ghost{background:transparent;}
+
+  /* ② 要対応キュー（主役） */
+  .queue{display:flex;flex-direction:column;gap:10px;margin-bottom:30px;}
+  .qcard{background:var(--bg-soft);border:1px solid var(--border);border-left:3px solid var(--stale);border-radius:10px;padding:13px 16px;display:grid;grid-template-columns:1fr auto;gap:10px 18px;align-items:center;}
+  .qcard.is-warn{border-left-color:var(--plan);}
+  .qcard .main{min-width:0;}
+  .qcard .row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:5px;}
+  .qcard .fname{font-family:var(--mono);font-size:13px;color:var(--fg);}
+  .qcard .lbl{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;color:var(--stale);background:rgba(248,81,73,.15);}
+  .qcard .pj{font-family:var(--mono);font-size:11.5px;color:var(--accent);}
+  .qcard .age{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--stale);}
+  .qcard .age .u{color:var(--fg-dim2);font-weight:400;}
+  .qcard .desc{color:var(--fg-dim);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .qcard .acts{display:flex;gap:7px;}
+  .act{font-size:12px;font-weight:600;border-radius:6px;padding:6px 11px;cursor:pointer;border:1px solid var(--border);background:var(--bg-soft2);color:var(--fg-dim);white-space:nowrap;}
+  .act.arch{background:rgba(248,81,73,.14);border-color:var(--stale);color:var(--stale);}
+  .act.keep{color:var(--done);} .act.hold{color:var(--pending);}
+  .act:hover{filter:brightness(1.25);}
+
+  /* ③ 落ち着いて確認（折りたたみ） */
+  .fold{background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;margin-bottom:30px;}
+  .fold .fh{display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;}
+  .fold .fh .tw{font-size:13.5px;font-weight:600;color:var(--fg);}
+  .fold .fh .cnt{font-family:var(--mono);font-size:12px;color:var(--fg-dim2);}
+  .fold .fh .chev{margin-left:auto;color:var(--fg-dim2);}
+  .fold .fb{border-top:1px solid var(--border);padding:6px 8px;}
+  .litem{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:8px 10px;border-radius:7px;}
+  .litem:hover{background:var(--bg-soft2);}
+  .litem .lbl{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;}
+  .litem.t-pending .lbl{color:var(--pending);background:rgba(163,113,247,.15);}
+  .litem.t-plan .lbl{color:var(--plan);background:rgba(210,153,34,.15);}
+  .litem.t-fix .lbl{color:var(--fix);background:rgba(236,101,71,.15);}
+  .litem .fname{font-family:var(--mono);font-size:12.5px;color:var(--fg);}
+  .litem .desc{color:var(--fg-dim2);font-size:11.5px;margin-left:8px;}
+  .litem .age{font-family:var(--mono);font-size:11.5px;color:var(--fg-dim2);}
+
+  /* ④ プロジェクト健全度（バー＋具体値） */
+  .health{background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:14px 18px;}
+  .hrow{display:grid;grid-template-columns:150px 1fr 150px;gap:16px;align-items:center;padding:8px 0;}
+  .hrow + .hrow{border-top:1px solid var(--border);}
+  .hrow .pj{font-family:var(--mono);font-size:12.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hbar{height:9px;border-radius:5px;background:var(--bg-soft2);overflow:hidden;}
+  .hbar > i{display:block;height:100%;border-radius:5px;}
+  .hrow .meta{font-family:var(--mono);font-size:11.5px;color:var(--fg-dim);text-align:right;}
+  .hrow .meta .lvl{font-weight:700;}
+  .lvl.hi{color:var(--stale);} .lvl.mid{color:var(--plan);} .lvl.lo{color:var(--done);}
+
+  .note{color:var(--fg-dim2);font-size:11.5px;margin-top:14px;font-style:italic;}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="brand"><div class="logo">⛕</div><div><b>ai-docs-sweep</b><small>v0.2.0 mock</small></div></div>
+  <div class="navlabel">ビュー</div>
+  <div class="nav active"><span class="ic">▦</span> ダッシュボード</div>
+  <div class="nav"><span class="ic">☑</span> レビュー <span class="ct">12</span></div>
+  <div class="nav"><span class="ic">≡</span> 横断 INDEX <span class="ct">38</span></div>
+  <div class="navlabel">クイック</div>
+  <div class="nav"><span class="ic c-pending">◆</span> 保留 <span class="ct">4</span></div>
+  <div class="nav"><span class="ic c-stale">▲</span> 廃止候補 <span class="ct">5</span></div>
+  <div class="sidefoot"><div><span class="dot">●</span> scan root</div><div>~/dev</div><div style="margin-top:8px">7 projects · 38 docs</div></div>
+</aside>
+
+<main>
+  <div class="topbar">
+    <h1>ダッシュボード</h1>
+    <span class="sub">今日捌くべき判断 — ~/dev 配下 7 プロジェクト横断</span>
+    <span class="scanbox">⟳ 最終スキャン <b>2026-06-13 11:25</b></span>
+  </div>
+
+  <div class="wrap">
+
+    <!-- ① サマリー帯（脇役に格下げ） -->
+    <div class="summary">
+      <span class="pill"><span class="sq bg-stale"></span><b class="c-stale">5</b> 廃止候補</span>
+      <span class="sep"></span>
+      <span class="pill"><span class="sq bg-pending"></span><b class="c-pending">4</b> 保留</span>
+      <span class="sep"></span>
+      <span class="pill"><span class="sq bg-plan"></span><b class="c-plan">9</b> 進行中</span>
+      <span class="sep"></span>
+      <span class="pill"><span class="sq bg-done"></span><b class="c-done">20</b> 完了</span>
+      <span class="go">全件を INDEX で見る →</span>
+    </div>
+
+    <!-- ② 今すぐ判断（主役・受信トレイ） -->
+    <div class="sec-head">
+      <span class="t">🔥 今すぐ判断</span>
+      <span class="cnt">5</span>
+      <span class="desc">90日+ 無更新の [計画]。古い順。捌くとリストから消えます。</span>
+      <span class="spacer"></span>
+      <button class="btn danger">表示中をまとめて archive →</button>
+    </div>
+    <div class="queue">
+      <div class="qcard">
+        <div class="main">
+          <div class="row1"><span class="lbl">[計画]</span><span class="fname">plan_old-dashboard-rewrite.md</span><span class="pj">crm-frontend</span><span class="age">201<span class="u">d 無更新</span></span></div>
+          <div class="desc">旧ダッシュボードの全面書き換え構想。製品方針転換で不要化の可能性大。</div>
+        </div>
+        <div class="acts"><span class="act arch">archive へ</span><span class="act hold">保留</span><span class="act keep">継続</span><span class="act">開く</span></div>
+      </div>
+      <div class="qcard">
+        <div class="main">
+          <div class="row1"><span class="lbl">[計画]</span><span class="fname">plan_legacy-payment-migration.md</span><span class="pj">payment-gateway</span><span class="age">142<span class="u">d 無更新</span></span></div>
+          <div class="desc">旧決済基盤からの段階移行計画。第三者 API 仕様変更で前提が崩れている可能性。</div>
+        </div>
+        <div class="acts"><span class="act arch">archive へ</span><span class="act hold">保留</span><span class="act keep">継続</span><span class="act">開く</span></div>
+      </div>
+      <div class="qcard">
+        <div class="main">
+          <div class="row1"><span class="lbl">[計画]</span><span class="fname">plan_3dsecure-v2-support.md</span><span class="pj">payment-gateway</span><span class="age">118<span class="u">d 無更新</span></span></div>
+          <div class="desc">3-D セキュア 2.0 対応の検討メモ。着手されないまま放置。</div>
+        </div>
+        <div class="acts"><span class="act arch">archive へ</span><span class="act hold">保留</span><span class="act keep">継続</span><span class="act">開く</span></div>
+      </div>
+      <div class="qcard is-warn">
+        <div class="main">
+          <div class="row1"><span class="lbl" style="color:var(--plan);background:rgba(210,153,34,.15)">[計画]</span><span class="fname">plan_push-notification-batch.md</span><span class="pj">mobile-app</span><span class="age" style="color:var(--plan)">103<span class="u">d 無更新</span></span></div>
+          <div class="desc">プッシュ通知のバッチ送信設計。優先度低下で停滞中。</div>
+        </div>
+        <div class="acts"><span class="act arch">archive へ</span><span class="act hold">保留</span><span class="act keep">継続</span><span class="act">開く</span></div>
+      </div>
+      <div class="qcard is-warn">
+        <div class="main">
+          <div class="row1"><span class="lbl" style="color:var(--plan);background:rgba(210,153,34,.15)">[計画]</span><span class="fname">plan_webhook-retry-redesign.md</span><span class="pj">crm-frontend</span><span class="age" style="color:var(--plan)">97<span class="u">d 無更新</span></span></div>
+          <div class="desc">Webhook 再送ロジックの再設計案。別 PR で部分的に解決済みの疑い。</div>
+        </div>
+        <div class="acts"><span class="act arch">archive へ</span><span class="act hold">保留</span><span class="act keep">継続</span><span class="act">開く</span></div>
+      </div>
+    </div>
+
+    <!-- ③ 落ち着いて確認（折りたたみ） -->
+    <div class="fold">
+      <div class="fh"><span class="tw">落ち着いて確認</span><span class="cnt">保留 4 ・ 進行中/対応中 5</span><span class="chev">▾ 展開</span></div>
+      <div class="fb">
+        <div class="litem t-pending"><span class="lbl">[保留]</span><span><span class="fname">pending_db-sharding.md</span><span class="desc">DB シャーディング。トラフィック増まで保留。</span></span><span class="age">51d</span></div>
+        <div class="litem t-pending"><span class="lbl">[保留]</span><span><span class="fname">pending_oauth-provider-switch.md</span><span class="desc">OAuth 切替。ベンダー料金改定待ち。</span></span><span class="age">34d</span></div>
+        <div class="litem t-fix"><span class="lbl">[対応中]</span><span><span class="fname">bugfix_scan-symlink-loop_2026-06-09.md</span><span class="desc">シンボリックリンクのループでスキャン無限再帰。</span></span><span class="age">5d</span></div>
+        <div class="litem t-plan"><span class="lbl">[計画]</span><span><span class="fname">plan_core-engine-design.md</span><span class="desc">スキャン・判断・移送のコアエンジン設計。</span></span><span class="age">4d</span></div>
+      </div>
+    </div>
+
+    <!-- ④ プロジェクト健全度（ヒートマップ作り直し：バー＋具体値） -->
+    <div class="sec-head"><span class="t">プロジェクト健全度</span><span class="desc">バー＝滞留度、添え字＝最古ファイルの無更新日数。色より数字を主に。</span></div>
+    <div class="health">
+      <div class="hrow"><span class="pj">payment-gateway</span><div class="hbar"><i style="width:92%;background:var(--stale)"></i></div><span class="meta">最古 <b>201d</b> ・ 滞留 <span class="lvl hi">高</span></span></div>
+      <div class="hrow"><span class="pj">crm-frontend</span><div class="hbar"><i style="width:70%;background:var(--plan)"></i></div><span class="meta">最古 <b>142d</b> ・ 滞留 <span class="lvl mid">中</span></span></div>
+      <div class="hrow"><span class="pj">mobile-app</span><div class="hbar"><i style="width:48%;background:var(--plan)"></i></div><span class="meta">最古 <b>103d</b> ・ 滞留 <span class="lvl mid">中</span></span></div>
+      <div class="hrow"><span class="pj">ai-docs-sweep</span><div class="hbar"><i style="width:18%;background:var(--done)"></i></div><span class="meta">最古 <b>12d</b> ・ 滞留 <span class="lvl lo">低</span></span></div>
+      <div class="hrow"><span class="pj">infra-terraform</span><div class="hbar"><i style="width:10%;background:var(--done)"></i></div><span class="meta">最古 <b>5d</b> ・ 滞留 <span class="lvl lo">低</span></span></div>
+    </div>
+
+    <div class="note">— 「現状を眺める」画面から「今日の判断を片付ける受信トレイ」へ。数字は上部1行に格下げ、主役は実物カード＋即決ボタン。ヒートマップは単位の曖昧なセルをやめ、最古無更新日数という具体値を必ず添えた。</div>
+
+  </div>
+</main>
+</body>
+</html>
