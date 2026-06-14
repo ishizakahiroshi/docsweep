@@ -20,7 +20,7 @@ front matter のほうが扱いやすい環境では、H1 ラベルに加えて 
 
 ```markdown
 ---
-status: planning   # planning | in-progress | done | pending
+status: planned    # planned | in-progress | watching | done | discarded | pending
 type: plan         # plan | bugfix | pending
 updated: 2026-06-12
 ---
@@ -29,7 +29,7 @@ updated: 2026-06-12
 ```
 
 docsweep は H1 ラベル方式・フロントマター方式・ファイル名プレフィックス方式の
-いずれでも検出できます（`.docsweep.yaml` の `status_detection` で切り替え）。
+いずれでも検出できます（優先順位は **frontmatter > H1 > filename**。食い違いは「要修正」フラグで可視化）。
 
 ### 参照の起点
 

@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "docsweep"
+version = "0.1.0"
+description = "Sweep, triage and archive AI coding agents' plan/bugfix/pending Markdown across projects."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "ishizakahiroshi", email = "ishizakahiroshi@gmail.com" }]
+keywords = ["claude-code", "codex", "markdown", "archive", "ai-agents", "cli", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Web UI (FastAPI + htmx/Jinja2) — UX 主役。core だけ使う cron/AI 委譲では不要。
+web = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "jinja2>=3.1",
+    "markdown>=3.6",
+    "python-multipart>=0.0.9",
+]
+# 対話チェックリスト（--review 専用）
+review = [
+    "questionary>=2.0",
+]
+# MCP stdio サーバー
+mcp = [
+    "mcp>=1.0",
+]
+# 全部入り（配布既定: CLI+Web+MCP+review が 1 パッケージ）
+all = [
+    "docsweep[web,review,mcp]",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/ishizakahiroshi/docsweep"
+Repository = "https://github.com/ishizakahiroshi/docsweep"
+
+[project.scripts]
+docsweep = "docsweep.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["docsweep"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

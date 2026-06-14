@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>docsweep — ダッシュボード</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body data-token="{{ token }}">
+
+<aside class="sidebar">
+  <div class="brand"><span class="logo">🧹</span><div><b>docsweep</b><small>v{{ version }}</small></div></div>
+  <div class="navlabel">ビュー</div>
+  <a class="nav active" href="#top"><span class="ic">▦</span> ダッシュボード</a>
+  <div class="navlabel">クイック</div>
+  <a class="nav" href="#queue"><span class="ic c-stale">▲</span> 要判断 <span class="ct">{{ d.counts.needs_decision }}</span></a>
+  <a class="nav" href="#fold"><span class="ic c-pending">◆</span> 保留 <span class="ct">{{ d.counts.pending }}</span></a>
+  {% if d.counts.archivable %}<a class="nav" href="#archivable" onclick="document.getElementById('archivable').classList.add('open')"><span class="ic c-done">●</span> archive可能 <span class="ct">{{ d.counts.archivable }}</span></a>{% endif %}
+  <div class="sidefoot">
+    <div><span class="dot">●</span> scan root</div>
+    <div class="root">{{ d.root }}</div>
+    <div class="muted">{{ d.counts.projects }} projects · {{ d.counts.total }} docs</div>
+    <div class="lang"><a href="/?token={{ token }}&lang=ja" class="{{ 'on' if lang=='ja' else '' }}">JA</a>
+      <a href="/?token={{ token }}&lang=en" class="{{ 'on' if lang=='en' else '' }}">EN</a></div>
+  </div>
+</aside>
+
+<main id="top">
+  <div class="topbar">
+    <h1>ダッシュボード</h1>
+    <span class="sub">今日捌くべき判断 — {{ d.root }} 配下 {{ d.counts.projects }} プロジェクト横断</span>
+  </div>
+
+  <div class="wrap">
+
+    <!-- ① サマリー帯（脇役） -->
+    <div class="summary">
+      <span class="pill"><span class="sq bg-stale"></span><b class="c-stale">{{ d.counts.needs_decision }}</b> 廃止候補</span>
+      <span class="sep"></span>
+      <span class="pill"><span class="sq bg-pending"></span><b class="c-pending">{{ d.counts.pending }}</b> 保留</span>
+      <span class="sep"></span>
+      <span class="pill"><span class="sq bg-plan"></span><b class="c-plan">{{ d.inprogress }}</b> 進行中</span>
+      <span class="sep"></span>
+      <span class="pill"><span class="sq bg-done"></span><b class="c-done">{{ d.done }}</b> 完了</span>
+      {% if d.counts.archivable %}<button class="go" onclick="sweep()">完了/廃止 {{ d.counts.archivable }}件 を archive →</button>{% endif %}
+    </div>
+
+    <!-- ② 今すぐ判断（主役・受信トレイ） -->
+    <div class="sec-head" id="queue">
+      <span class="t">🔥 今すぐ判断</span>
+      <span class="cnt">{{ d.queue|length }}</span>
+      <span class="desc">概要だけで取捨選択。捌くとリストから消えます。</span>
+      <span class="spacer"></span>
+      {% if d.queue %}<button class="btn danger" onclick="archiveAll()">表示中をまとめて archive →</button>{% endif %}
+    </div>
+
+    {% if not d.queue %}
+      <div class="empty card">🎉 いま判断が要るファイルはありません。</div>
+    {% endif %}
+    <div class="queue">
+      {% for r in d.queue %}
+      <div class="qcard state-{{ r.state or 'unknown' }}" data-path="{{ r.path }}" data-arch="{{ r.arch_action }}" title="{{ r.path }}">
+        <div class="main">
+          <div class="row1">
+            <span class="lbl state-{{ r.state }}">{{ r.state_label or '[?]' }}</span>
+            <span class="pj">{{ r.project }}</span>
+            <span class="fname">{{ r.name }}</span>
+            <span class="age">{{ r.age_days }}<span class="u">d 無更新</span></span>
+          </div>
+          <div class="loc">📁 {{ r.loc }}</div>
+          <div class="desc">{{ r.summary or '（概要なし — 詳細で中身を確認）' }}</div>
+          {% if r.flags %}<div class="flags">{% for f in r.flags %}<span class="flag f-{{ f }}">{{ f }}</span>{% endfor %}</div>{% endif %}
+        </div>
+        <div class="acts">
+          {% if r.arch_action == 'promote' %}
+            <button class="act arch" onclick="act('{{ r.path }}','promote')">完了→archive</button>
+          {% elif 'discard' in r.allowed_actions %}
+            <button class="act arch" onclick="act('{{ r.path }}','discard')">archive へ</button>
+          {% endif %}
+          <button class="act hold" onclick="act('{{ r.path }}','relabel','保留')">保留</button>
+          <button class="act detail" onclick="detail('{{ r.path }}')">詳細</button>
+          <button class="act" onclick="openf('{{ r.path }}')">開く</button>
+          <button class="act" onclick="revealf('{{ r.path }}')">📁 フォルダ</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- ③ 落ち着いて確認（折りたたみ） -->
+    {% if d.fold %}
+    <div class="fold" id="fold">
+      <div class="fh" onclick="this.parentNode.classList.toggle('open')">
+        <span class="tw">落ち着いて確認</span>
+        <span class="cnt">保留・進行中 {{ d.fold|length }}</span>
+        <span class="chev">▾</span>
+      </div>
+      <div class="fb">
+        {% for r in d.fold %}
+        <div class="litem state-{{ r.state }}" onclick="detail('{{ r.path }}')" title="{{ r.path }}">
+          <span class="lbl state-{{ r.state }}">{{ r.state_label }}</span>
+          <span class="li-main"><span class="fname">{{ r.name }}</span>
+            <span class="loc">📁 {{ r.loc }}</span>
+            {% if r.summary %}<span class="desc">{{ r.summary }}</span>{% endif %}</span>
+          <span class="age">{{ r.age_days }}d</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ③.5 archive 可能（一覧で確認 → まとめて移送） -->
+    {% if d.archivable %}
+    <div class="fold" id="archivable">
+      <div class="fh" onclick="this.parentNode.classList.toggle('open')">
+        <span class="tw">● archive 可能</span>
+        <span class="cnt">完了・廃止 {{ d.archivable|length }}</span>
+        <span class="spacer"></span>
+        <button class="btn danger" onclick="event.stopPropagation();sweep()">まとめて archive →</button>
+        <span class="chev">▾</span>
+      </div>
+      <div class="fb">
+        {% for r in d.archivable %}
+        <div class="litem state-{{ r.state }}" title="{{ r.path }}">
+          <span class="lbl state-{{ r.state }}">{{ r.state_label }}</span>
+          <span class="li-main"><span class="fname">{{ r.name }}</span>
+            <span class="loc">📁 {{ r.loc }}</span>
+            {% if r.summary %}<span class="desc">{{ r.summary }}</span>{% endif %}</span>
+          <span class="li-end">
+            <span class="age">{{ r.age_days }}d</span>
+            <button class="act detail" onclick="detail('{{ r.path }}')">詳細</button>
+            <button class="act" onclick="revealf('{{ r.path }}')">📁</button>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ④ プロジェクト健全度 -->
+    {% if d.health %}
+    <div class="sec-head"><span class="t">プロジェクト健全度</span><span class="desc">バー＝滞留度、添え字＝最古ファイルの無更新日数。</span></div>
+    <div class="health">
+      {% for h in d.health %}
+      <div class="hrow">
+        <span class="pj">{{ h.project }}</span>
+        <div class="hbar"><i class="lvl-{{ h.level }}" style="width:{{ h.pct }}%"></i></div>
+        <span class="meta">最古 <b>{{ h.oldest }}d</b> · 滞留
+          <span class="lvl {{ h.level }}">{{ {'hi':'高','mid':'中','lo':'低'}[h.level] }}</span></span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div>
+</main>
+
+<div id="modal" class="modal hidden" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

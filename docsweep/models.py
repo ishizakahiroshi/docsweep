@@ -1,0 +1,76 @@
+"""JSON 契約の単一正本（dataclass）。
+
+CLI ``--json`` / Web API / MCP ツールが同じ構造を共有する。core は重い依存を持たない
+方針なので、ここは dataclass で表現し、Web 層（FastAPI）が必要なら pydantic で包む。
+
+allowed_actions は「閉じた集合」にして AI エージェントの返事を機械実行可能にする。
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from pathlib import Path
+
+
+class Action(str, Enum):
+    """triage で AI / 人間が選べる閉じた操作集合。"""
+
+    DISCARD = "discard"  # [廃止] にして archive へ
+    KEEP = "keep"  # 現状維持（何もしない）
+    RESUME = "resume"  # 様子見/廃止候補 → 実行中/対応中 へ戻す
+    RELABEL = "relabel"  # 任意ラベルへ書き換え（to を伴う）
+    PROMOTE = "promote"  # 様子見 → 完了 へ昇格し archive へ（release sweep）
+
+
+class Flag(str, Enum):
+    """自動判定できない/注意が要るファイルの種類。"""
+
+    NEEDS_FIX = "needs_fix"  # ラベル欠落・パース不能
+    CONFLICT = "conflict"  # frontmatter/H1/filename が食い違う
+    TYPE_MISMATCH = "type_mismatch"  # plan_ なのに bugfix 内容 等
+    NEEDS_DECISION = "needs_decision"  # 陳腐化した [計画]（stale 超え）
+    STALE = "stale"  # stale_days 超過
+
+
+@dataclass
+class FileRecord:
+    """スキャンで得た 1 ファイルの判定結果。"""
+
+    path: str  # 絶対パス（POSIX 表記）
+    project: str  # プロジェクト名（マーカーで判定した境界フォルダ名）
+    project_root: str  # プロジェクト境界の絶対パス（archive 移送先の基準）
+    type: str | None  # plan/bugfix/pending/...（None=種別不明）
+    state: str | None  # 内部状態キー（None=ラベル検出不能）
+    state_label: str | None  # 表示ラベル（例 "[完了]"）
+    state_source: str  # frontmatter | h1 | filename | none
+    title: str | None  # H1 タイトル（ラベル除去後）
+    summary: str | None  # 概要セクション先頭 1〜2 行
+    mtime: float  # 最終更新（epoch 秒）
+    age_days: int  # 最終更新からの経過日数
+    archivable: bool  # この状態は archive 対象か
+    auto_movable: bool  # --auto で自動移送してよいか
+    flags: list[str] = field(default_factory=list)
+    allowed_actions: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @property
+    def path_obj(self) -> Path:
+        return Path(self.path)
+
+
+@dataclass
+class MoveLogEntry:
+    """移動ログ JSONL の 1 行。eject/復元・将来の SQLite 移行の土台。"""
+
+    ts: str  # ISO8601 ローカル日時
+    op: str  # archive | relabel | eject | restore | promote
+    project: str
+    status: str | None  # 移送時点の内部状態
+    src: str
+    dst: str | None  # relabel 等で移動を伴わない場合 None
+
+    def to_dict(self) -> dict:
+        return asdict(self)

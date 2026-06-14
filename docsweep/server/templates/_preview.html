@@ -1,0 +1,15 @@
+<div class="preview-inner" data-path="{{ path }}">
+  {% if record %}
+  <div class="preview-head">
+    <div class="ph-line">
+      <span class="state-badge state-{{ record.state }}">{{ record.state_label or '[?]' }}</span>
+      <span class="ph-name">{{ record.path.split('/')[-1] }}</span>
+      <span class="ph-age">{{ record.age_days }}d</span>
+      <span class="ph-proj">{{ record.project }}</span>
+      <button class="act act-open" onclick="openf('{{ path }}')">エディタで開く</button>
+      <button class="act act-open" onclick="revealf('{{ path }}')">📁 フォルダを開く</button>
+    </div>
+  </div>
+  {% endif %}
+  <article class="md">{{ html|safe }}</article>
+</div>

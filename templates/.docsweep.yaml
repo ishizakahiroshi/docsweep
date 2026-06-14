@@ -1,0 +1,59 @@
+# docsweep プロジェクト設定サンプル（.docsweep.yaml）
+#
+# このファイルは「置いた時だけ効く」部分上書き層です。
+# 優先順位: ① CLI フラグ > ② このファイル > ③ グローバル ~/.docsweep/config.yaml
+# 無い項目はグローバル／内蔵デフォルトを継承します。グローバルだけ書けば体感 1 層。
+
+# スキャンルート（このプロジェクトを単体で回すなら通常は不要。横断は global 側に書く）
+# roots:
+#   - .
+
+# archive の移送先（プロジェクト直下からの相対）。既定 archive/
+# archive_dir: archive
+
+# 独自除外グロブ（.gitignore とは別に効く）。archive 自身は常に除外される。
+# ignore:
+#   - "**/drafts/**"
+
+# .gitignore を尊重するか（既定 true）
+# use_gitignore: true
+
+# プロジェクト境界マーカー（最寄りの祖先がこれを持てばそこがプロジェクト）。
+# フォルダ構成を決め打ちせず、開発者が既に定義済みの実体（gitリポジトリ等）で判定する。
+# 既定: [.git, .docsweep.yaml, package.json, pyproject.toml]
+# project_markers:
+#   - .git
+#   - pyproject.toml
+
+# 表示・注入テンプレの言語（ja | en）。検出は多言語なので横断スキャンは言語混在可。
+# lang: ja
+
+# --- 状態モデル（states）: 唯一の正本。検出・archive 可否・Web 表示・注入を全部導出 ---
+# 内蔵デフォルトで動くので通常は書かない。上書き・追加・言語追加だけで差分運用できる。
+# states:
+#   - key: planned
+#     labels: { ja: 計画, en: Planned }
+#     archive: false
+#     auto_move: false
+#   - key: done
+#     labels: { ja: 完了, en: Done }
+#     archive: true
+#     auto_move: true
+
+# --- type 定義: plan/bugfix/pending は内蔵。任意の種別を追加できる ---
+# types:
+#   - name: plan
+#     pattern: "plan_*.md"
+#     sections: ["概要"]
+#     summary_section: "概要"
+#     stale_days: 90
+#   - name: bugfix
+#     pattern: "bugfix_*.md"
+#     sections: ["症状", "根本原因", "修正内容", "変更ファイル", "検証", "備忘"]
+#     summary_section: "症状"
+#     stale_days: 30
+#   - name: pending
+#     pattern: "pending_*.md"
+#     sections: ["概要", "保留理由", "着手条件"]
+#     summary_section: "概要"
+#     stale_days: 180
