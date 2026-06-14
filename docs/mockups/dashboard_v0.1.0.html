@@ -2,109 +2,118 @@
 <!--
   docsweep — ダッシュボード作り直し案 (アクション・インボックス型 / 静的モック)
   - コンセプト: 「現状を見せる」→「今やるべき判断を片付ける」へ転換
+  - 配色: 明るくポップで親しみやすいライトテーマ（白基調＋やわらか影＋ビビッドなアクセント）
   - サーバー不要・データは全てダミー・操作しても実ファイルは動かない
 -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>docsweep — ダッシュボード v2</title>
+<title>docsweep — ダッシュボード</title>
 <style>
   :root{
-    --bg:#0d1117; --bg-soft:#161b22; --bg-soft2:#1c2230; --border:#2a3038;
-    --fg:#e6edf3; --fg-dim:#8b949e; --fg-dim2:#6e7681; --accent:#58a6ff;
-    --plan:#d29922; --stale:#f85149; --pending:#a371f7; --done:#3fb950; --fix:#ec6547;
+    /* キャンディ・パステル パレット（かわいい系） */
+    --bg:#fdf4fb; --bg2:#f3ecff; --card:#ffffff; --card-soft:#fbf3fd; --border:#f1e4f4;
+    --fg:#4a3a5c; --fg-dim:#8b7c9c; --fg-dim2:#c1b2cf; --accent:#a974ff;
+    --plan:#ffb13b; --stale:#ff6fa1; --pending:#b07cff; --done:#37d0a6; --fix:#ff8f6b;
+    /* ふんわり影（ほんのり色づき） */
+    --sh-sm:0 1px 3px rgba(170,116,255,.10),0 1px 2px rgba(255,111,161,.08);
+    --sh-md:0 6px 18px rgba(170,116,255,.16),0 2px 8px rgba(255,111,161,.10);
     --mono:ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,monospace;
     --sans:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;}
-  body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;
-    display:grid;grid-template-columns:232px 1fr;grid-template-rows:100vh;overflow:hidden;}
+  body{background:linear-gradient(135deg,#fff0f8 0%,#f4ecff 50%,#eaf6ff 100%);background-attachment:fixed;
+    color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;
+    display:grid;grid-template-columns:236px 1fr;grid-template-rows:100vh;overflow:hidden;}
 
   /* sidebar */
-  aside{background:var(--bg-soft);border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:4px;}
-  .brand{display:flex;align-items:center;gap:9px;padding:4px 8px 14px;}
-  .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--pending));display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px;}
-  .brand b{font-size:14px;} .brand small{display:block;color:var(--fg-dim2);font-size:11px;font-family:var(--mono);}
+  aside{background:rgba(255,255,255,.72);backdrop-filter:blur(10px);border-right:1px solid var(--border);padding:18px 13px;display:flex;flex-direction:column;gap:4px;}
+  .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px;}
+  .brand .logo{width:31px;height:31px;border-radius:11px;background:linear-gradient(135deg,#ff7eb6,#a974ff);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:16px;box-shadow:0 4px 10px rgba(255,126,182,.4);}
+  .brand b{font-size:15px;} .brand small{display:block;color:var(--fg-dim2);font-size:11px;font-family:var(--mono);}
   .navlabel{color:var(--fg-dim2);font-size:11px;text-transform:uppercase;letter-spacing:.6px;padding:14px 8px 4px;}
-  .nav{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;color:var(--fg-dim);}
-  .nav.active{background:var(--bg-soft2);color:var(--fg);box-shadow:inset 2px 0 0 var(--accent);}
-  .nav .ic{width:17px;text-align:center;} .nav .ct{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--fg-dim2);background:var(--bg);padding:1px 7px;border-radius:10px;}
+  .nav{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:10px;cursor:pointer;color:var(--fg-dim);transition:.15s;}
+  .nav:hover{background:var(--card-soft);color:var(--fg);}
+  .nav.active{background:linear-gradient(135deg,rgba(255,126,182,.16),rgba(169,116,255,.16));color:var(--accent);font-weight:600;}
+  .nav .ic{width:17px;text-align:center;} .nav .ct{margin-left:auto;font-family:var(--mono);font-size:11px;color:#fff;background:var(--accent);padding:1px 8px;border-radius:11px;font-weight:600;}
   .sidefoot{margin-top:auto;padding:12px 8px 2px;color:var(--fg-dim2);font-size:11px;font-family:var(--mono);}
   .sidefoot .dot{color:var(--done);}
 
   main{overflow-y:auto;}
-  .topbar{position:sticky;top:0;z-index:5;background:rgba(13,17,23,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:14px 26px;display:flex;align-items:center;gap:14px;}
-  .topbar h1{font-size:16px;margin:0;font-weight:650;}
+  .topbar{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.8);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:15px 28px;display:flex;align-items:center;gap:14px;}
+  .topbar h1{font-size:17px;margin:0;font-weight:700;}
   .topbar .sub{color:var(--fg-dim);font-size:12px;}
-  .scanbox{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--fg-dim);background:var(--bg-soft);border:1px solid var(--border);border-radius:7px;padding:6px 11px;}
+  .scanbox{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--fg-dim);background:var(--card);border:1px solid var(--border);border-radius:9px;padding:6px 12px;box-shadow:var(--sh-sm);}
   .scanbox b{color:var(--fg);}
-  .wrap{padding:18px 26px 60px;}
+  .wrap{padding:20px 28px 60px;}
 
   /* ① サマリー帯（細い1行 / 脇役） */
-  .summary{display:flex;align-items:center;gap:8px;background:var(--bg-soft);border:1px solid var(--border);border-radius:9px;padding:8px 14px;margin-bottom:22px;font-size:12.5px;}
-  .summary .pill{display:flex;align-items:center;gap:6px;font-family:var(--mono);color:var(--fg-dim);cursor:pointer;padding:3px 9px;border-radius:6px;}
-  .summary .pill:hover{background:var(--bg-soft2);color:var(--fg);}
+  .summary{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:13px;padding:9px 15px;margin-bottom:24px;font-size:12.5px;box-shadow:var(--sh-sm);}
+  .summary .pill{display:flex;align-items:center;gap:6px;font-family:var(--mono);color:var(--fg-dim);cursor:pointer;padding:4px 10px;border-radius:9px;transition:.15s;}
+  .summary .pill:hover{background:var(--card-soft);color:var(--fg);}
   .summary .pill b{font-size:14px;}
-  .summary .pill .sq{width:9px;height:9px;border-radius:2px;display:inline-block;}
+  .summary .pill .sq{width:10px;height:10px;border-radius:3px;display:inline-block;}
   .summary .sep{width:1px;height:18px;background:var(--border);}
-  .summary .go{margin-left:auto;color:var(--accent);font-family:var(--mono);font-size:12px;cursor:pointer;}
+  .summary .go{margin-left:auto;color:var(--accent);font-family:var(--mono);font-size:12px;cursor:pointer;font-weight:600;}
   .c-stale{color:var(--stale)!important;} .c-pending{color:var(--pending)!important;} .c-plan{color:var(--plan)!important;} .c-done{color:var(--done)!important;}
   .bg-stale{background:var(--stale);} .bg-pending{background:var(--pending);} .bg-plan{background:var(--plan);} .bg-done{background:var(--done);}
 
   /* セクション見出し */
-  .sec-head{display:flex;align-items:center;gap:10px;margin:6px 2px 12px;}
-  .sec-head .t{font-size:14px;font-weight:650;}
-  .sec-head .cnt{font-family:var(--mono);font-size:12px;color:var(--fg-dim2);background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:1px 9px;}
+  .sec-head{display:flex;align-items:center;gap:10px;margin:8px 2px 14px;}
+  .sec-head .t{font-size:15px;font-weight:700;}
+  .sec-head .cnt{font-family:var(--mono);font-size:12px;color:#fff;background:var(--accent);border-radius:11px;padding:1px 10px;font-weight:600;}
   .sec-head .desc{color:var(--fg-dim2);font-size:12px;}
   .sec-head .spacer{margin-left:auto;}
-  .btn{font-size:12px;font-weight:600;border-radius:7px;padding:6px 13px;cursor:pointer;border:1px solid var(--border);background:var(--bg-soft);color:var(--fg);}
-  .btn.danger{background:rgba(248,81,73,.14);border-color:var(--stale);color:var(--stale);}
-  .btn.ghost{background:transparent;}
+  .btn{font-size:12px;font-weight:600;border-radius:9px;padding:7px 14px;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--fg);box-shadow:var(--sh-sm);transition:.15s;}
+  .btn:hover{transform:translateY(-1px);box-shadow:var(--sh-md);}
+  .btn.danger{background:linear-gradient(135deg,#ff9ec7,#ff6fa1);border-color:transparent;color:#fff;}
+  .btn.ghost{background:transparent;box-shadow:none;}
 
   /* ② 要対応キュー（主役） */
-  .queue{display:flex;flex-direction:column;gap:10px;margin-bottom:30px;}
-  .qcard{background:var(--bg-soft);border:1px solid var(--border);border-left:3px solid var(--stale);border-radius:10px;padding:13px 16px;display:grid;grid-template-columns:1fr auto;gap:10px 18px;align-items:center;}
+  .queue{display:flex;flex-direction:column;gap:11px;margin-bottom:32px;}
+  .qcard{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--stale);border-radius:14px;padding:14px 17px;display:grid;grid-template-columns:1fr auto;gap:10px 18px;align-items:center;box-shadow:var(--sh-sm);transition:.15s;}
+  .qcard:hover{box-shadow:var(--sh-md);transform:translateY(-1px);}
   .qcard.is-warn{border-left-color:var(--plan);}
   .qcard .main{min-width:0;}
   .qcard .row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:5px;}
-  .qcard .fname{font-family:var(--mono);font-size:13px;color:var(--fg);}
-  .qcard .lbl{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;color:var(--stale);background:rgba(248,81,73,.15);}
-  .qcard .pj{font-family:var(--mono);font-size:11.5px;color:var(--accent);}
+  .qcard .fname{font-family:var(--mono);font-size:13px;color:var(--fg);font-weight:600;}
+  .qcard .lbl{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:7px;color:var(--stale);background:rgba(255,111,161,.14);}
+  .qcard .pj{font-family:var(--mono);font-size:11.5px;color:var(--accent);background:rgba(169,116,255,.13);padding:1px 8px;border-radius:7px;}
   .qcard .age{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--stale);}
   .qcard .age .u{color:var(--fg-dim2);font-weight:400;}
   .qcard .desc{color:var(--fg-dim);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .qcard .acts{display:flex;gap:7px;}
-  .act{font-size:12px;font-weight:600;border-radius:6px;padding:6px 11px;cursor:pointer;border:1px solid var(--border);background:var(--bg-soft2);color:var(--fg-dim);white-space:nowrap;}
-  .act.arch{background:rgba(248,81,73,.14);border-color:var(--stale);color:var(--stale);}
-  .act.keep{color:var(--done);} .act.hold{color:var(--pending);}
-  .act:hover{filter:brightness(1.25);}
+  .act{font-size:12px;font-weight:600;border-radius:9px;padding:7px 12px;cursor:pointer;border:1px solid var(--border);background:var(--card-soft);color:var(--fg-dim);white-space:nowrap;transition:.15s;}
+  .act:hover{transform:translateY(-1px);box-shadow:var(--sh-sm);}
+  .act.arch{background:linear-gradient(135deg,#ff9ec7,#ff6fa1);border-color:transparent;color:#fff;}
+  .act.keep{color:var(--done);border-color:rgba(31,191,143,.4);} .act.hold{color:var(--pending);border-color:rgba(155,108,255,.4);}
 
   /* ③ 落ち着いて確認（折りたたみ） */
-  .fold{background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;margin-bottom:30px;}
-  .fold .fh{display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;}
-  .fold .fh .tw{font-size:13.5px;font-weight:600;color:var(--fg);}
+  .fold{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:32px;box-shadow:var(--sh-sm);overflow:hidden;}
+  .fold .fh{display:flex;align-items:center;gap:10px;padding:13px 17px;cursor:pointer;}
+  .fold .fh .tw{font-size:13.5px;font-weight:700;color:var(--fg);}
   .fold .fh .cnt{font-family:var(--mono);font-size:12px;color:var(--fg-dim2);}
   .fold .fh .chev{margin-left:auto;color:var(--fg-dim2);}
-  .fold .fb{border-top:1px solid var(--border);padding:6px 8px;}
-  .litem{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:8px 10px;border-radius:7px;}
-  .litem:hover{background:var(--bg-soft2);}
-  .litem .lbl{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;}
-  .litem.t-pending .lbl{color:var(--pending);background:rgba(163,113,247,.15);}
-  .litem.t-plan .lbl{color:var(--plan);background:rgba(210,153,34,.15);}
-  .litem.t-fix .lbl{color:var(--fix);background:rgba(236,101,71,.15);}
-  .litem .fname{font-family:var(--mono);font-size:12.5px;color:var(--fg);}
+  .fold .fb{border-top:1px solid var(--border);padding:7px 9px;}
+  .litem{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:9px 11px;border-radius:10px;transition:.15s;}
+  .litem:hover{background:var(--card-soft);}
+  .litem .lbl{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;}
+  .litem.t-pending .lbl{color:var(--pending);background:rgba(155,108,255,.13);}
+  .litem.t-plan .lbl{color:var(--plan);background:rgba(245,166,35,.15);}
+  .litem.t-fix .lbl{color:var(--fix);background:rgba(255,122,77,.14);}
+  .litem .fname{font-family:var(--mono);font-size:12.5px;color:var(--fg);font-weight:600;}
   .litem .desc{color:var(--fg-dim2);font-size:11.5px;margin-left:8px;}
   .litem .age{font-family:var(--mono);font-size:11.5px;color:var(--fg-dim2);}
 
   /* ④ プロジェクト健全度（バー＋具体値） */
-  .health{background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:14px 18px;}
-  .hrow{display:grid;grid-template-columns:150px 1fr 150px;gap:16px;align-items:center;padding:8px 0;}
+  .health{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 20px;box-shadow:var(--sh-sm);}
+  .hrow{display:grid;grid-template-columns:150px 1fr 150px;gap:16px;align-items:center;padding:9px 0;}
   .hrow + .hrow{border-top:1px solid var(--border);}
-  .hrow .pj{font-family:var(--mono);font-size:12.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .hbar{height:9px;border-radius:5px;background:var(--bg-soft2);overflow:hidden;}
-  .hbar > i{display:block;height:100%;border-radius:5px;}
+  .hrow .pj{font-family:var(--mono);font-size:12.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
+  .hbar{height:10px;border-radius:6px;background:var(--bg2);overflow:hidden;}
+  .hbar > i{display:block;height:100%;border-radius:6px;}
   .hrow .meta{font-family:var(--mono);font-size:11.5px;color:var(--fg-dim);text-align:right;}
   .hrow .meta .lvl{font-weight:700;}
   .lvl.hi{color:var(--stale);} .lvl.mid{color:var(--plan);} .lvl.lo{color:var(--done);}
@@ -115,7 +124,7 @@
 <body>
 
 <aside>
-  <div class="brand"><div class="logo">⛕</div><div><b>docsweep</b><small>v0.2.0 mock</small></div></div>
+  <div class="brand"><div class="logo">⛕</div><div><b>docsweep</b><small>v0.1.0 mock</small></div></div>
   <div class="navlabel">ビュー</div>
   <div class="nav active"><span class="ic">▦</span> ダッシュボード</div>
   <div class="nav"><span class="ic">☑</span> レビュー <span class="ct">12</span></div>
@@ -179,14 +188,14 @@
       </div>
       <div class="qcard is-warn">
         <div class="main">
-          <div class="row1"><span class="lbl" style="color:var(--plan);background:rgba(210,153,34,.15)">[計画]</span><span class="fname">plan_push-notification-batch.md</span><span class="pj">mobile-app</span><span class="age" style="color:var(--plan)">103<span class="u">d 無更新</span></span></div>
+          <div class="row1"><span class="lbl" style="color:var(--plan);background:rgba(255,177,59,.18)">[計画]</span><span class="fname">plan_push-notification-batch.md</span><span class="pj">mobile-app</span><span class="age" style="color:var(--plan)">103<span class="u">d 無更新</span></span></div>
           <div class="desc">プッシュ通知のバッチ送信設計。優先度低下で停滞中。</div>
         </div>
         <div class="acts"><span class="act arch">archive へ</span><span class="act hold">保留</span><span class="act keep">継続</span><span class="act">開く</span></div>
       </div>
       <div class="qcard is-warn">
         <div class="main">
-          <div class="row1"><span class="lbl" style="color:var(--plan);background:rgba(210,153,34,.15)">[計画]</span><span class="fname">plan_webhook-retry-redesign.md</span><span class="pj">crm-frontend</span><span class="age" style="color:var(--plan)">97<span class="u">d 無更新</span></span></div>
+          <div class="row1"><span class="lbl" style="color:var(--plan);background:rgba(255,177,59,.18)">[計画]</span><span class="fname">plan_webhook-retry-redesign.md</span><span class="pj">crm-frontend</span><span class="age" style="color:var(--plan)">97<span class="u">d 無更新</span></span></div>
           <div class="desc">Webhook 再送ロジックの再設計案。別 PR で部分的に解決済みの疑い。</div>
         </div>
         <div class="acts"><span class="act arch">archive へ</span><span class="act hold">保留</span><span class="act keep">継続</span><span class="act">開く</span></div>

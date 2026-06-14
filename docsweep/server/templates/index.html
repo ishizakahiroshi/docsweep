@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>docsweep</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body data-token="{{ token }}">
+  <header class="topbar">
+    <div class="brand"><span class="logo">🧹</span><b>docsweep</b></div>
+    <nav class="filters" hx-target="#list" hx-swap="innerHTML">
+      <button hx-get="/list?token={{ token }}&lang={{ lang }}&filter=needs">要判断</button>
+      <button hx-get="/list?token={{ token }}&lang={{ lang }}&filter=all">全件</button>
+      <button hx-get="/list?token={{ token }}&lang={{ lang }}&filter=watching">様子見</button>
+      <button hx-get="/list?token={{ token }}&lang={{ lang }}&filter=archivable">archive候補</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="counts">
+      <span title="要判断">⚠ {{ counts.needs_decision }}</span>
+      <span title="要修正">🔧 {{ counts.needs_fix }}</span>
+      <span title="archive候補">📦 {{ counts.auto_movable }}</span>
+      <span title="様子見">💤 {{ counts.watching }}</span>
+    </div>
+    <button class="sweep" onclick="releaseSweep()">リリース整理</button>
+    <span class="langswitch">
+      <a href="/?token={{ token }}&lang=ja" class="{{ 'on' if lang=='ja' else '' }}">JA</a>
+      <a href="/?token={{ token }}&lang=en" class="{{ 'on' if lang=='en' else '' }}">EN</a>
+    </span>
+  </header>
+
+  <main class="split">
+    <section id="list" class="list">
+      {% include "_list.html" %}
+    </section>
+    <section id="preview" class="preview">
+      <div class="empty">左の一覧からファイルを選ぶとプレビューが出ます。</div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

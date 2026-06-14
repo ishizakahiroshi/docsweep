@@ -1,0 +1,23 @@
+{% if not groups %}
+  <div class="empty">該当ファイルなし。</div>
+{% endif %}
+{% for g in groups %}
+  <div class="group">
+    <h3 class="group-label state-{{ g.key }}">{{ g.label }} <span class="n">{{ g.records|length }}</span></h3>
+    <ul>
+      {% for r in g.records %}
+        <li class="item state-{{ r.state or 'unknown' }}"
+            hx-get="/preview?token={{ token }}&path={{ r.path|urlencode }}"
+            hx-target="#preview" hx-swap="innerHTML">
+          <div class="line1">
+            <span class="proj">{{ r.project }}</span>
+            <span class="name">{{ r.path.split('/')[-1] }}</span>
+            <span class="age">{{ r.age_days }}d</span>
+          </div>
+          {% if r.summary %}<div class="summary">{{ r.summary }}</div>{% endif %}
+          {% if r.flags %}<div class="flags">{% for f in r.flags %}<span class="flag f-{{ f }}">{{ f }}</span>{% endfor %}</div>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endfor %}
