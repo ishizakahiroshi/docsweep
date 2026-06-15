@@ -74,6 +74,22 @@ def test_relabel_preserves_crlf(tmp_path: Path):
     assert "# [完了] t" in data.decode("utf-8")
 
 
+# ---- F-D: pending 型接頭辞を state と誤認して誤 conflict を立てない ----
+
+def test_pending_prefix_no_false_conflict():
+    from docsweep.config import TypeDef
+    pending_type = TypeDef("pending", "pending_*.md", ("概要",), "概要", 180)
+    d = detect_status(text="# [実行中] foo\n", filename="pending_foo.md", sm=SM, _type=pending_type)
+    assert d.state_key == "in-progress"
+    assert d.conflict is False
+
+
+def test_filename_state_prefix_still_works():
+    # state_type 形式（done_plan_x.md）の filename 検出は従来どおり動く（_type 無し）。
+    d = detect_status(text="本文だけ\n", filename="done_plan_x.md", sm=SM)
+    assert d.state_key == "done"
+
+
 # ---- [07]: 非 UTF-8 文書を relabel で破壊しない ----
 
 def test_relabel_skips_non_utf8(tmp_path: Path):

@@ -15,7 +15,7 @@
   <div class="navlabel">クイック</div>
   <a class="nav" href="#queue"><span class="ic c-stale">▲</span> 要判断 <span class="ct">{{ d.counts.needs_decision }}</span></a>
   <a class="nav" href="#fold"><span class="ic c-pending">◆</span> 保留 <span class="ct">{{ d.counts.pending }}</span></a>
-  {% if d.counts.archivable %}<a class="nav" href="#archivable" onclick="document.getElementById('archivable').classList.add('open')"><span class="ic c-done">●</span> archive可能 <span class="ct">{{ d.counts.archivable }}</span></a>{% endif %}
+  {% if d.counts.archivable %}<a class="nav" href="#archivable" data-action="open-archivable"><span class="ic c-done">●</span> archive可能 <span class="ct">{{ d.counts.archivable }}</span></a>{% endif %}
   <div class="sidefoot">
     <div><span class="dot">●</span> scan root</div>
     <div class="root">{{ d.root }}</div>
@@ -42,7 +42,7 @@
       <span class="pill"><span class="sq bg-plan"></span><b class="c-plan">{{ d.inprogress }}</b> 進行中</span>
       <span class="sep"></span>
       <span class="pill"><span class="sq bg-done"></span><b class="c-done">{{ d.done }}</b> 完了</span>
-      {% if d.counts.archivable %}<button class="go" onclick="sweep()">完了/廃止 {{ d.counts.archivable }}件 を archive →</button>{% endif %}
+      {% if d.counts.archivable %}<button class="go" data-action="sweep">完了/廃止 {{ d.counts.archivable }}件 を archive →</button>{% endif %}
     </div>
 
     <!-- ② 今すぐ判断（主役・受信トレイ） -->
@@ -51,7 +51,7 @@
       <span class="cnt">{{ d.queue|length }}</span>
       <span class="desc">概要だけで取捨選択。捌くとリストから消えます。</span>
       <span class="spacer"></span>
-      {% if d.queue %}<button class="btn danger" onclick="archiveAll()">表示中をまとめて archive →</button>{% endif %}
+      {% if d.queue %}<button class="btn danger" data-action="archive-all">表示中をまとめて archive →</button>{% endif %}
     </div>
 
     {% if not d.queue %}
@@ -73,14 +73,14 @@
         </div>
         <div class="acts">
           {% if r.arch_action == 'promote' %}
-            <button class="act arch" onclick='act({{ r.path|tojson }},"promote")'>完了→archive</button>
+            <button class="act arch" data-action="promote" data-path="{{ r.path }}">完了→archive</button>
           {% elif 'discard' in r.allowed_actions %}
-            <button class="act arch" onclick='act({{ r.path|tojson }},"discard")'>archive へ</button>
+            <button class="act arch" data-action="discard" data-path="{{ r.path }}">archive へ</button>
           {% endif %}
-          {% if 'relabel' in r.allowed_actions %}<button class="act hold" onclick='act({{ r.path|tojson }},"relabel","保留")'>保留</button>{% endif %}
-          <button class="act detail" onclick='detail({{ r.path|tojson }})'>詳細</button>
-          <button class="act" onclick='openf({{ r.path|tojson }})'>開く</button>
-          <button class="act" onclick='revealf({{ r.path|tojson }})'>📁 フォルダ</button>
+          {% if 'relabel' in r.allowed_actions %}<button class="act hold" data-action="relabel" data-to="保留" data-path="{{ r.path }}">保留</button>{% endif %}
+          <button class="act detail" data-action="detail" data-path="{{ r.path }}">詳細</button>
+          <button class="act" data-action="open" data-path="{{ r.path }}">開く</button>
+          <button class="act" data-action="reveal" data-path="{{ r.path }}">📁 フォルダ</button>
         </div>
       </div>
       {% endfor %}
@@ -89,14 +89,14 @@
     <!-- ③ 落ち着いて確認（折りたたみ） -->
     {% if d.fold %}
     <div class="fold" id="fold">
-      <div class="fh" onclick="this.parentNode.classList.toggle('open')">
+      <div class="fh" data-action="toggle-fold">
         <span class="tw">落ち着いて確認</span>
         <span class="cnt">保留・進行中 {{ d.fold|length }}</span>
         <span class="chev">▾</span>
       </div>
       <div class="fb">
         {% for r in d.fold %}
-        <div class="litem state-{{ r.state }}" onclick='detail({{ r.path|tojson }})' title="{{ r.path }}">
+        <div class="litem state-{{ r.state }}" data-action="detail" data-path="{{ r.path }}" title="{{ r.path }}">
           <span class="lbl state-{{ r.state }}">{{ r.state_label }}</span>
           <span class="li-main"><span class="fname">{{ r.name }}</span>
             <span class="loc">📁 {{ r.loc }}</span>
@@ -111,11 +111,11 @@
     <!-- ③.5 archive 可能（一覧で確認 → まとめて移送） -->
     {% if d.archivable %}
     <div class="fold" id="archivable">
-      <div class="fh" onclick="this.parentNode.classList.toggle('open')">
+      <div class="fh" data-action="toggle-fold">
         <span class="tw">● archive 可能</span>
         <span class="cnt">完了・廃止 {{ d.archivable|length }}</span>
         <span class="spacer"></span>
-        <button class="btn danger" onclick="event.stopPropagation();sweep()">まとめて archive →</button>
+        <button class="btn danger" data-action="sweep">まとめて archive →</button>
         <span class="chev">▾</span>
       </div>
       <div class="fb">
@@ -127,8 +127,8 @@
             {% if r.summary %}<span class="desc">{{ r.summary }}</span>{% endif %}</span>
           <span class="li-end">
             <span class="age" title="最終更新 {{ r.mtime_str }}">{{ r.age_days }}d</span>
-            <button class="act detail" onclick='detail({{ r.path|tojson }})'>詳細</button>
-            <button class="act" onclick='revealf({{ r.path|tojson }})'>📁</button>
+            <button class="act detail" data-action="detail" data-path="{{ r.path }}">詳細</button>
+            <button class="act" data-action="reveal" data-path="{{ r.path }}">📁</button>
           </span>
         </div>
         {% endfor %}
@@ -154,9 +154,9 @@
   </div>
 </main>
 
-<div id="modal" class="modal hidden" onclick="if(event.target===this)closeModal()">
+<div id="modal" class="modal hidden">
   <div class="modal-card">
-    <button class="modal-close" onclick="closeModal()">✕</button>
+    <button class="modal-close" data-action="close-modal">✕</button>
     <div id="modal-body"></div>
   </div>
 </div>

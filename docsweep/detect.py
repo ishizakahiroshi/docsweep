@@ -92,9 +92,16 @@ def _detect_h1(text: str, sm: StateModel) -> tuple[str | None, str | None, str |
     return (s.key if s else None), token, (title or None)
 
 
-def _detect_filename(filename: str, sm: StateModel) -> str | None:
-    """ファイル名プレフィックス方式（例 done_plan_xxx.md）。"""
+def _detect_filename(filename: str, sm: StateModel, type_name: str | None = None) -> str | None:
+    """ファイル名プレフィックス方式（例 done_plan_xxx.md）。
+
+    先頭セグメントが「種別名そのもの」（pending_*.md の "pending" 等）の場合は type 接頭辞で
+    あって state 接頭辞ではないので state とみなさない。これがないと pending 種別の語が state
+    "pending" と衝突し、H1 が [保留] 以外の pending_*.md に誤って CONFLICT が立つ。
+    """
     head = filename.split("_", 1)[0]
+    if type_name and head == type_name:
+        return None
     s = sm.match(head)
     return s.key if s else None
 
@@ -107,7 +114,7 @@ def detect_status(
 
     fm = _detect_frontmatter(text, sm)
     h1_key, h1_token, title = _detect_h1(text, sm)
-    fn = _detect_filename(filename, sm)
+    fn = _detect_filename(filename, sm, _type.name if _type else None)
 
     # 検出された候補（None 以外）が複数あり食い違うか。
     candidates = [c for c in (fm, h1_key, fn) if c is not None]

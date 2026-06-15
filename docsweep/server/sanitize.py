@@ -115,9 +115,30 @@ class _Sanitizer(HTMLParser):
         return f"<{joined}>"
 
 
-def sanitize_html(html: str) -> str:
-    """信頼できない Markdown 由来 HTML から危険なタグ・属性・スキームを除去する。"""
+def _stdlib_sanitize(html: str) -> str:
     p = _Sanitizer()
     p.feed(html)
     p.close()
     return "".join(p.out)
+
+
+def sanitize_html(html: str) -> str:
+    """信頼できない Markdown 由来 HTML から危険なタグ・属性・スキームを除去する。
+
+    堅牢性のため nh3（導入時）を優先し、未導入や想定外エラー時は検証済みの標準ライブラリ
+    実装にフォールバックする。どちらの経路でも script/style・イベントハンドラ・危険スキームを落とす。
+    """
+    try:
+        import nh3
+    except ImportError:
+        return _stdlib_sanitize(html)
+    try:
+        return nh3.clean(
+            html,
+            tags=ALLOWED_TAGS,
+            clean_content_tags={"script", "style"},
+            attributes=ALLOWED_ATTRS,
+            url_schemes=SAFE_URL_SCHEMES,
+        )
+    except Exception:  # noqa: BLE001 - nh3 異常時は安全側で自前サニタイザへ退避
+        return _stdlib_sanitize(html)

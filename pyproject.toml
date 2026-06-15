@@ -32,6 +32,7 @@ web = [
     "jinja2>=3.1",
     "markdown>=3.6",
     "python-multipart>=0.0.18",
+    "nh3>=0.2",
 ]
 # 対話チェックリスト（--review 専用）
 review = [

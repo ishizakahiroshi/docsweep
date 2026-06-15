@@ -64,6 +64,15 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         # MIME スニッフィングも無効化する（多層防御）。
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        # script は自分の static のみ許可（inline ハンドラ・注入 script を不許可）。
+        # サニタイザを抜けた万一の XSS でも JS 実行を遮断する多層防御。style は health バーの
+        # 動的 width のため unsafe-inline を許す（script ほど危険でない）。
+        resp.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; "
+            "form-action 'self'; frame-ancestors 'none'",
+        )
         return resp
 
     static_dir = _DIR / "static"
