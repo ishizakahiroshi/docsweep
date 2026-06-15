@@ -1,4 +1,6 @@
 // docsweep Web UI — 受信トレイ型の即決操作。概要だけで取捨選択し、詳細はモーダルで。
+// CSP（script-src 'self'）下で動くよう inline onclick は使わず、data-action 属性 +
+// document への単一イベント委譲で配線する（動的挿入されるプレビュー内のボタンにも効く）。
 function token() { return document.body.dataset.token; }
 
 function post(url, data) {
@@ -67,3 +69,24 @@ function closeModal() {
 }
 
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+document.addEventListener("click", (e) => {
+  // モーダル背景（#modal 自身）クリックで閉じる。カード内クリックでは閉じない。
+  if (e.target.id === "modal") { closeModal(); return; }
+  const el = e.target.closest("[data-action]");
+  if (!el) return;
+  const p = el.dataset.path;
+  switch (el.dataset.action) {
+    case "discard":
+    case "promote": act(p, el.dataset.action); break;
+    case "relabel": act(p, "relabel", el.dataset.to); break;
+    case "detail": detail(p); break;
+    case "open": openf(p); break;
+    case "reveal": revealf(p); break;
+    case "sweep": sweep(); break;
+    case "archive-all": archiveAll(); break;
+    case "toggle-fold": { const f = el.closest(".fold"); if (f) f.classList.toggle("open"); break; }
+    case "open-archivable": { const x = document.getElementById("archivable"); if (x) x.classList.add("open"); break; }
+    case "close-modal": closeModal(); break;
+  }
+});

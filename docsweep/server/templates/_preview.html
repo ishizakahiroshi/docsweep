@@ -6,8 +6,8 @@
       <span class="ph-name">{{ record.path.split('/')[-1] }}</span>
       <span class="ph-age">{{ record.age_days }}d</span>
       <span class="ph-proj">{{ record.project }}</span>
-      <button class="act act-open" onclick='openf({{ path|tojson }})'>エディタで開く</button>
-      <button class="act act-open" onclick='revealf({{ path|tojson }})'>📁 フォルダを開く</button>
+      <button class="act act-open" data-action="open" data-path="{{ path }}">エディタで開く</button>
+      <button class="act act-open" data-action="reveal" data-path="{{ path }}">📁 フォルダを開く</button>
     </div>
   </div>
   {% endif %}

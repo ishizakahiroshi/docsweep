@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -71,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_scope_args(p_serve)
     p_serve.add_argument("--port", type=int, default=8765)
     p_serve.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
-    p_serve.add_argument("--token", help="アクセストークンを固定（省略時は毎回ランダム生成）")
+    p_serve.add_argument("--token", help="アクセストークンを固定（未指定なら環境変数 DOCSWEEP_TOKEN、それも無ければ毎回ランダム生成）")
 
     p_promote = sub.add_parser("promote", help="release sweep: 様子見をまとめて完了へ昇格し archive へ")
     _add_scope_args(p_promote)
@@ -331,7 +332,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print("Web UI には web extra が必要です: pip install 'docsweep[web]'", file=sys.stderr)
         return 3
 
-    token = args.token or secrets.token_urlsafe(16)
+    # トークンはコマンドライン引数（他プロセスから見える）より環境変数を推奨。
+    token = args.token or os.environ.get("DOCSWEEP_TOKEN") or secrets.token_urlsafe(16)
     app = create_app(cfg, token=token)
     url = f"http://127.0.0.1:{args.port}/?token={token}"
     print("=" * 60)

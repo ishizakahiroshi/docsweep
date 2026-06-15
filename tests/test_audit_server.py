@@ -68,9 +68,9 @@ def test_needs_fix_card_has_no_dead_buttons(tmp_path: Path):
     assert "data-arch" not in html        # 一括 archive 対象にもならない
 
 
-# ---- [11][13]: パスにシングルクオートを含んでも onclick が壊れない（tojson）----
+# ---- [11][13]: パスにシングルクオートを含んでも安全に配線される（data 属性 + 委譲）----
 
-def test_apostrophe_path_renders_safe_onclick(tmp_path: Path):
+def test_apostrophe_path_renders_safe(tmp_path: Path):
     root = tmp_path / "dev"
     d = root / "bob's-proj"
     d.mkdir(parents=True)
@@ -81,5 +81,20 @@ def test_apostrophe_path_renders_safe_onclick(tmp_path: Path):
     os.utime(d / "plan_stale.md", (old, old))
     c = _client(root)
     html = c.get(f"/?token={TOKEN}").text
-    # tojson はシングルクオートを ' にエスケープし、生の ...bob's... を onclick に出さない。
-    assert "bob\\u0027s-proj" in html
+    assert "onclick=" not in html            # inline ハンドラは廃止（CSP 対応）
+    assert "bob&#39;s-proj" in html          # path は data 属性に autoescape されて入る
+    assert 'data-action="discard"' in html   # 委譲用 data-action で配線
+
+
+# ---- CSP + inline ハンドラ撤廃（多層防御）----
+
+def test_csp_and_no_inline_handlers(tmp_path: Path):
+    root = tmp_path / "dev"
+    (root / "proj").mkdir(parents=True)
+    (root / "proj" / "plan_x.md").write_text("# [計画] x\n\n## 概要\n\nx\n", encoding="utf-8")
+    c = _client(root)
+    r = c.get(f"/?token={TOKEN}")
+    csp = r.headers.get("content-security-policy", "")
+    assert "script-src 'self'" in csp        # inline/注入 script を遮断
+    assert "default-src 'none'" in csp
+    assert "onclick=" not in r.text          # ダッシュボードに inline ハンドラなし
