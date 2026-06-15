@@ -61,14 +61,20 @@ def build_server(config: Config):
     @mcp.tool()
     def sweep(dry_run: bool = False) -> list[dict]:
         """done/discarded を各プロジェクトの archive/ へ移送する（watching は触らない）。"""
-        return [m.to_dict() for m in auto_sweep(config, dry_run=dry_run)]
+        moved = [m.to_dict() for m in auto_sweep(config, dry_run=dry_run)]
+        if not dry_run and config.roots:
+            write_index(config)
+        return moved
 
     @mcp.tool()
     def promote(from_state: str = "watching", to_state: str = "done",
                 project: str | None = None, dry_run: bool = False) -> list[dict]:
         """release sweep: 溜まった様子見をまとめて完了へ昇格し archive へ移送する。"""
-        return [m.to_dict() for m in promote_state(
-            config, from_state=from_state, to_state=to_state, project=project, dry_run=dry_run)]
+        try:
+            return [m.to_dict() for m in promote_state(
+                config, from_state=from_state, to_state=to_state, project=project, dry_run=dry_run)]
+        except ValueError as e:
+            return [{"error": str(e)}]
 
     @mcp.tool()
     def index() -> dict:

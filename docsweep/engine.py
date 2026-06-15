@@ -10,9 +10,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .archive import archive_file, append_move_log
+from .archive import _now_iso, append_move_log, archive_file
 from .config import Config
-from .detect import _H1_LABEL_RE, _H1_RE
+from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from .models import Action, Flag, FileRecord, MoveLogEntry
 from .scan import ScannedDoc, scan
 
@@ -132,6 +132,10 @@ def promote_state(
     result = run_scan(config)
     sm = config.state_model
     target = sm.by_key(to_state)
+    # 未知の to_state（タイプミス等）だと relabel されないまま archive 移送され、
+    # ラベルと配置が矛盾する。移送前に弾く。
+    if target is None:
+        raise ValueError(f"未知の to_state: {to_state}")
     moved: list[MoveLogEntry] = []
     for doc in result.docs:
         rec = doc.record
@@ -140,8 +144,11 @@ def promote_state(
         if project and rec.project != project:
             continue
         project_dir, root = _project_dir_for(doc, config)
-        if target and not dry_run:
-            relabel_file(Path(rec.path), f"[{target.label(config.lang)}]", config)
+        if not dry_run:
+            if not relabel_file(Path(rec.path), f"[{target.label(config.lang)}]", config):
+                raise ValueError(
+                    f"H1 ラベルを書き換えられないため昇格を中止しました（H1 が無い/UTF-8 でない）: {rec.path}"
+                )
         dst = archive_file(
             src=Path(rec.path), project_dir=project_dir, archive_dir=_archive_dir_for(doc, config),
             root=root, project=rec.project, status=to_state, op="promote", dry_run=dry_run,
@@ -178,7 +185,12 @@ def apply_action(
         target_key = "discarded" if action == Action.DISCARD.value else "done"
         st = sm.by_key(target_key)
         if st and not dry_run:
-            relabel_file(path, f"[{st.label(config.lang)}]", config)
+            # ラベルを書き換えられない（H1 が無い/読めない）まま移送すると、配置と
+            # ラベルが矛盾した archive ファイルができる。書換失敗時は移送を中止する。
+            if not relabel_file(path, f"[{st.label(config.lang)}]", config):
+                raise ValueError(
+                    f"H1 ラベルを書き換えられないため移送を中止しました（H1 が無い/UTF-8 でない）: {rec.path}"
+                )
         dst = archive_file(
             src=path, project_dir=project_dir, archive_dir=_archive_dir_for(doc, config),
             root=root, project=rec.project, status=target_key, op=action, dry_run=dry_run,
@@ -190,7 +202,7 @@ def apply_action(
         st = sm.by_key(target_key)
         if st and not dry_run:
             relabel_file(path, f"[{st.label(config.lang)}]", config)
-            append_move_log(root, MoveLogEntry(ts="", op="resume", project=rec.project, status=target_key, src=rec.path, dst=None))
+            append_move_log(root, MoveLogEntry(ts=_now_iso(), op="resume", project=rec.project, status=target_key, src=rec.path, dst=None))
         return MoveLogEntry(ts="", op="resume", project=rec.project, status=target_key, src=rec.path, dst=None)
 
     if action == Action.RELABEL.value:
@@ -200,22 +212,36 @@ def apply_action(
         label = f"[{st.label(config.lang)}]" if st else (to if to.startswith("[") else f"[{to}]")
         if not dry_run:
             relabel_file(path, label, config)
-            append_move_log(root, MoveLogEntry(ts="", op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None))
+            append_move_log(root, MoveLogEntry(ts=_now_iso(), op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None))
         return MoveLogEntry(ts="", op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None)
 
     raise ValueError(f"未知の action: {action}")
 
 
 def relabel_file(path: Path, new_label: str, config: Config) -> bool:
-    """H1 のラベルを new_label（例 "[完了]"）に書き換える。成功で True。"""
-    text = path.read_text(encoding="utf-8", errors="replace")
-    m = _H1_RE.search(text)
+    """H1 のラベルを new_label（例 "[完了]"）に書き換える。成功で True。
+
+    非 UTF-8 の文書は errors="replace" で読むと U+FFFD 置換が書き戻されて原本破損するため、
+    strict で読み、デコード不能なら何もせず False を返す（破壊しない）。コードフェンス内の
+    ``# ...`` を H1 と誤認しないよう、位置特定はマスク版で行い書換は原文へ適用する。
+    """
+    try:
+        # newline="" で読み込み、CRLF/LF を文字列にそのまま保持する（読み書きとも変換しない）。
+        text = path.read_text(encoding="utf-8", newline="")
+    except UnicodeDecodeError:
+        return False
+    # マスクは長さを保つので、マスク版で得た start/end を原文 text にそのまま使える。
+    m = _H1_RE.search(mask_code_fences(text))
     if not m:
         return False
-    h1 = m.group(1).strip()
+    captured = m.group(1)
+    # MULTILINE の (.*) は CRLF の \r を取り込みうる。元の改行を完全保存するため退避→再付与する。
+    cr = "\r" if captured.endswith("\r") else ""
+    h1 = captured.rstrip("\r").strip()
     lm = _H1_LABEL_RE.match(h1)
     title = lm.group(2).strip() if lm else h1
     new_h1 = f"# {new_label} {title}".rstrip()
-    new_text = text[: m.start()] + new_h1 + text[m.end():]
-    path.write_text(new_text, encoding="utf-8")
+    # 元の改行コードを保ったまま H1 行だけ差し替える（OS 依存の CRLF 変換を避ける）。
+    new_text = text[: m.start()] + new_h1 + cr + text[m.end():]
+    path.write_text(new_text, encoding="utf-8", newline="")
     return True

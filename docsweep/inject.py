@@ -76,11 +76,29 @@ def _wrap(inner: str) -> str:
 
 
 def _find_block(text: str) -> tuple[int, int] | None:
-    s = text.find(MARK_START)
-    e = text.find(MARK_END)
-    if s == -1 or e == -1 or e < s:
-        return None
-    return s, e + len(MARK_END)
+    spans = _find_all_blocks(text)
+    return spans[0] if spans else None
+
+
+def _find_all_blocks(text: str) -> list[tuple[int, int]]:
+    """管理ブロック（START..END）を全て列挙する。
+
+    END を START の後ろから探すことで、ユーザー本文に END マーカー文字列が紛れていても
+    誤判定しない。複数ブロックがあっても 2 個目以降を取りこぼさない。
+    """
+    spans: list[tuple[int, int]] = []
+    i = 0
+    while True:
+        s = text.find(MARK_START, i)
+        if s == -1:
+            break
+        e = text.find(MARK_END, s + len(MARK_START))
+        if e == -1:
+            break
+        end = e + len(MARK_END)
+        spans.append((s, end))
+        i = end
+    return spans
 
 
 def _inner_of(text: str, span: tuple[int, int]) -> str:
@@ -115,19 +133,25 @@ def _write_managed_file(
 
     if path.is_file():
         text = path.read_text(encoding="utf-8", errors="replace")
-        span = _find_block(text)
-        if span is not None:
-            current_inner = _inner_of(text, span)
-            # 手編集検出: 前回注入と現在のブロックが食い違うなら .bak を取る。
+        spans = _find_all_blocks(text)
+        if spans:
+            current_inner = _inner_of(text, spans[0])
+            # 手編集検出: 前回注入と現在の（先頭）ブロックが食い違うなら .bak を取る。
             if prev_hash and _block_hash(current_inner) != prev_hash:
                 result.warnings.append(f"{rel}: 管理ブロックが手編集されています。.bak を作成しました。")
                 if not dry_run:
                     path.with_suffix(path.suffix + ".bak").write_text(text, encoding="utf-8")
-            if _block_hash(current_inner) == _block_hash(inner):
+            if len(spans) > 1:
+                result.warnings.append(f"{rel}: 管理ブロックが複数あります。1 つに統合しました。")
+            if len(spans) == 1 and _block_hash(current_inner) == _block_hash(inner):
                 result.skipped.append(rel)  # 冪等: 変化なし
                 (manifest_entry.setdefault("blocks", {}))[rel] = _block_hash(inner)
                 return
-            new_text = text[:span[0]] + new_block + text[span[1]:]
+            # 余剰ブロックを末尾側から除去（先頭オフセットを保つ）→ 先頭を新ブロックへ置換。
+            new_text = text
+            for sp in reversed(spans[1:]):
+                new_text = new_text[:sp[0]] + new_text[sp[1]:]
+            new_text = new_text[:spans[0][0]] + new_block + new_text[spans[0][1]:]
         else:
             sep = "" if text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
             new_text = text + sep + new_block + "\n"
@@ -224,19 +248,22 @@ def eject(project_dir: Path, *, purge: bool = False, dry_run: bool = False) -> E
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        span = _find_block(text)
-        if span is None:
+        spans = _find_all_blocks(text)
+        if not spans:
             continue
-        # 手編集検出。
+        # 手編集検出（先頭ブロック基準）。
         prev_hash = (entry.get("blocks") or {}).get(fname)
-        if prev_hash and _block_hash(_inner_of(text, span)) != prev_hash:
+        if prev_hash and _block_hash(_inner_of(text, spans[0])) != prev_hash:
             result.warnings.append(f"{fname}: 手編集を検出。.bak を作成しました。")
             if not dry_run:
                 path.with_suffix(path.suffix + ".bak").write_text(text, encoding="utf-8")
-        # ブロックと直前の余分な空行を除去。
-        before = text[:span[0]].rstrip("\n")
-        after = text[span[1]:].lstrip("\n")
-        new_text = (before + ("\n\n" if before and after else "") + after).rstrip("\n")
+        # 全ブロックと直前の余分な空行を末尾側から除去（オフセットずれ防止）。
+        new_text = text
+        for sp in reversed(spans):
+            before = new_text[:sp[0]].rstrip("\n")
+            after = new_text[sp[1]:].lstrip("\n")
+            new_text = before + ("\n\n" if before and after else "") + after
+        new_text = new_text.rstrip("\n")
         new_text = new_text + "\n" if new_text else ""
         if not dry_run:
             path.write_text(new_text, encoding="utf-8")

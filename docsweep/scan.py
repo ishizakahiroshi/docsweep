@@ -61,7 +61,15 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
     if not root.is_dir():
         return []
 
-    archive_name = config.archive_dir.strip("/").split("/")[0]
+    # 枝刈り対象 archive ディレクトリ名。グローバル＋全 type 別 archive_dir の「末尾セグメント」を
+    # 集合化する。ネスト指定（例 "docs/archive"）は末尾 "archive" だけを刈り、中間の "docs"
+    # ツリー全体を誤って消さない。各プロジェクトの archive/ は任意の深さに出るため basename 判定。
+    archive_names = set()
+    for ad in (config.archive_dir, *(t.archive_dir for t in config.types)):
+        if ad:
+            seg = ad.strip("/").split("/")
+            if seg and seg[-1]:
+                archive_names.add(seg[-1])
     base_patterns = list(config.ignore)
     if config.use_gitignore:
         base_patterns += _read_gitignore(root)
@@ -75,7 +83,7 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
         # ディレクトリ枝刈り（archive・常時除外・ignore）。
         pruned: list[str] = []
         for d in dirnames:
-            if d in ALWAYS_SKIP_DIRS or d == archive_name:
+            if d in ALWAYS_SKIP_DIRS or d in archive_names:
                 continue
             child_rel = f"{rel_dir}/{d}".lstrip("/") if rel_dir != "." else d
             if _is_ignored(child_rel, d, base_patterns):

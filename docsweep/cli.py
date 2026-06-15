@@ -161,7 +161,11 @@ def cmd_apply(args: argparse.Namespace) -> int:
     if doc is None:
         print(f"対象が見つかりません（スキャン範囲外?）: {args.path}", file=sys.stderr)
         return 2
-    entry = apply_action(doc, args.action, cfg, to=args.to, dry_run=args.dry_run)
+    try:
+        entry = apply_action(doc, args.action, cfg, to=args.to, dry_run=args.dry_run)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
     print(json.dumps(entry.to_dict(), ensure_ascii=False))
     return 0
 
@@ -188,7 +192,11 @@ def cmd_promote(args: argparse.Namespace) -> int:
     from .engine import promote_state
 
     cfg = _build_config(args)
-    moved = promote_state(cfg, from_state=args.state, to_state=args.to, project=args.project, dry_run=args.dry_run)
+    try:
+        moved = promote_state(cfg, from_state=args.state, to_state=args.to, project=args.project, dry_run=args.dry_run)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
     if getattr(args, "json", False):
         print(json.dumps([m.to_dict() for m in moved], ensure_ascii=False, indent=2))
     else:

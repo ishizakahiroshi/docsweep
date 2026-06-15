@@ -99,19 +99,31 @@ def build_state_model(states_cfg: list[dict] | None) -> StateModel:
     if not states_cfg:
         return StateModel()
     states: list[State] = []
+    seen_keys: set[str] = set()
+    seen_aliases: dict[str, str] = {}  # alias(小文字ラベル) -> 最初に定義した key
     for raw in states_cfg:
         key = raw["key"]
         labels = dict(raw.get("labels") or {})
         if not labels:
             raise ValueError(f"state '{key}' に labels がありません")
-        states.append(
-            State(
-                key=key,
-                labels=labels,
-                archive=bool(raw.get("archive", False)),
-                auto_move=bool(raw.get("auto_move", False)),
-                color=raw.get("color"),
-                icon=raw.get("icon"),
-            )
+        # 重複は後勝ちで dict 上書きされ、ラベルが別 state（archive 可否が違う）に解決されて
+        # 静かに誤判定するため、設定構築時に fail-fast で弾く。
+        if key in seen_keys:
+            raise ValueError(f"state key '{key}' が重複しています")
+        seen_keys.add(key)
+        st = State(
+            key=key,
+            labels=labels,
+            archive=bool(raw.get("archive", False)),
+            auto_move=bool(raw.get("auto_move", False)),
+            color=raw.get("color"),
+            icon=raw.get("icon"),
         )
+        for a in st.aliases() | {key.lower()}:
+            if a in seen_aliases and seen_aliases[a] != key:
+                raise ValueError(
+                    f"ラベル '{a}' が state '{seen_aliases[a]}' と '{key}' で重複しています"
+                )
+            seen_aliases.setdefault(a, key)
+        states.append(st)
     return StateModel(states)

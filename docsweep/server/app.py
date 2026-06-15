@@ -5,6 +5,7 @@ from __future__ import annotations
 import secrets
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
@@ -15,8 +16,9 @@ from fastapi.templating import Jinja2Templates
 from .. import __version__
 from ..config import Config
 from ..engine import ScanResult, apply_action, auto_sweep, run_scan
-from ..index import build_index
+from ..index import build_index, write_index
 from ..models import Flag
+from .sanitize import sanitize_html
 from .security import resolve_under_roots
 
 _DIR = Path(__file__).parent
@@ -37,9 +39,11 @@ def _render_markdown(text: str) -> str:
         import html
 
         return f"<pre>{html.escape(text)}</pre>"
-    return markdown.markdown(
+    # 信頼できない .md 由来の生 HTML/script/javascript: を必ず除去してから返す（XSS 対策）。
+    rendered = markdown.markdown(
         text, extensions=["tables", "fenced_code", "toc", "sane_lists"]
     )
+    return sanitize_html(rendered)
 
 
 def _find_doc(result: ScanResult, path: str):
@@ -52,6 +56,15 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
     state = ServerState(config, token)
     app = FastAPI(title="docsweep", docs_url=None, redoc_url=None)
     app.state.docsweep = state
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        resp = await call_next(request)
+        # 信頼できない .md 由来の外部リソース読込で token 入り URL が Referer に載るのを防ぎ、
+        # MIME スニッフィングも無効化する（多層防御）。
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        return resp
 
     static_dir = _DIR / "static"
     if static_dir.is_dir():
@@ -162,6 +175,9 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         """done/discarded を archive へ。watching は触らない。"""
         _check_token(request, token)
         moved = auto_sweep(state.config, dry_run=dry_run)
+        # CLI sweep と同様、実移送後は横断 INDEX を再生成して陳腐化させない。
+        if not dry_run and state.config.roots:
+            write_index(state.config)
         return JSONResponse([m.to_dict() for m in moved])
 
     return app
@@ -222,6 +238,10 @@ def _dashboard_data(result: ScanResult, config: Config) -> dict:
         d["name"] = Path(r.path).name
         d["loc"] = _loc(r.path)
         d["arch_action"] = "promote" if r.state == "watching" else "discard"
+        # カードの「Nd 無更新」に hover で出す絶対更新日時（ローカルタイム）。
+        d["mtime_str"] = (
+            datetime.fromtimestamp(r.mtime).strftime("%Y-%m-%d %H:%M") if r.mtime else ""
+        )
         return d
 
     by_age = sorted(recs, key=lambda r: r.age_days, reverse=True)

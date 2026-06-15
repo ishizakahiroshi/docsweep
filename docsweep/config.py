@@ -144,22 +144,32 @@ def load_config(
 
     merged = _merge(g, project_cfg)
 
-    # roots の決定（優先順位: 位置引数 > profile > merged.roots）。
+    # roots の決定（優先順位: 位置引数 > profile > roots）。
+    # 相対パスは「それを定義した config のあるディレクトリ」基準で解決する。プロジェクト
+    # .docsweep.yaml の相対値は project_dir、グローバルの相対値は ~/.docsweep/ 基準。
     base_dir = project_dir or Path.cwd()
+    g_profiles = g.get("profiles") or {}
+    p_profiles = project_cfg.get("profiles") or {}
     if explicit_roots:
         roots = _resolve_roots(explicit_roots, base_dir)
     elif profile:
-        profiles = (merged.get("profiles") or {})
-        if profile not in profiles:
+        if profile in p_profiles:
+            roots = _resolve_roots(p_profiles[profile], base_dir)
+        elif profile in g_profiles:
+            roots = _resolve_roots(g_profiles[profile], global_path.parent)
+        else:
             raise ValueError(f"プロファイル '{profile}' が config に見つかりません")
-        roots = _resolve_roots(profiles[profile], global_path.parent)
+    elif project_cfg.get("roots"):
+        roots = _resolve_roots(project_cfg.get("roots"), base_dir)
     else:
-        roots = _resolve_roots(merged.get("roots"), global_path.parent)
+        roots = _resolve_roots(g.get("roots"), global_path.parent)
 
     profiles_resolved = {
-        name: _resolve_roots(vals, global_path.parent)
-        for name, vals in (merged.get("profiles") or {}).items()
+        name: _resolve_roots(vals, global_path.parent) for name, vals in g_profiles.items()
     }
+    profiles_resolved.update(
+        {name: _resolve_roots(vals, base_dir) for name, vals in p_profiles.items()}
+    )
 
     types = _parse_types(merged.get("types")) or list(DEFAULT_TYPES)
     state_model = build_state_model(merged.get("states"))
