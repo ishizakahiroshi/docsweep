@@ -45,9 +45,12 @@ async function archiveAll() {
   const cards = [...document.querySelectorAll(".qcard[data-arch]")];
   if (!cards.length) return;
   if (!confirm("表示中の " + cards.length + " 件を archive へ移送します。\nよろしいですか？")) return;
+  let ok = 0, failed = 0;
   for (const c of cards) {
-    await post("/api/apply", { path: c.dataset.path, action: c.dataset.arch });
+    const r = await post("/api/apply", { path: c.dataset.path, action: c.dataset.arch });
+    r.ok ? ok++ : failed++;
   }
+  if (failed) alert(ok + " 件を archive へ移送、" + failed + " 件は移送できませんでした（要修正のファイルが残っています）。");
   location.reload();
 }
 

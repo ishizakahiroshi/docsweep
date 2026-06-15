@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -70,6 +71,8 @@ _BUILDERS = {"plan": _plan_body, "bugfix": _bugfix_body, "pending": _pending_bod
 
 def _filename(doc_type: str, topic: str) -> str:
     topic = topic.strip().lower().replace(" ", "-")
+    # パス区切り（/ \）と親参照（..）を除去し、生成先ディレクトリ外への書き込みを防ぐ。
+    topic = re.split(r"[\\/]", topic)[-1].strip(". ") or "untitled"
     if doc_type == "bugfix":
         return f"bugfix_{topic}_{_today()}.md"
     return f"{doc_type}_{topic}.md"
