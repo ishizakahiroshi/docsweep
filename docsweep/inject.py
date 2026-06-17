@@ -439,8 +439,11 @@ def inject_global(
     result = InjectResult(project=f"global:{agent}")
     _warn_if_shadowed(path, result, agent)
 
-    # 実体は docsweep 所有の中央ファイルに集約。各ツールには最小フックだけを注記付きで書く。
-    write_guidance_file(lang, dry_run=dry_run)
+    # 中央 guidance.md は @import で参照する agent（claude）のときだけ生成する。
+    # Codex 等は導線本文をインライン展開し中央ファイルを参照しないので、作ると誰も読まない
+    # 孤児になる（eject 側の保持判定とも整合: guidance.md は Claude が居る時だけ保持）。
+    if _agent_uses_central(agent):
+        write_guidance_file(lang, dry_run=dry_run)
     inner = _global_inner(agent, lang)
 
     manifest = load_manifest()
@@ -526,12 +529,15 @@ def preview_global(*, agent: str = "claude", target: str | Path | None = None, l
     path = resolve_global_target(agent, target)
     probe = InjectResult(project=f"global:{agent}")
     _warn_if_shadowed(path, probe, agent)
+    # 中央ファイルは @import 参照する agent（claude）でのみ生成・参照される。Codex 等は
+    # 導線をインライン展開するので、プレビューでも中央ファイルの行を見せない（誤誘導を防ぐ）。
+    uses_central = _agent_uses_central(agent)
     return {
         "scope": "global",
         "agent": agent,
         "path": path.as_posix(),
         "blocks": [{"file": path.name, "text": _wrap(_global_inner(agent, lang))}],
-        "guidance_path": GUIDANCE_PATH.as_posix(),
-        "guidance": generate_guidance_block(lang),
+        "guidance_path": GUIDANCE_PATH.as_posix() if uses_central else None,
+        "guidance": generate_guidance_block(lang) if uses_central else None,
         "warnings": probe.warnings,
     }
