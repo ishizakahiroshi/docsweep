@@ -108,12 +108,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_inject.add_argument("--project", default=".", help="注入先プロジェクト（既定 .）")
     p_inject.add_argument("--preset", help="プリセット名（claude-jp / frontmatter）")
     p_inject.add_argument("--no-yaml", action="store_true", help=".docsweep.yaml を書かない")
+    p_inject.add_argument("--no-guidance", action="store_true", help="導線を省きラベル節だけ注入（導線をグローバルに寄せる場合）")
+    p_inject.add_argument("--global", dest="is_global", action="store_true", help="個人グローバル設定へ導線だけ注入（全プロジェクトで効く）")
+    p_inject.add_argument("--agent", choices=("claude", "codex"), default="claude", help="グローバル注入先の AI ツール（--global 時）")
+    p_inject.add_argument("--global-target", dest="global_target", help="グローバル注入先を明示パスで上書き")
     p_inject.add_argument("--dry-run", action="store_true")
 
     p_eject = sub.add_parser("eject", help="注入した管理ブロックを剥がす（手書きは温存）")
     p_eject.add_argument("--project", default=".", help="対象プロジェクト（既定 .）")
-    p_eject.add_argument("--all", action="store_true", help="マニフェスト記録の全プロジェクトから除去")
+    p_eject.add_argument("--all", action="store_true", help="マニフェスト記録の全プロジェクト/グローバルから除去")
     p_eject.add_argument("--purge", action="store_true", help=".docsweep.yaml も削除")
+    p_eject.add_argument("--global", dest="is_global", action="store_true", help="グローバル設定から導線を剥がす")
+    p_eject.add_argument("--agent", choices=("claude", "codex"), default="claude", help="グローバル先の AI ツール（--global 時）")
+    p_eject.add_argument("--global-target", dest="global_target", help="グローバル先を明示パスで上書き")
     p_eject.add_argument("--dry-run", action="store_true")
 
     p_list = sub.add_parser("list", help="注入済みプロジェクト一覧")
@@ -141,16 +148,21 @@ def cmd_scan(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
     result = run_scan(cfg)
     records = result.records
-    if not getattr(args, "all", False) and args.command != "triage":
+    if not getattr(args, "all", False):
         from .models import Flag
         records = [r for r in records if Flag.NEEDS_DECISION.value in r.flags or r.state == "pending"]
-    if getattr(args, "json", False) or args.command == "triage":
-        if args.command == "triage":
-            from .models import Flag
-            records = [r for r in result.records if r.flags or r.state == "pending"]
+    if getattr(args, "json", False):
         print(json.dumps([r.to_dict() for r in records], ensure_ascii=False, indent=2))
     else:
         _print_records_table(records, cfg.lang)
+    return 0
+
+
+def cmd_triage(args: argparse.Namespace) -> int:
+    """残作業ビュー（要判断＋保留・古い順）を JSON で出す。MCP triage と同一契約。"""
+    from .reports import build_triage
+
+    print(json.dumps(build_triage(_build_config(args)), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -262,10 +274,20 @@ def cmd_review(args: argparse.Namespace) -> int:
 
 
 def cmd_inject(args: argparse.Namespace) -> int:
-    from .inject import inject
+    from .inject import inject, inject_global
 
-    r = inject(Path(args.project), preset=args.preset, write_yaml=not args.no_yaml, dry_run=args.dry_run)
     tag = "（dry-run）" if args.dry_run else ""
+    if getattr(args, "is_global", False):
+        r = inject_global(agent=args.agent, target=args.global_target, dry_run=args.dry_run)
+        print(f"inject {r.project}{tag}: 書込={r.written or '-'} 温存/不変={r.skipped or '-'}")
+        for w in r.warnings:
+            print(f"  ⚠ {w}")
+        return 0
+
+    r = inject(
+        Path(args.project), preset=args.preset, write_yaml=not args.no_yaml,
+        include_guidance=not args.no_guidance, dry_run=args.dry_run,
+    )
     print(f"inject {r.project}{tag}: 書込={r.written or '-'} 温存/不変={r.skipped or '-'}")
     if r.yaml_path:
         print(f"  .docsweep.yaml: {r.yaml_path}")
@@ -275,15 +297,26 @@ def cmd_inject(args: argparse.Namespace) -> int:
 
 
 def cmd_eject(args: argparse.Namespace) -> int:
-    from .inject import eject, list_injected
+    from .inject import eject, eject_global, list_injected
 
-    targets = [p["path"] for p in list_injected()] if args.all else [str(Path(args.project).resolve())]
-    for tgt in targets:
-        r = eject(Path(tgt), purge=args.purge, dry_run=args.dry_run)
+    def _report(r) -> None:
         tag = "（dry-run）" if args.dry_run else ""
-        print(f"eject {r.project}{tag}: 除去={r.removed or '-'}{' +yaml' if r.purged_yaml else ''}")
+        yaml = " +yaml" if getattr(r, "purged_yaml", False) else ""
+        print(f"eject {r.project}{tag}: 除去={r.removed or '-'}{yaml}")
         for w in r.warnings:
             print(f"  ⚠ {w}")
+
+    if getattr(args, "is_global", False):
+        _report(eject_global(agent=args.agent, target=args.global_target, dry_run=args.dry_run))
+        return 0
+    if args.all:
+        for it in list_injected():
+            if it.get("scope") == "global":
+                _report(eject_global(agent=it.get("agent") or "claude", target=it["path"], dry_run=args.dry_run))
+            else:
+                _report(eject(Path(it["path"]), purge=args.purge, dry_run=args.dry_run))
+        return 0
+    _report(eject(Path(args.project).resolve(), purge=args.purge, dry_run=args.dry_run))
     return 0
 
 
@@ -297,7 +330,9 @@ def cmd_list(args: argparse.Namespace) -> int:
         if not items:
             print("注入済みプロジェクトはありません。")
         for it in items:
-            print(f"{it['preset'] or '-':<12} {it['path']}  ({it['ts']})")
+            scope = it.get("scope", "project")
+            tag = f"global:{it.get('agent')}" if scope == "global" else (it.get("preset") or "-")
+            print(f"{tag:<16} {it['path']}  ({it['ts']})")
     return 0
 
 
@@ -356,7 +391,7 @@ _SUBCOMMANDS = {
 }
 
 _DISPATCH = {
-    "scan": cmd_scan, "triage": cmd_scan, "apply": cmd_apply, "sweep": cmd_sweep,
+    "scan": cmd_scan, "triage": cmd_triage, "apply": cmd_apply, "sweep": cmd_sweep,
     "serve": cmd_serve, "promote": cmd_promote, "index": cmd_index, "pending": cmd_pending,
     "report": cmd_report, "summary": cmd_summary, "new": cmd_new, "review": cmd_review,
     "inject": cmd_inject, "eject": cmd_eject, "list": cmd_list, "mcp": cmd_mcp,

@@ -14,8 +14,10 @@ from .config import Config
 from .engine import apply_action, auto_sweep, promote_state, run_scan
 from .index import build_index, write_index
 from .inject import eject as do_eject
+from .inject import eject_global as do_eject_global
 from .inject import inject as do_inject
-from .reports import render_summary
+from .inject import inject_global as do_inject_global
+from .reports import build_triage, render_summary
 
 
 def build_server(config: Config):
@@ -38,14 +40,10 @@ def build_server(config: Config):
 
     @mcp.tool()
     def triage() -> dict:
-        """要判断・要修正・保留に絞った材料を返す（AI が読んで判断するための入力）。"""
-        idx = build_index(config)
-        return {
-            "counts": idx.counts,
-            "needs_decision": idx.needs_decision,
-            "needs_fix": idx.needs_fix,
-            "pending": idx.pending,
-        }
+        """セッション開始時の残作業ビュー。要判断＋保留を古い順に絞り、各項目に rel/title/
+        state/type/age_days と機械実行できる actions を付けて返す（ファイル名を思い出さなくても
+        「次にやるべき作業」が先頭に出る）。壊れたラベルは needs_fix に別枠で添える。"""
+        return build_triage(config)
 
     @mcp.tool()
     def apply(path: str, action: str, to: str | None = None) -> dict:
@@ -100,6 +98,24 @@ def build_server(config: Config):
         r = do_eject(Path(project), purge=purge, dry_run=dry_run)
         return {"project": r.project, "removed": r.removed, "warnings": r.warnings,
                 "purged_yaml": r.purged_yaml}
+
+    @mcp.tool()
+    def inject_global(agent: str = "claude", target: str | None = None, dry_run: bool = False) -> dict:
+        """セッション開始時に triage を読む導線だけを AI ツールのグローバル設定へ注入する（全プロジェクトで効く）。"""
+        try:
+            r = do_inject_global(agent=agent, target=target, dry_run=dry_run)
+        except ValueError as e:
+            return {"error": str(e)}
+        return {"project": r.project, "written": r.written, "skipped": r.skipped, "warnings": r.warnings}
+
+    @mcp.tool()
+    def eject_global(agent: str = "claude", target: str | None = None, dry_run: bool = False) -> dict:
+        """グローバルへ注入した導線ブロックを剥がす。"""
+        try:
+            r = do_eject_global(agent=agent, target=target, dry_run=dry_run)
+        except ValueError as e:
+            return {"error": str(e)}
+        return {"project": r.project, "removed": r.removed, "warnings": r.warnings}
 
     return mcp
 
