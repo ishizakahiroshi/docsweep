@@ -17,6 +17,15 @@ from .. import __version__
 from ..config import Config
 from ..engine import ScanResult, apply_action, auto_sweep, run_scan
 from ..index import build_index, write_index
+from ..inject import (
+    eject,
+    eject_global,
+    inject,
+    inject_global,
+    list_injected,
+    preview_global,
+    preview_inject,
+)
 from ..models import Flag
 from .sanitize import sanitize_html
 from .security import resolve_under_roots
@@ -189,6 +198,63 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
             write_index(state.config)
         return JSONResponse([m.to_dict() for m in moved])
 
+    def _valid_project_dir(project: str) -> Path | None:
+        """注入対象はスキャンで実在が確認できたプロジェクト境界に限定する（任意パスへの書込を防ぐ）。"""
+        if not project:
+            return None
+        target = Path(project).resolve().as_posix()
+        roots = {d.record.project_root for d in run_scan(state.config).docs}
+        return Path(target) if target in roots else None
+
+    @app.post("/api/inject")
+    def api_inject(
+        request: Request,
+        token: str = Form(default=""),
+        scope: str = Form(default="project"),
+        project: str = Form(default=""),
+        agent: str = Form(default="claude"),
+        dry_run: bool = Form(default=False),
+    ):
+        """運用ルールを注入。dry_run=True は「何が書かれるか」のプレビューを返す（書き込まない）。"""
+        _check_token(request, token)
+        if scope == "global":
+            if agent not in ("claude", "codex"):
+                raise HTTPException(status_code=400, detail="unknown agent")
+            if dry_run:
+                return JSONResponse(preview_global(agent=agent, lang=state.config.lang))
+            r = inject_global(agent=agent, lang=state.config.lang)
+            return JSONResponse({"project": r.project, "written": r.written, "skipped": r.skipped, "warnings": r.warnings})
+        pdir = _valid_project_dir(project)
+        if pdir is None:
+            raise HTTPException(status_code=403, detail="project outside scan roots")
+        if dry_run:
+            return JSONResponse(preview_inject(pdir))
+        r = inject(pdir)
+        return JSONResponse({"project": r.project, "written": r.written, "skipped": r.skipped,
+                             "warnings": r.warnings, "yaml": r.yaml_path})
+
+    @app.post("/api/eject")
+    def api_eject(
+        request: Request,
+        token: str = Form(default=""),
+        scope: str = Form(default="project"),
+        project: str = Form(default=""),
+        agent: str = Form(default="claude"),
+        dry_run: bool = Form(default=False),
+    ):
+        """注入した管理ブロックを剥がす（手書きは温存）。dry_run=True は除去対象の確認のみ。"""
+        _check_token(request, token)
+        if scope == "global":
+            if agent not in ("claude", "codex"):
+                raise HTTPException(status_code=400, detail="unknown agent")
+            r = eject_global(agent=agent, dry_run=dry_run)
+            return JSONResponse({"project": r.project, "removed": r.removed, "warnings": r.warnings})
+        pdir = _valid_project_dir(project)
+        if pdir is None:
+            raise HTTPException(status_code=403, detail="project outside scan roots")
+        r = eject(pdir, dry_run=dry_run)
+        return JSONResponse({"project": r.project, "removed": r.removed, "warnings": r.warnings})
+
     return app
 
 
@@ -278,6 +344,27 @@ def _dashboard_data(result: ScanResult, config: Config) -> dict:
         "archivable": archivable,
         "health": _health(recs),
         "root": str(config.roots[0]) if config.roots else "",
+        **_inject_state(recs),
+    }
+
+
+def _inject_state(recs) -> dict:
+    """各プロジェクトの注入状態（manifest 由来）と global 注入済み agent を組み立てる。"""
+    injected = {it["path"]: it for it in list_injected()}
+    projects: dict[str, dict] = {}
+    for r in recs:
+        root = r.project_root
+        if root not in projects:
+            info = injected.get(root)
+            projects[root] = {
+                "name": r.project, "root": root,
+                "injected": info is not None, "preset": (info or {}).get("preset"),
+            }
+    global_agents = {it.get("agent") for it in injected.values() if it.get("scope") == "global"}
+    return {
+        "projects": sorted(projects.values(), key=lambda x: x["name"]),
+        "global_claude": "claude" in global_agents,
+        "global_codex": "codex" in global_agents,
     }
 
 

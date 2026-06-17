@@ -68,6 +68,75 @@ function closeModal() {
   document.getElementById("modal").classList.add("hidden");
 }
 
+// ---- inject / eject（プレビュー必須 → 確認 → 実行）----
+function mk(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+async function injectPreview(op, scope, project, agent) {
+  const url = op === "inject" ? "/api/inject" : "/api/eject";
+  const data = { scope, dry_run: "true" };
+  if (scope === "project") data.project = project; else data.agent = agent;
+  const r = await post(url, data);
+  if (!r.ok) { alert("プレビュー失敗: " + (await r.text())); return; }
+  renderInjectPreview(await r.json(), op, scope, project, agent);
+}
+
+function renderInjectPreview(pv, op, scope, project, agent) {
+  const body = document.getElementById("modal-body");
+  body.innerHTML = "";
+  const opLabel = op === "inject" ? "注入" : "解除";
+  body.appendChild(mk("h2", "inj-h", "🔧 " + opLabel + "プレビュー"));
+  body.appendChild(mk("div", "inj-target", pv.path));
+  if (scope === "global") {
+    body.appendChild(mk("div", "inj-warnbox",
+      "⚠ これは個人グローバル設定への書き込みです。全プロジェクトのセッションに影響します。"));
+  }
+  (pv.warnings || []).forEach((msg) => body.appendChild(mk("div", "inj-warnbox", "⚠ " + msg)));
+
+  if (op === "inject") {
+    (pv.blocks || []).forEach((b) => {
+      body.appendChild(mk("div", "inj-file", "▶ " + b.file + " に追記:"));
+      body.appendChild(mk("pre", "inj-pre", b.text));
+    });
+    if (pv.scope === "global" && pv.guidance) {
+      body.appendChild(mk("div", "inj-file", "▶ " + pv.guidance_path + "（docsweep 所有・自動生成）:"));
+      body.appendChild(mk("pre", "inj-pre", pv.guidance));
+    }
+    if (pv.scope === "project") {
+      body.appendChild(mk("div", "inj-note",
+        pv.yaml_exists ? ".docsweep.yaml は既存（温存）" : ".docsweep.yaml を新規作成します"));
+    }
+  } else {
+    const removed = pv.removed || [];
+    body.appendChild(mk("div", "inj-note", removed.length
+      ? "次のファイルから docsweep 管理ブロックを除去します: " + removed.join(", ")
+      : "除去対象の管理ブロックは見つかりませんでした。"));
+  }
+
+  const apply = mk("button", "btn danger", "この内容で" + opLabel + "を実行");
+  apply.dataset.action = "inject-apply";
+  apply.dataset.op = op;
+  apply.dataset.scope = scope;
+  if (project) apply.dataset.project = project;
+  if (agent) apply.dataset.agent = agent;
+  body.appendChild(apply);
+
+  document.getElementById("modal").classList.remove("hidden");
+}
+
+async function injectApply(op, scope, project, agent) {
+  const url = op === "inject" ? "/api/inject" : "/api/eject";
+  const data = { scope, dry_run: "false" };
+  if (scope === "project") data.project = project; else data.agent = agent;
+  const r = await post(url, data);
+  if (!r.ok) { alert("失敗: " + (await r.text())); return; }
+  location.reload();
+}
+
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
 document.addEventListener("click", (e) => {
@@ -85,6 +154,9 @@ document.addEventListener("click", (e) => {
     case "reveal": revealf(p); break;
     case "sweep": sweep(); break;
     case "archive-all": archiveAll(); break;
+    case "inject-preview": injectPreview("inject", el.dataset.scope, el.dataset.project, el.dataset.agent); break;
+    case "eject-preview": injectPreview("eject", el.dataset.scope, el.dataset.project, el.dataset.agent); break;
+    case "inject-apply": injectApply(el.dataset.op, el.dataset.scope, el.dataset.project, el.dataset.agent); break;
     case "toggle-fold": { const f = el.closest(".fold"); if (f) f.classList.toggle("open"); break; }
     case "open-archivable": { const x = document.getElementById("archivable"); if (x) x.classList.add("open"); break; }
     case "close-modal": closeModal(); break;

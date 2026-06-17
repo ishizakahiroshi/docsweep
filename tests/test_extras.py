@@ -184,3 +184,80 @@ def test_list_injected(tmp_path, manifest):
     items = list_injected()
     assert len(items) == 1
     assert items[0]["preset"] == "frontmatter"
+
+
+# ---- pointer / @import モード（single source of truth） ----
+
+def test_agents_md_gets_pointer_not_duplicate(tmp_path, manifest):
+    """AGENTS.md は CLAUDE.md のフルブロックを複製せず、ポインタ＋注記だけを書く。"""
+    from docsweep.inject import inject
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "AGENTS.md").write_text("# Codex entry\n", encoding="utf-8")
+    inject(proj, preset="claude-jp")
+
+    claude = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+    agents = (proj / "AGENTS.md").read_text(encoding="utf-8")
+    # CLAUDE.md は正本（ラベル表を持つ）
+    assert "| 内部状態 |" in claude
+    # AGENTS.md はポインタのみ（ラベル表を複製しない）＋ docsweep の注記＋マーカー
+    assert "| 内部状態 |" not in agents
+    assert "CLAUDE.md" in agents
+    assert "docsweep inject が自動追加・管理" in agents
+    assert "docsweep:managed:start" in agents
+
+
+def test_inject_global_claude_uses_import(tmp_path, manifest, monkeypatch):
+    """Claude グローバルは @import 1 行＋注記。実体は docsweep 所有の guidance.md。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "home_docsweep" / "guidance.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "fake_claude" / "CLAUDE.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("# 個人グローバル\n\n手書き。\n", encoding="utf-8")
+
+    I.inject_global(agent="claude", target=target)
+    text = target.read_text(encoding="utf-8")
+    assert "手書き。" in text  # 個人ファイルは温存
+    assert f"@{I.GUIDANCE_IMPORT}" in text  # @import 1 行
+    assert "docsweep inject が自動追加・管理" in text  # 注記
+    assert "docsweep:managed:start" in text
+    assert gpath.is_file()  # 中央ファイル生成
+    assert "残作業" in gpath.read_text(encoding="utf-8")
+
+
+def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
+    """Codex は @import 非対応 → 導線本文をその場に展開（注記付き）。"""
+    from docsweep import inject as I
+
+    monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "g.md")
+    target = tmp_path / "codex" / "AGENTS.md"
+    target.parent.mkdir(parents=True)
+
+    I.inject_global(agent="codex", target=target)
+    text = target.read_text(encoding="utf-8")
+    assert "@" + I.GUIDANCE_IMPORT not in text  # import 行ではない
+    assert "docsweep triage" in text  # 本文がインライン
+    assert "docsweep inject が自動追加・管理" in text
+
+
+def test_eject_global_removes_block_and_central(tmp_path, manifest, monkeypatch):
+    """最後の global 参照を eject したら中央 guidance.md も撤去する。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "claude" / "CLAUDE.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("# 個人\n\n手書き。\n", encoding="utf-8")
+
+    I.inject_global(agent="claude", target=target)
+    assert gpath.is_file()
+    I.eject_global(agent="claude", target=target)
+
+    text = target.read_text(encoding="utf-8")
+    assert "docsweep:managed" not in text  # フック除去
+    assert "手書き。" in text  # 手書き温存
+    assert not gpath.exists()  # 中央ファイルも撤去

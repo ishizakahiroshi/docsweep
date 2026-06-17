@@ -122,3 +122,60 @@ def test_sweep_skips_watching(client):
     srcs = {Path(m["src"]).name for m in r.json()}
     assert "plan_done.md" in srcs
     assert "plan_watch.md" not in srcs
+
+
+# ---- inject / eject via Web UI ----
+
+@pytest.fixture
+def iso_inject(tmp_path, monkeypatch):
+    """manifest / 中央 guidance を tmp に隔離し、実 home を汚さない。"""
+    monkeypatch.setattr("docsweep.inject.MANIFEST_PATH", tmp_path / "injected.json")
+    monkeypatch.setattr("docsweep.inject.GUIDANCE_PATH", tmp_path / "guidance.md")
+
+
+def test_inject_project_preview_does_not_write(client, iso_inject):
+    c, root, _ = client
+    pdir = (root / "proj_a").resolve().as_posix()
+    r = c.post("/api/inject", data={"token": TOKEN, "scope": "project", "project": pdir, "dry_run": "true"})
+    assert r.status_code == 200
+    pv = r.json()
+    assert pv["scope"] == "project"
+    assert "CLAUDE.md" in [b["file"] for b in pv["blocks"]]
+    assert "docsweep:managed:start" in pv["blocks"][0]["text"]
+    assert not (root / "proj_a" / "CLAUDE.md").exists()  # プレビューは書き込まない
+
+
+def test_inject_project_applies(client, iso_inject):
+    c, root, _ = client
+    pdir = (root / "proj_a").resolve().as_posix()
+    r = c.post("/api/inject", data={"token": TOKEN, "scope": "project", "project": pdir, "dry_run": "false"})
+    assert r.status_code == 200
+    text = (root / "proj_a" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "docsweep:managed:start" in text
+    assert "| 内部状態 |" in text
+
+
+def test_inject_rejects_project_outside_roots(client, iso_inject):
+    c, root, _ = client
+    r = c.post("/api/inject", data={"token": TOKEN, "scope": "project", "project": str(root.parent), "dry_run": "false"})
+    assert r.status_code == 403
+
+
+def test_inject_global_preview_uses_import(client, iso_inject):
+    c, root, _ = client
+    r = c.post("/api/inject", data={"token": TOKEN, "scope": "global", "agent": "claude", "dry_run": "true"})
+    assert r.status_code == 200
+    pv = r.json()
+    assert pv["scope"] == "global"
+    assert "@~/.docsweep/guidance.md" in pv["blocks"][0]["text"]
+    assert "残作業" in pv["guidance"]
+
+
+def test_eject_project_removes_block(client, iso_inject):
+    c, root, _ = client
+    pdir = (root / "proj_a").resolve().as_posix()
+    c.post("/api/inject", data={"token": TOKEN, "scope": "project", "project": pdir, "dry_run": "false"})
+    r = c.post("/api/eject", data={"token": TOKEN, "scope": "project", "project": pdir, "dry_run": "false"})
+    assert r.status_code == 200
+    text = (root / "proj_a" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "docsweep:managed" not in text
