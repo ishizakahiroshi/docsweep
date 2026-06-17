@@ -86,9 +86,15 @@ def build_server(config: Config):
         return render_summary(config)
 
     @mcp.tool()
-    def inject(project: str, preset: str | None = None, dry_run: bool = False) -> dict:
-        """指定プロジェクトへ docsweep の運用ルール（管理ブロック＋.docsweep.yaml）を注入する。"""
-        r = do_inject(Path(project), preset=preset, dry_run=dry_run)
+    def inject(project: str, preset: str | None = None, include_guidance: bool = True,
+               write_yaml: bool = True, dry_run: bool = False) -> dict:
+        """指定プロジェクトへ docsweep の運用ルール（管理ブロック＋.docsweep.yaml）を注入する。
+
+        導線をグローバルに寄せている場合は include_guidance=False でラベル節だけにできる
+        （CLI の --no-guidance 相当）。write_yaml=False で .docsweep.yaml を書かない（--no-yaml 相当）。
+        """
+        r = do_inject(Path(project), preset=preset, include_guidance=include_guidance,
+                      write_yaml=write_yaml, dry_run=dry_run)
         return {"project": r.project, "written": r.written, "skipped": r.skipped,
                 "warnings": r.warnings, "yaml": r.yaml_path}
 

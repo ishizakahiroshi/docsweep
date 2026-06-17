@@ -232,7 +232,8 @@ def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     """Codex は @import 非対応 → 導線本文をその場に展開（注記付き）。"""
     from docsweep import inject as I
 
-    monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "g.md")
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
     target = tmp_path / "codex" / "AGENTS.md"
     target.parent.mkdir(parents=True)
 
@@ -241,6 +242,31 @@ def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     assert "@" + I.GUIDANCE_IMPORT not in text  # import 行ではない
     assert "docsweep triage" in text  # 本文がインライン
     assert "docsweep inject が自動追加・管理" in text
+    # Codex はインライン展開で中央ファイルを参照しない → 孤児 guidance.md を作らない。
+    assert not gpath.exists()
+
+
+def test_preview_global_central_only_for_claude(tmp_path, monkeypatch):
+    """preview_global は中央ファイルの行を @import 参照する claude でだけ返す（Codex は出さない）。"""
+    from docsweep import inject as I
+
+    monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "g.md")
+    claude = I.preview_global(agent="claude", target=tmp_path / "c" / "CLAUDE.md")
+    assert claude["guidance"] and claude["guidance_path"]
+    codex = I.preview_global(agent="codex", target=tmp_path / "x" / "AGENTS.md")
+    assert codex["guidance"] is None and codex["guidance_path"] is None
+
+
+def test_inject_no_guidance_label_only(tmp_path, manifest):
+    """include_guidance=False はラベル節だけ書き、導線（triage 行）を含めない（CLI --no-guidance / MCP 相当）。"""
+    from docsweep.inject import inject
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    inject(proj, preset="claude-jp", include_guidance=False)
+    text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "| 内部状態 |" in text  # ラベル節はある
+    assert "docsweep triage" not in text  # 導線は含まれない
 
 
 def test_eject_global_removes_block_and_central(tmp_path, manifest, monkeypatch):
