@@ -158,7 +158,14 @@
         </div>
       </div>
       <div class="inj-group">
-        <div class="inj-title">プロジェクト（{{ d.projects|length }}）— CLAUDE.md が正本・AGENTS.md はポインタ</div>
+        <div class="inj-title">プロジェクト（{{ d.projects|length }}）— CLAUDE.md が正本・AGENTS.md はポインタ
+          <span class="spacer"></span>
+          <label class="inj-preset-lab">preset
+            <select id="inj-preset">
+              {% for pn in d.presets %}<option value="{{ pn }}"{% if pn == d.default_preset %} selected{% endif %}>{{ pn }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
         {% for pj in d.projects %}
         <div class="inj-row">
           <span class="pj">{{ pj.name }}</span><span class="loc" title="{{ pj.root }}">{{ pj.root }}</span>
