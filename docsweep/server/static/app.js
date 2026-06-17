@@ -76,10 +76,15 @@ function mk(tag, cls, text) {
   return e;
 }
 
+function presetVal() {
+  const s = document.getElementById("inj-preset");
+  return s ? s.value : "";
+}
+
 async function injectPreview(op, scope, project, agent) {
   const url = op === "inject" ? "/api/inject" : "/api/eject";
   const data = { scope, dry_run: "true" };
-  if (scope === "project") data.project = project; else data.agent = agent;
+  if (scope === "project") { data.project = project; data.preset = presetVal(); } else data.agent = agent;
   const r = await post(url, data);
   if (!r.ok) { alert("プレビュー失敗: " + (await r.text())); return; }
   renderInjectPreview(await r.json(), op, scope, project, agent);
@@ -115,6 +120,15 @@ function renderInjectPreview(pv, op, scope, project, agent) {
     body.appendChild(mk("div", "inj-note", removed.length
       ? "次のファイルから docsweep 管理ブロックを除去します: " + removed.join(", ")
       : "除去対象の管理ブロックは見つかりませんでした。"));
+    if (scope === "project") {
+      const lab = mk("label", "inj-purge-lab");
+      const cb = mk("input");
+      cb.type = "checkbox";
+      cb.id = "inj-purge";
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(" .docsweep.yaml も削除する"));
+      body.appendChild(lab);
+    }
   }
 
   const apply = mk("button", "btn danger", "この内容で" + opLabel + "を実行");
@@ -131,7 +145,13 @@ function renderInjectPreview(pv, op, scope, project, agent) {
 async function injectApply(op, scope, project, agent) {
   const url = op === "inject" ? "/api/inject" : "/api/eject";
   const data = { scope, dry_run: "false" };
-  if (scope === "project") data.project = project; else data.agent = agent;
+  if (scope === "project") {
+    data.project = project;
+    if (op === "inject") data.preset = presetVal();
+    if (op === "eject") data.purge = document.getElementById("inj-purge")?.checked ? "true" : "false";
+  } else {
+    data.agent = agent;
+  }
   const r = await post(url, data);
   if (!r.ok) { alert("失敗: " + (await r.text())); return; }
   location.reload();

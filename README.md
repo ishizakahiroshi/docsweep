@@ -41,12 +41,19 @@ docsweep review
 docsweep new plan my-topic
 docsweep new bugfix crash-on-start
 
-# 運用ルールを各プロジェクトへ注入／取り消し
+# 運用ルールを各プロジェクトへ注入／取り消し（CLAUDE.md=正本・AGENTS.md はそこを指すポインタ）
 docsweep inject --project ./foo --preset claude-jp
-docsweep eject  --project ./foo            # 管理ブロックだけ剥がす（手書きは温存）
-docsweep list                              # 注入済みプロジェクト一覧
+docsweep inject --project ./foo --no-guidance   # 導線を省きラベル節だけ（導線をグローバルに寄せる場合）
+docsweep eject  --project ./foo                  # 管理ブロックだけ剥がす（手書きは温存。--purge で .docsweep.yaml も）
 
-# Web UI（UX 主役・127.0.0.1・トークン付き URL）
+# 個人グローバルへ「セッション開始時に triage を読む」導線を一度だけ注入（全プロジェクトで有効）
+docsweep inject --global                         # 既定 agent=claude（~/.claude/CLAUDE.md に @import 1 行）
+docsweep inject --global --agent codex           # ~/.codex/AGENTS.md にインライン（CODEX_HOME 尊重）
+docsweep eject  --global
+
+docsweep list                                    # 注入済み（プロジェクト＋グローバル）一覧
+
+# Web UI（UX 主役・127.0.0.1・トークン付き URL）。注入/解除もダッシュボードから（プレビュー必須）
 docsweep serve --root ~/dev
 
 # MCP サーバー（AI エージェント面・stdio）
@@ -73,9 +80,14 @@ bugfix:           [対応中] → [様子見] → [完了]
 
 ## AI エージェント連携
 
-`docsweep triage`（または MCP の `triage` ツール）が path・状態・経過日数・概要・`allowed_actions`
-（`discard`/`keep`/`resume`/`relabel`/`promote` の閉じた集合）を返し、エージェントが各ファイルを読んで
-判断 → `docsweep apply` で機械実行します。docsweep 自身は AI API を叩きません（ベンダー非依存）。
+`docsweep triage`（または MCP の `triage` ツール）は、**要判断＋保留を古い順に絞った残作業**を
+`counts` ＋ `items[]` ＋ `needs_fix[]` で返します。各 item は `rel`（相対パス）・`title`（H1）・
+`state`（ラベル）・`type`・`age_days`・`summary`・`actions`（`discard`/`keep`/`resume`/`relabel`/`promote`
+の閉じた集合）を持ち、エージェントは「次にどのファイルの何を続けるか」を判断 → `docsweep apply` で
+機械実行します。横断 INDEX 全体の俯瞰は `docsweep summary`。docsweep 自身は AI API を叩きません（ベンダー非依存）。
+
+セッション開始時に AI へ自動でこの残作業を渡すには `docsweep inject --global`（Claude は `@import`、
+Codex はインラインで「作業前に triage を読む」導線を個人グローバル設定へ一度だけ注入）。
 
 詳細は [docs/conventions.md](docs/conventions.md) と
 [templates/AGENT_GUIDE.md](templates/AGENT_GUIDE.md) を参照してください。

@@ -60,11 +60,22 @@ def resolve_global_target(agent: str = "claude", target: str | Path | None = Non
     raise ValueError(f"未知の agent: {agent}（claude / codex、または --global-target で明示）")
 
 
-def _warn_if_shadowed(path: Path, result: InjectResult | EjectResult) -> None:
-    """Codex の AGENTS.override.md がある場合、注入した AGENTS.md は読まれない旨を警告する。"""
-    if path.name == "AGENTS.md" and (path.parent / "AGENTS.override.md").is_file():
+def _agent_uses_central(agent: str | None) -> bool:
+    """中央 guidance.md を @import で参照する agent か（Claude のみ。Codex 等はインライン展開で参照しない）。"""
+    return agent == "claude"
+
+
+def _warn_if_shadowed(path: Path, result: InjectResult | EjectResult, agent: str = "codex") -> None:
+    """Codex 系で同階層に AGENTS.override.md があると、注入先が読まれない旨を警告する。
+
+    Claude は override の概念が無いので対象外。Codex は override を最優先し AGENTS.md/フォールバック
+    （TEAM_GUIDE.md 等）を無視するため、注入先名を問わず override の存在で警告する。
+    """
+    if _agent_uses_central(agent):  # claude は対象外
+        return
+    if path.name != "AGENTS.override.md" and (path.parent / "AGENTS.override.md").is_file():
         result.warnings.append(
-            "同階層に AGENTS.override.md があります。Codex はこちらを優先し AGENTS.md を読みません。"
+            f"同階層に AGENTS.override.md があります。Codex はこちらを優先し {path.name} を読みません。"
             " 導線を効かせるには override 側に取り込むか、--global-target で override を指定してください。"
         )
 
@@ -426,7 +437,7 @@ def inject_global(
     """
     path = resolve_global_target(agent, target)
     result = InjectResult(project=f"global:{agent}")
-    _warn_if_shadowed(path, result)
+    _warn_if_shadowed(path, result, agent)
 
     # 実体は docsweep 所有の中央ファイルに集約。各ツールには最小フックだけを注記付きで書く。
     write_guidance_file(lang, dry_run=dry_run)
@@ -463,8 +474,12 @@ def eject_global(
         result.removed.append(path.name)
     if not dry_run:
         manifest["projects"].pop(key, None)
-        # 他に global 参照が残っていなければ、docsweep 所有の中央ファイルも撤去する。
-        still_referenced = any(v.get("scope") == "global" for v in manifest["projects"].values())
+        # 中央 guidance.md を @import 参照する global（=claude）が他に残っていなければ撤去する。
+        # Codex はインライン展開で guidance.md を参照しないので、残っていても保持理由にならない。
+        still_referenced = any(
+            v.get("scope") == "global" and _agent_uses_central(v.get("agent"))
+            for v in manifest["projects"].values()
+        )
         if not still_referenced and GUIDANCE_PATH.is_file():
             GUIDANCE_PATH.unlink()
             result.removed.append(GUIDANCE_PATH.name)
@@ -510,7 +525,7 @@ def preview_global(*, agent: str = "claude", target: str | Path | None = None, l
     """グローバル inject で「何が書かれるか」を返す（書き込みはしない・UI の dry-run プレビュー用）。"""
     path = resolve_global_target(agent, target)
     probe = InjectResult(project=f"global:{agent}")
-    _warn_if_shadowed(path, probe)
+    _warn_if_shadowed(path, probe, agent)
     return {
         "scope": "global",
         "agent": agent,

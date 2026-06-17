@@ -261,3 +261,70 @@ def test_eject_global_removes_block_and_central(tmp_path, manifest, monkeypatch)
     assert "docsweep:managed" not in text  # フック除去
     assert "手書き。" in text  # 手書き温存
     assert not gpath.exists()  # 中央ファイルも撤去
+
+
+def test_resolve_global_target_respects_codex_home(tmp_path, monkeypatch):
+    from docsweep import inject as I
+
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "ch"))
+    assert I.resolve_global_target("codex") == (tmp_path / "ch" / "AGENTS.md").resolve()
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    assert I.resolve_global_target("codex").name == "AGENTS.md"  # 既定 ~/.codex
+
+
+def test_preview_global_warns_on_override(tmp_path):
+    from docsweep import inject as I
+
+    d = tmp_path / "codexhome"
+    d.mkdir()
+    (d / "AGENTS.override.md").write_text("x", encoding="utf-8")
+    # AGENTS.md も、フォールバック名（TEAM_GUIDE.md）も override に隠される → 警告。
+    assert any("AGENTS.override.md" in w for w in I.preview_global(agent="codex", target=d / "AGENTS.md")["warnings"])
+    assert any("AGENTS.override.md" in w for w in I.preview_global(agent="codex", target=d / "TEAM_GUIDE.md")["warnings"])
+    # Claude は override の概念が無いので警告しない。
+    assert not I.preview_global(agent="claude", target=d / "CLAUDE.md")["warnings"]
+
+
+def test_eject_global_keeps_central_while_claude_present(tmp_path, manifest, monkeypatch):
+    """Codex のみ eject しても、@import 参照する Claude が残る限り guidance.md は保持する。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    ct = tmp_path / "claude" / "CLAUDE.md"
+    ct.parent.mkdir(parents=True)
+    at = tmp_path / "codex" / "AGENTS.md"
+    at.parent.mkdir(parents=True)
+
+    I.inject_global(agent="claude", target=ct)
+    I.inject_global(agent="codex", target=at)
+    assert gpath.is_file()
+
+    I.eject_global(agent="codex", target=at)
+    assert gpath.is_file()  # Claude がまだ @import 参照しているので保持
+
+    I.eject_global(agent="claude", target=ct)
+    assert not gpath.exists()  # Claude も消えたので撤去
+
+
+def test_build_triage_shape(ws):
+    from docsweep.reports import build_triage
+
+    t = build_triage(_cfg(ws))
+    assert {"counts", "items", "needs_fix"} <= set(t)
+    ages = [it["age_days"] for it in t["items"]]
+    assert ages == sorted(ages, reverse=True)  # 古い順
+    assert t["items"], "ws には stale plan と pending があるので items は非空"
+    it = t["items"][0]
+    assert {"project", "rel", "title", "state", "type", "age_days", "actions", "path"} <= set(it)
+
+
+def test_mcp_build_server_smoke(tmp_path):
+    """mcp extra があれば、build_triage/inject_global を参照する MCP サーバが構築できる（import 健全性）。"""
+    import pytest
+
+    pytest.importorskip("mcp")
+    from docsweep.config import load_config
+    from docsweep.mcp_server import build_server
+
+    assert build_server(load_config(global_path=tmp_path / "no.yaml")) is not None

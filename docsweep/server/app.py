@@ -213,6 +213,7 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         scope: str = Form(default="project"),
         project: str = Form(default=""),
         agent: str = Form(default="claude"),
+        preset: str = Form(default=""),
         dry_run: bool = Form(default=False),
     ):
         """運用ルールを注入。dry_run=True は「何が書かれるか」のプレビューを返す（書き込まない）。"""
@@ -227,9 +228,13 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         pdir = _valid_project_dir(project)
         if pdir is None:
             raise HTTPException(status_code=403, detail="project outside scan roots")
-        if dry_run:
-            return JSONResponse(preview_inject(pdir))
-        r = inject(pdir)
+        preset_name = preset or None
+        try:
+            if dry_run:
+                return JSONResponse(preview_inject(pdir, preset=preset_name))
+            r = inject(pdir, preset=preset_name)
+        except ValueError as e:  # 未知の preset 等
+            raise HTTPException(status_code=400, detail=str(e)) from e
         return JSONResponse({"project": r.project, "written": r.written, "skipped": r.skipped,
                              "warnings": r.warnings, "yaml": r.yaml_path})
 
@@ -240,6 +245,7 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         scope: str = Form(default="project"),
         project: str = Form(default=""),
         agent: str = Form(default="claude"),
+        purge: bool = Form(default=False),
         dry_run: bool = Form(default=False),
     ):
         """注入した管理ブロックを剥がす（手書きは温存）。dry_run=True は除去対象の確認のみ。"""
@@ -252,8 +258,9 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         pdir = _valid_project_dir(project)
         if pdir is None:
             raise HTTPException(status_code=403, detail="project outside scan roots")
-        r = eject(pdir, dry_run=dry_run)
-        return JSONResponse({"project": r.project, "removed": r.removed, "warnings": r.warnings})
+        r = eject(pdir, purge=purge, dry_run=dry_run)
+        return JSONResponse({"project": r.project, "removed": r.removed,
+                             "warnings": r.warnings, "purged_yaml": r.purged_yaml})
 
     return app
 
@@ -360,11 +367,14 @@ def _inject_state(recs) -> dict:
                 "name": r.project, "root": root,
                 "injected": info is not None, "preset": (info or {}).get("preset"),
             }
+    from ..presets import DEFAULT_PRESET, PRESETS
     global_agents = {it.get("agent") for it in injected.values() if it.get("scope") == "global"}
     return {
         "projects": sorted(projects.values(), key=lambda x: x["name"]),
         "global_claude": "claude" in global_agents,
         "global_codex": "codex" in global_agents,
+        "presets": list(PRESETS),
+        "default_preset": DEFAULT_PRESET,
     }
 
 

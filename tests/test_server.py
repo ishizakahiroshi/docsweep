@@ -179,3 +179,24 @@ def test_eject_project_removes_block(client, iso_inject):
     assert r.status_code == 200
     text = (root / "proj_a" / "CLAUDE.md").read_text(encoding="utf-8")
     assert "docsweep:managed" not in text
+
+
+def test_inject_unknown_preset_returns_400(client, iso_inject):
+    c, root, _ = client
+    pdir = (root / "proj_a").resolve().as_posix()
+    r = c.post("/api/inject", data={"token": TOKEN, "scope": "project", "project": pdir,
+                                    "preset": "nope", "dry_run": "false"})
+    assert r.status_code == 400
+
+
+def test_eject_project_purge_removes_yaml(client, iso_inject):
+    c, root, _ = client
+    pdir = (root / "proj_a").resolve().as_posix()
+    c.post("/api/inject", data={"token": TOKEN, "scope": "project", "project": pdir,
+                                "preset": "frontmatter", "dry_run": "false"})
+    assert (root / "proj_a" / ".docsweep.yaml").is_file()
+    r = c.post("/api/eject", data={"token": TOKEN, "scope": "project", "project": pdir,
+                                   "purge": "true", "dry_run": "false"})
+    assert r.status_code == 200
+    assert r.json()["purged_yaml"] is True
+    assert not (root / "proj_a" / ".docsweep.yaml").exists()
