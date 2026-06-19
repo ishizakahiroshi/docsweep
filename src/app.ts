@@ -1,3 +1,5 @@
+/// <reference types="htmx.org" />
+
 // docsweep Web UI — htmx + TypeScript 版
 // CSP（script-src 'self'）下で動くよう inline onclick は使わず、
 // data-action 属性 + document への単一イベント委譲で配線する（動的挿入要素にも効く）。

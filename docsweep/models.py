@@ -31,6 +31,9 @@ class Flag(str, Enum):
     TYPE_MISMATCH = "type_mismatch"  # plan_ なのに bugfix 内容 等
     NEEDS_DECISION = "needs_decision"  # 陳腐化した [計画]（stale 超え）
     STALE = "stale"  # stale_days 超過
+    OVERDUE_TODO = "overdue_todo"  # 計画/実行中/保留で due 超過（やり忘れ）
+    OVERDUE_GRADUATE = "overdue_graduate"  # 様子見で due 超過（卒業判定どき）
+    DUE_PARSE_ERROR = "due_parse_error"  # due フィールドがあるがパース不能
 
 
 @dataclass
@@ -50,6 +53,8 @@ class FileRecord:
     age_days: int  # 最終更新からの経過日数
     archivable: bool  # この状態は archive 対象か
     auto_movable: bool  # --auto で自動移送してよいか
+    due: str | None = field(default=None)  # frontmatter due: YYYY-MM-DD（archive には絡めない）
+    due_parse_error: bool = field(default=False)  # due フィールドがあるがパース不能
     flags: list[str] = field(default_factory=list)
     allowed_actions: list[str] = field(default_factory=list)
 

@@ -26,6 +26,14 @@ class IndexData:
     pending: list[dict]
     needs_decision: list[dict]
     needs_fix: list[dict]
+    overdue_todo: list[dict] = None  # type: ignore[assignment]
+    overdue_graduate: list[dict] = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.overdue_todo is None:
+            self.overdue_todo = []
+        if self.overdue_graduate is None:
+            self.overdue_graduate = []
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -47,6 +55,14 @@ def build_index(config: Config, result: ScanResult | None = None) -> IndexData:
         key=lambda d: d["age_days"], reverse=True,
     )
     needs_fix = [r.to_dict() for r in recs if Flag.NEEDS_FIX.value in r.flags]
+    overdue_todo = sorted(
+        [r.to_dict() for r in recs if Flag.OVERDUE_TODO.value in r.flags],
+        key=lambda d: d.get("due") or "",
+    )
+    overdue_graduate = sorted(
+        [r.to_dict() for r in recs if Flag.OVERDUE_GRADUATE.value in r.flags],
+        key=lambda d: d.get("due") or "",
+    )
 
     counts = {
         "total": len(recs),
@@ -55,6 +71,8 @@ def build_index(config: Config, result: ScanResult | None = None) -> IndexData:
         "needs_fix": len(needs_fix),
         "pending": len(pending),
         "archivable": sum(1 for r in recs if r.auto_movable and r.archivable),
+        "overdue_todo": len(overdue_todo),
+        "overdue_graduate": len(overdue_graduate),
     }
     return IndexData(
         roots=[str(r) for r in config.roots],
@@ -63,6 +81,8 @@ def build_index(config: Config, result: ScanResult | None = None) -> IndexData:
         pending=pending,
         needs_decision=needs_decision,
         needs_fix=needs_fix,
+        overdue_todo=overdue_todo,
+        overdue_graduate=overdue_graduate,
     )
 
 

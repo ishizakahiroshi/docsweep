@@ -28,7 +28,7 @@ def render_report(config: Config) -> str:
             lines.append(f"  {d['state_label']} {d['project']}/{Path(d['path']).name}  {d['age_days']}d")
         lines.append("")
     if c["archivable"]:
-        lines.append(f"■ archive へ運べる確定ファイル: {c['archivable']} 件（`docsweep sweep` で移送）")
+        lines.append(f"■ archive へ運べる確定ファイル: {c['archivable']} 件（`python -m docsweep sweep` で移送）")
         lines.append("")
     return "\n".join(lines)
 
@@ -58,6 +58,7 @@ def slim_record(d: dict) -> dict:
         "state": d.get("state_label") or d.get("state"),
         "type": d.get("type"),
         "age_days": d["age_days"],
+        "due": d.get("due"),
         "summary": d.get("summary"),
         "flags": d.get("flags") or [],
         "actions": d.get("allowed_actions") or [],
@@ -93,5 +94,7 @@ def render_summary(config: Config) -> str:
         "needs_decision": [slim_record(d) for d in idx.needs_decision],
         "pending": [slim_record(d) for d in idx.pending],
         "needs_fix": [slim_record(d) for d in idx.needs_fix],
+        "overdue_todo": [slim_record(d) for d in idx.overdue_todo],
+        "overdue_graduate": [slim_record(d) for d in idx.overdue_graduate],
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)

@@ -4,6 +4,7 @@
   <a class="nav active" href="#top" data-action="view" data-view="dashboard" data-primary><span class="ic">▦</span> ダッシュボード</a>
   <a class="nav" href="#top" data-action="view" data-view="settings" data-primary><span class="ic">⚙</span> 設定</a>
   <div class="navlabel">クイック</div>
+  {% if d.counts.overdue_todo or d.counts.overdue_graduate %}<a class="nav" href="#overdue" data-action="view" data-view="dashboard"><span class="ic c-overdue">📅</span> 期日超過 <span class="ct">{{ (d.counts.overdue_todo or 0) + (d.counts.overdue_graduate or 0) }}</span></a>{% endif %}
   <a class="nav" href="#queue" data-action="view" data-view="dashboard"><span class="ic c-stale">▲</span> 要判断 <span class="ct">{{ d.counts.needs_decision }}</span></a>
   <a class="nav" href="#fold" data-action="view" data-view="dashboard"><span class="ic c-pending">◆</span> 保留 <span class="ct">{{ d.counts.pending }}</span></a>
   {% if d.counts.archivable %}<a class="nav" href="#archivable" data-action="open-archivable"><span class="ic c-done">●</span> archive可能 <span class="ct">{{ d.counts.archivable }}</span></a>{% endif %}
@@ -41,6 +42,43 @@
     {% if d.uninjected %}
     <div class="setup-hint" data-action="view" data-view="settings" title="設定ビューで運用ルールを注入">
       <span class="ic">⚙</span> 未設定のプロジェクトが {{ d.uninjected }} 件あります — 運用ルールを注入する →
+    </div>
+    {% endif %}
+
+    <!-- ① overdue レーン（期日超過 — due 昇順） -->
+    {% if d.overdue %}
+    <div class="fold" id="overdue">
+      <div class="fh" data-action="toggle-fold">
+        <span class="tw">📅 期日超過</span>
+        <span class="cnt">{{ d.overdue|length }}</span>
+        <span class="desc">due を過ぎたファイルです。</span>
+        <span class="chev">▾</span>
+      </div>
+      <div class="fb">
+        {% for r in d.overdue %}
+        <div class="litem state-{{ r.state }}" data-path="{{ r.path }}" title="{{ r.path }}">
+          <span class="lbl state-{{ r.state }}">{{ r.state_label or '[?]' }}</span>
+          <span class="li-main">
+            <span class="fname">{{ r.name }}</span>
+            <span class="due-badge{% if r.overdue_graduate %} due-graduate{% endif %}">📅 {{ r.due }}</span>
+            <span class="loc">📁 {{ r.loc }}</span>
+            {% if r.overdue_graduate %}<span class="desc c-graduate">🎓 様子見が終わりました — 完了か廃止かを決めてください</span>{% endif %}
+            {% if r.summary and not r.overdue_graduate %}<span class="desc">{{ r.summary }}</span>{% endif %}
+          </span>
+          <span class="li-end">
+            <span class="age" title="最終更新 {{ r.mtime_str }}">{{ r.age_days }}d</span>
+            {% if r.overdue_graduate %}
+              <button class="act arch" data-action="promote" data-path="{{ r.path }}">完了→archive</button>
+              <button class="act" data-action="discard" data-path="{{ r.path }}">廃止→archive</button>
+            {% else %}
+              <button class="act arch" data-action="discard" data-path="{{ r.path }}">archive へ</button>
+            {% endif %}
+            <button class="act detail" data-action="detail" data-path="{{ r.path }}">詳細</button>
+            <button class="act" data-action="reveal" data-path="{{ r.path }}">📁</button>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
     </div>
     {% endif %}
 

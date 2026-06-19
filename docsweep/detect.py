@@ -53,6 +53,8 @@ class Detection:
     title: str | None
     conflict: bool  # 複数方式で検出した状態が食い違ったか
     parse_error: bool
+    due: str | None = None  # frontmatter due: YYYY-MM-DD（None = 未記入）
+    due_parse_error: bool = False  # due フィールドがあるがパース不能
 
 
 def _read_head(text: str, limit: int = 8000) -> str:
@@ -74,6 +76,37 @@ def _detect_frontmatter(text: str, sm: StateModel) -> str | None:
         return None
     s = sm.match(str(status))
     return s.key if s else None
+
+
+def _extract_due(text: str) -> tuple[str | None, bool]:
+    """frontmatter から due: YYYY-MM-DD を抽出する。
+
+    Returns:
+        (due_str, parse_error)
+        due_str  — "YYYY-MM-DD" 文字列（due フィールドが無い場合は None）
+        parse_error — due フィールドは存在するが YYYY-MM-DD に変換できない場合 True
+    """
+    m = _FRONTMATTER_RE.match(text)
+    if not m:
+        return None, False
+    try:
+        data = yaml.safe_load(m.group(1)) or {}
+    except yaml.YAMLError:
+        return None, False
+    if not isinstance(data, dict) or "due" not in data:
+        return None, False
+    raw = data["due"]
+    if raw is None:
+        return None, False
+    # YAML は YYYY-MM-DD を datetime.date に自動変換する。
+    if hasattr(raw, "isoformat"):
+        return raw.isoformat(), False
+    # 文字列で来た場合は YYYY-MM-DD 形式かチェックする。
+    s = str(raw).strip()
+    import re as _re
+    if _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return s, False
+    return None, True
 
 
 def _detect_h1(text: str, sm: StateModel) -> tuple[str | None, str | None, str | None]:
@@ -115,6 +148,7 @@ def detect_status(
     fm = _detect_frontmatter(text, sm)
     h1_key, h1_token, title = _detect_h1(text, sm)
     fn = _detect_filename(filename, sm, _type.name if _type else None)
+    due, due_parse_error = _extract_due(text)
 
     # 検出された候補（None 以外）が複数あり食い違うか。
     candidates = [c for c in (fm, h1_key, fn) if c is not None]
@@ -147,6 +181,8 @@ def detect_status(
         title=title,
         conflict=conflict,
         parse_error=parse_error,
+        due=due,
+        due_parse_error=due_parse_error,
     )
 
 

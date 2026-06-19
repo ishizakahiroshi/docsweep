@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from .archive import _now_iso, append_move_log, archive_file
@@ -35,6 +36,20 @@ def classify(doc: ScannedDoc, config: Config) -> None:
         # 陳腐化した未終端ラベル（計画/実行中/対応中/様子見）は要判断。
         if rec.state in {"planned", "in-progress", "active", "watching"}:
             flags.append(Flag.NEEDS_DECISION.value)
+
+    # due 超過フラグ（archive 制御には絡めない — 第2軸は気づきのみ）。
+    if rec.due_parse_error:
+        flags.append(Flag.DUE_PARSE_ERROR.value)
+    elif rec.due and rec.state not in {"done", "discarded"}:
+        try:
+            due_date = date.fromisoformat(rec.due)
+            if date.today() > due_date:
+                if rec.state == "watching":
+                    flags.append(Flag.OVERDUE_GRADUATE.value)
+                else:
+                    flags.append(Flag.OVERDUE_TODO.value)
+        except ValueError:
+            flags.append(Flag.DUE_PARSE_ERROR.value)
 
     rec.flags = flags
     rec.allowed_actions = _allowed_actions(rec)

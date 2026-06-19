@@ -74,7 +74,7 @@ docsweep はこの角括弧ラベルを正規表現で抽出します。
 
 > ラベル語彙はプロジェクト設定（`.docsweep.yaml` の `states:`）が単一の正本です。
 > 上表は内蔵デフォルトで、利用者は状態の追加・改名・言語追加（日英）ができます。
-> `docsweep inject` は `states:` から `CLAUDE.md` のラベル節を生成するので、設定・AI への指示・検出が常に同期します。
+> `python -m docsweep inject` は `states:` から `CLAUDE.md` のラベル節を生成するので、設定・AI への指示・検出が常に同期します。
 
 ---
 
@@ -119,4 +119,4 @@ plan / bugfix / pending は H1 直下に `> 最終更新: YYYY-MM-DD(曜) HH:MM:
 1. `templates/CLAUDE.md` の内容を自分のプロジェクトの `CLAUDE.md` に取り込む。
 2. Codex も使うなら `templates/AGENTS.md` を置く（CLAUDE.md を参照するだけの薄いファイル）。
 3. `templates/.docsweep.yaml` をプロジェクトに置き、スキャンルートと陳腐化日数を設定。
-4. `docsweep --dry-run` で挙動を確認してから `--auto` で運用に乗せる。
+4. `python -m docsweep --dry-run` で挙動を確認してから `--auto` で運用に乗せる。
