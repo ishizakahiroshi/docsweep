@@ -179,6 +179,10 @@ document.addEventListener("click", (e) => {
     case "inject-apply": injectApply(el.dataset.op, el.dataset.scope, el.dataset.project, el.dataset.agent); break;
     case "toggle-fold": { const f = el.closest(".fold"); if (f) f.classList.toggle("open"); break; }
     case "open-archivable": { const x = document.getElementById("archivable"); if (x) x.classList.add("open"); break; }
+    case "toggle-all-open":
+      document.querySelectorAll(".proj-accordion").forEach(d => { d.open = true; }); break;
+    case "toggle-all-close":
+      document.querySelectorAll(".proj-accordion").forEach(d => { d.open = false; }); break;
     case "close-modal": closeModal(); break;
   }
 });

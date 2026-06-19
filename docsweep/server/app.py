@@ -299,6 +299,13 @@ def _counts(result: ScanResult) -> dict:
     }
 
 
+def _by_project(items: list[dict]) -> list[dict]:
+    by: dict[str, list] = {}
+    for item in items:
+        by.setdefault(item["project"], []).append(item)
+    return [{"project": name, "records": recs} for name, recs in by.items()]
+
+
 def _dashboard_data(result: ScanResult, config: Config) -> dict:
     """受信トレイ型ダッシュボードの表示データを組み立てる。"""
     idx = build_index(config, result)
@@ -349,6 +356,8 @@ def _dashboard_data(result: ScanResult, config: Config) -> dict:
         "queue": queue,
         "fold": fold,
         "archivable": archivable,
+        "queue_by_project": _by_project(queue),
+        "fold_by_project": _by_project(fold),
         "health": _health(recs),
         "root": str(config.roots[0]) if config.roots else "",
         **_inject_state(recs),

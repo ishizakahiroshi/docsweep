@@ -51,6 +51,10 @@
       <span class="cnt">{{ d.queue|length }}</span>
       <span class="desc">概要だけで取捨選択。捌くとリストから消えます。</span>
       <span class="spacer"></span>
+      {% if d.queue_by_project|length > 1 %}
+      <button class="btn" data-action="toggle-all-close">全折りたたみ</button>
+      <button class="btn" data-action="toggle-all-open">全展開</button>
+      {% endif %}
       {% if d.queue %}<button class="btn danger" data-action="archive-all">表示中をまとめて archive →</button>{% endif %}
     </div>
 
@@ -58,31 +62,40 @@
       <div class="empty card">🎉 いま判断が要るファイルはありません。</div>
     {% endif %}
     <div class="queue">
-      {% for r in d.queue %}
-      <div class="qcard state-{{ r.state or 'unknown' }}" data-path="{{ r.path }}"{% if r.arch_action == 'promote' or 'discard' in r.allowed_actions %} data-arch="{{ r.arch_action }}"{% endif %} title="{{ r.path }}">
-        <div class="main">
-          <div class="row1">
-            <span class="lbl state-{{ r.state }}">{{ r.state_label or '[?]' }}</span>
-            <span class="pj">{{ r.project }}</span>
-            <span class="fname">{{ r.name }}</span>
-            <span class="age" title="最終更新 {{ r.mtime_str }}">{{ r.age_days }}<span class="u">d 無更新</span></span>
+      {% for pg in d.queue_by_project %}
+      <details class="proj-accordion" open>
+        <summary class="proj-summary">
+          <span class="proj-name">{{ pg.project }}</span>
+          <span class="proj-count">{{ pg.records|length }}</span>
+        </summary>
+        <div class="proj-body">
+          {% for r in pg.records %}
+          <div class="qcard state-{{ r.state or 'unknown' }}" data-path="{{ r.path }}"{% if r.arch_action == 'promote' or 'discard' in r.allowed_actions %} data-arch="{{ r.arch_action }}"{% endif %} title="{{ r.path }}">
+            <div class="main">
+              <div class="row1">
+                <span class="lbl state-{{ r.state }}">{{ r.state_label or '[?]' }}</span>
+                <span class="fname">{{ r.name }}</span>
+                <span class="age" title="最終更新 {{ r.mtime_str }}">{{ r.age_days }}<span class="u">d 無更新</span></span>
+              </div>
+              <div class="loc">📁 {{ r.loc }}</div>
+              <div class="desc">{{ r.summary or '（概要なし — 詳細で中身を確認）' }}</div>
+              {% if r.flags %}<div class="flags">{% for f in r.flags %}<span class="flag f-{{ f }}">{{ f }}</span>{% endfor %}</div>{% endif %}
+            </div>
+            <div class="acts">
+              {% if r.arch_action == 'promote' %}
+                <button class="act arch" data-action="promote" data-path="{{ r.path }}">完了→archive</button>
+              {% elif 'discard' in r.allowed_actions %}
+                <button class="act arch" data-action="discard" data-path="{{ r.path }}">archive へ</button>
+              {% endif %}
+              {% if 'relabel' in r.allowed_actions %}<button class="act hold" data-action="relabel" data-to="保留" data-path="{{ r.path }}">保留</button>{% endif %}
+              <button class="act detail" data-action="detail" data-path="{{ r.path }}">詳細</button>
+              <button class="act" data-action="open" data-path="{{ r.path }}">開く</button>
+              <button class="act" data-action="reveal" data-path="{{ r.path }}">📁 フォルダ</button>
+            </div>
           </div>
-          <div class="loc">📁 {{ r.loc }}</div>
-          <div class="desc">{{ r.summary or '（概要なし — 詳細で中身を確認）' }}</div>
-          {% if r.flags %}<div class="flags">{% for f in r.flags %}<span class="flag f-{{ f }}">{{ f }}</span>{% endfor %}</div>{% endif %}
+          {% endfor %}
         </div>
-        <div class="acts">
-          {% if r.arch_action == 'promote' %}
-            <button class="act arch" data-action="promote" data-path="{{ r.path }}">完了→archive</button>
-          {% elif 'discard' in r.allowed_actions %}
-            <button class="act arch" data-action="discard" data-path="{{ r.path }}">archive へ</button>
-          {% endif %}
-          {% if 'relabel' in r.allowed_actions %}<button class="act hold" data-action="relabel" data-to="保留" data-path="{{ r.path }}">保留</button>{% endif %}
-          <button class="act detail" data-action="detail" data-path="{{ r.path }}">詳細</button>
-          <button class="act" data-action="open" data-path="{{ r.path }}">開く</button>
-          <button class="act" data-action="reveal" data-path="{{ r.path }}">📁 フォルダ</button>
-        </div>
-      </div>
+      </details>
       {% endfor %}
     </div>
 
@@ -95,14 +108,24 @@
         <span class="chev">▾</span>
       </div>
       <div class="fb">
-        {% for r in d.fold %}
-        <div class="litem state-{{ r.state }}" data-action="detail" data-path="{{ r.path }}" title="{{ r.path }}">
-          <span class="lbl state-{{ r.state }}">{{ r.state_label }}</span>
-          <span class="li-main"><span class="fname">{{ r.name }}</span>
-            <span class="loc">📁 {{ r.loc }}</span>
-            {% if r.summary %}<span class="desc">{{ r.summary }}</span>{% endif %}</span>
-          <span class="age" title="最終更新 {{ r.mtime_str }}">{{ r.age_days }}d</span>
-        </div>
+        {% for pg in d.fold_by_project %}
+        <details class="proj-accordion proj-accordion--slim" open>
+          <summary class="proj-summary">
+            <span class="proj-name">{{ pg.project }}</span>
+            <span class="proj-count">{{ pg.records|length }}</span>
+          </summary>
+          <div class="proj-body">
+            {% for r in pg.records %}
+            <div class="litem state-{{ r.state }}" data-action="detail" data-path="{{ r.path }}" title="{{ r.path }}">
+              <span class="lbl state-{{ r.state }}">{{ r.state_label }}</span>
+              <span class="li-main"><span class="fname">{{ r.name }}</span>
+                <span class="loc">📁 {{ r.loc }}</span>
+                {% if r.summary %}<span class="desc">{{ r.summary }}</span>{% endif %}</span>
+              <span class="age" title="最終更新 {{ r.mtime_str }}">{{ r.age_days }}d</span>
+            </div>
+            {% endfor %}
+          </div>
+        </details>
         {% endfor %}
       </div>
     </div>
