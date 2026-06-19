@@ -1,0 +1,14 @@
+{
+  "name": "docsweep-frontend",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "typescript": "^5.0.0",
+    "htmx.org": "^1.9.12"
+  }
+}
