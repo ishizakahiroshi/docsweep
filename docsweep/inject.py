@@ -14,6 +14,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +39,24 @@ SUPPORTED_GLOBAL_AGENTS = ("claude", "codex")
 # （Claude=@import 1 行で取り込み / Codex 等=@import 非対応のため本文をブロック展開）。
 GUIDANCE_PATH = Path.home() / ".docsweep" / "guidance.md"
 GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~ は Claude が展開する）
+
+
+def _shell_command(parts: list[str]) -> str:
+    if os.name == "nt":
+        return subprocess.list2cmdline(parts)
+    return shlex.join(parts)
+
+
+def docsweep_command(*args: str) -> str:
+    """PATH に依存しない docsweep 起動コマンドを返す。
+
+    通常の Python パッケージ実行では現在の Python 実行ファイルから ``-m docsweep`` を呼ぶ。
+    PyInstaller 等の単体バイナリでは、そのバイナリ自体を絶対パスで呼ぶ。
+    """
+    exe = str(Path(sys.executable).resolve())
+    if getattr(sys, "frozen", False):
+        return _shell_command([exe, *args])
+    return _shell_command([exe, "-m", "docsweep", *args])
 
 
 def _codex_home() -> Path:
@@ -110,7 +131,8 @@ def write_guidance_file(lang: str = "ja", *, dry_run: bool = False) -> Path:
     """docsweep 所有の中央導線ファイルを生成・再生成する（直接編集禁止の注記付き）。"""
     content = (
         "<!-- このファイルは docsweep が所有・自動生成します。直接編集しないでください"
-        "（`docsweep inject --global` で再生成 / `docsweep eject --global` で参照解除）。 -->\n\n"
+        f"（`{docsweep_command('inject', '--global')}` で再生成 / "
+        f"`{docsweep_command('eject', '--global')}` で参照解除）。 -->\n\n"
         + generate_guidance_block(lang)
         + "\n"
     )
@@ -129,7 +151,7 @@ def generate_label_block(sm: StateModel, lang: str = "ja", *, use_frontmatter: b
         "## AI 作業ドキュメントのステータスラベル（docsweep 管理）",
         "",
         "このブロックは `docsweep inject` が生成・同期します。手で編集しないでください",
-        "（編集は docsweep eject で剥がしてから）。docsweep は H1 先頭のラベルを読み取り、",
+        f"（編集は `{docsweep_command('eject')}` で剥がしてから）。docsweep は H1 先頭のラベルを読み取り、",
         "完了/廃止を archive へ移送し、陳腐化を要判断フラグで可視化します。",
         "",
         "| 内部状態 | ラベル | 自動 archive |",
@@ -158,10 +180,12 @@ def generate_guidance_block(lang: str = "ja") -> str:
 
     文言は常に同じなので、グローバル（~/.claude/CLAUDE.md 等）に一度入れれば全プロジェクトで効く。
     """
+    triage_cmd = docsweep_command("triage")
     return "\n".join([
         "## docsweep — セッション開始時の残作業確認（必須）",
         "",
-        "作業を始める前に、まず `docsweep triage`（MCP 接続時は `triage` ツール）を実行し、",
+        f"作業を始める前に、まず `{triage_cmd}`（MCP 接続時は `triage` ツール）を実行し、",
+        "PATH に `docsweep` コマンドが無くても、この `python -m docsweep` 形式を優先すること。",
         "返ってきた残作業（要判断＋保留・古い順）を確認してから着手すること。",
         "ファイル名や場所を思い出せなくても、これで「次にやるべき作業」が先頭に出る。",
         "ユーザーが「続きやって」と言ったら、triage の先頭 item の `path` と残りを対象にする。",
@@ -189,15 +213,18 @@ def _project_inners(sm: StateModel, lang: str, *, use_frontmatter: bool, include
     claude_inner = generate_managed_block(
         sm, lang, use_frontmatter=use_frontmatter, include_guidance=include_guidance
     )
-    pointer_inner = _hook_inner(_POINTER_BODY, "docsweep eject")
+    pointer_inner = _hook_inner(_POINTER_BODY, docsweep_command("eject"))
     return claude_inner, pointer_inner
 
 
 def _global_inner(agent: str, lang: str) -> str:
     """グローバル先へ書く最小フック inner。claude=@import 1 行 / その他=本文インライン。inject と preview で共有。"""
     if agent == "claude":
-        return _hook_inner(f"@{GUIDANCE_IMPORT}", "docsweep eject --global")
-    return _hook_inner(generate_guidance_block(lang), f"docsweep eject --global --agent {agent}")
+        return _hook_inner(f"@{GUIDANCE_IMPORT}", docsweep_command("eject", "--global"))
+    return _hook_inner(
+        generate_guidance_block(lang),
+        docsweep_command("eject", "--global", "--agent", agent),
+    )
 
 
 def _wrap(inner: str) -> str:

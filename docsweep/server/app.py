@@ -124,6 +124,22 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
             {"token": state.token, "lang": _scope(lang), "groups": _group(result, state.config.state_model, _scope(lang), filter)},
         )
 
+    @app.get("/fragment", response_class=HTMLResponse)
+    def fragment(request: Request, token: str = Query(default=""), lang: str | None = None):
+        """htmx 部分リフレッシュ用。#page-content 内のサイドバー+メインを再レンダリングして返す。"""
+        _check_token(request, token)
+        result = run_scan(state.config)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "_dashboard_body.html",
+            {
+                "token": state.token,
+                "lang": _scope(lang),
+                "version": __version__,
+                "d": _dashboard_data(result, state.config),
+            },
+        )
+
     @app.get("/preview", response_class=HTMLResponse)
     def preview(request: Request, token: str = Query(default=""), path: str = Query(default="")):
         _check_token(request, token)
@@ -331,9 +347,17 @@ def _dashboard_data(result: ScanResult, config: Config) -> dict:
         d["mtime_str"] = (
             datetime.fromtimestamp(r.mtime).strftime("%Y-%m-%d %H:%M") if r.mtime else ""
         )
+        d["overdue_todo"] = Flag.OVERDUE_TODO.value in r.flags
+        d["overdue_graduate"] = Flag.OVERDUE_GRADUATE.value in r.flags
         return d
 
     by_age = sorted(recs, key=lambda r: r.age_days, reverse=True)
+    # ① overdue レーン（due 超過 — due 昇順で古い締切を上に）。
+    by_due = sorted(
+        [r for r in recs if Flag.OVERDUE_TODO.value in r.flags or Flag.OVERDUE_GRADUATE.value in r.flags],
+        key=lambda r: r.due or "",
+    )
+    overdue = [slim(r) for r in by_due]
     # ② 今すぐ判断（主役）＝陳腐化で要判断のもの。
     queue = [slim(r) for r in by_age if Flag.NEEDS_DECISION.value in r.flags]
     # ③ 落ち着いて確認＝保留・進行中（要判断に出ていないもの）。
@@ -356,6 +380,7 @@ def _dashboard_data(result: ScanResult, config: Config) -> dict:
         "queue": queue,
         "fold": fold,
         "archivable": archivable,
+        "overdue": overdue,
         "queue_by_project": _by_project(queue),
         "fold_by_project": _by_project(fold),
         "health": _health(recs),

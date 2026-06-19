@@ -240,7 +240,7 @@ def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     I.inject_global(agent="codex", target=target)
     text = target.read_text(encoding="utf-8")
     assert "@" + I.GUIDANCE_IMPORT not in text  # import 行ではない
-    assert "docsweep triage" in text  # 本文がインライン
+    assert "-m docsweep triage" in text  # 本文がインライン（PATH 非依存）
     assert "docsweep inject が自動追加・管理" in text
     # Codex はインライン展開で中央ファイルを参照しない → 孤児 guidance.md を作らない。
     assert not gpath.exists()
@@ -266,7 +266,7 @@ def test_inject_no_guidance_label_only(tmp_path, manifest):
     inject(proj, preset="claude-jp", include_guidance=False)
     text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
     assert "| 内部状態 |" in text  # ラベル節はある
-    assert "docsweep triage" not in text  # 導線は含まれない
+    assert "セッション開始時" not in text  # 導線は含まれない
 
 
 def test_eject_global_removes_block_and_central(tmp_path, manifest, monkeypatch):
@@ -343,6 +343,143 @@ def test_build_triage_shape(ws):
     assert t["items"], "ws には stale plan と pending があるので items は非空"
     it = t["items"][0]
     assert {"project", "rel", "title", "state", "type", "age_days", "actions", "path"} <= set(it)
+
+
+# ---- due 第2軸（C2/C3） ----
+
+def test_due_parsed_and_stored(tmp_path):
+    """frontmatter due: が FileRecord.due に格納される。"""
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+
+    p = tmp_path / "a" / "plan_todo.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        "---\ndue: 2020-01-01\n---\n# [計画] todo\n\n## 概要\n\ntest\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    result = run_scan(cfg)
+    rec = next(r for r in result.records if r.path.endswith("plan_todo.md"))
+    assert rec.due == "2020-01-01"
+    assert not rec.due_parse_error
+
+
+def test_due_overdue_todo_flag(tmp_path):
+    """past due + planned state → overdue_todo フラグが立つ。"""
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
+
+    p = tmp_path / "a" / "plan_old.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        "---\ndue: 2020-01-01\n---\n# [計画] old\n\n## 概要\n\ntest\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    result = run_scan(cfg)
+    rec = next(r for r in result.records if r.path.endswith("plan_old.md"))
+    assert Flag.OVERDUE_TODO.value in rec.flags
+    assert Flag.OVERDUE_GRADUATE.value not in rec.flags
+
+
+def test_due_overdue_graduate_flag(tmp_path):
+    """past due + watching state → overdue_graduate フラグが立つ。"""
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
+
+    p = tmp_path / "a" / "plan_watch.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        "---\ndue: 2020-01-01\n---\n# [様子見] watch\n\n## 概要\n\ntest\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    result = run_scan(cfg)
+    rec = next(r for r in result.records if r.path.endswith("plan_watch.md"))
+    assert Flag.OVERDUE_GRADUATE.value in rec.flags
+    assert Flag.OVERDUE_TODO.value not in rec.flags
+
+
+def test_due_no_flag_when_done(tmp_path):
+    """done 状態では due 超過フラグを立てない（archive 制御と切り離す）。"""
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
+
+    p = tmp_path / "a" / "plan_done.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        "---\ndue: 2020-01-01\n---\n# [完了] done\n\n## 概要\n\ntest\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    result = run_scan(cfg)
+    rec = next(r for r in result.records if r.path.endswith("plan_done.md"))
+    assert Flag.OVERDUE_TODO.value not in rec.flags
+    assert Flag.OVERDUE_GRADUATE.value not in rec.flags
+    # archivable は due に影響されない（C4 不変条件）
+    assert rec.archivable
+
+
+def test_due_parse_error_flag(tmp_path):
+    """不正な due 値 → due_parse_error フラグが立つ。"""
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
+
+    p = tmp_path / "a" / "plan_bad.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        "---\ndue: not-a-date\n---\n# [計画] bad\n\n## 概要\n\ntest\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    result = run_scan(cfg)
+    rec = next(r for r in result.records if r.path.endswith("plan_bad.md"))
+    assert rec.due_parse_error
+    assert Flag.DUE_PARSE_ERROR.value in rec.flags
+
+
+def test_due_in_slim_record(tmp_path):
+    """slim_record に due フィールドが含まれる。"""
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.reports import slim_record
+
+    p = tmp_path / "a" / "plan_slim.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        "---\ndue: 2020-06-01\n---\n# [計画] slim\n\n## 概要\n\ntest\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    result = run_scan(cfg)
+    rec = next(r for r in result.records if r.path.endswith("plan_slim.md"))
+    s = slim_record(rec.to_dict())
+    assert s["due"] == "2020-06-01"
+
+
+def test_overdue_counts_in_index(tmp_path):
+    """overdue_todo / overdue_graduate が build_index counts に反映される。"""
+    from docsweep.config import load_config
+    from docsweep.index import build_index
+
+    (tmp_path / "a").mkdir(parents=True)
+    (tmp_path / "a" / "plan_todo.md").write_text(
+        "---\ndue: 2020-01-01\n---\n# [計画] todo\n\n## 概要\n\ntest\n", encoding="utf-8"
+    )
+    (tmp_path / "a" / "plan_watch.md").write_text(
+        "---\ndue: 2020-01-01\n---\n# [様子見] watch\n\n## 概要\n\ntest\n", encoding="utf-8"
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    idx = build_index(cfg)
+    assert idx.counts["overdue_todo"] == 1
+    assert idx.counts["overdue_graduate"] == 1
+    assert len(idx.overdue_todo) == 1
+    assert len(idx.overdue_graduate) == 1
 
 
 def test_mcp_build_server_smoke(tmp_path):

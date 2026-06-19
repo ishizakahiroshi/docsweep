@@ -181,6 +181,8 @@ def _build_doc(
         age_days=age,
         archivable=bool(state and state.archive),
         auto_movable=bool(state and state.auto_move),
+        due=det.due,
+        due_parse_error=det.due_parse_error,
     )
     return ScannedDoc(record=record, detection=det, type_def=type_def, text=text)
 

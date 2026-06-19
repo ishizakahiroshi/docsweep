@@ -1,7 +1,8 @@
 """MCP サーバー（stdio）— AI エージェント面の標準口。
 
 「1 コマンド＝1 MCP ツール」の粒度で公開し、CLI と無改修で両対応する。
-配布は PyPI パッケージに同梱（新しい配布物を増やさない）。`uvx docsweep mcp` で起動。
+配布は PyPI パッケージに同梱（新しい配布物を増やさない）。
+PATH に依存しない `python -m docsweep mcp` 起動を標準にする。
 
 依存 ``mcp``（mcp extra）が無い環境では import 時に分かるよう遅延 import する。
 """
