@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>docsweep</title>
+  <defs>
+    <linearGradient id="bg" x1="40" y1="20" x2="472" y2="492" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff7eb6"/>
+      <stop offset="1" stop-color="#a974ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.24" r="0.95">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="104" fill="url(#glow)"/>
+  <!-- page -->
+  <rect x="146" y="104" width="220" height="304" rx="30" fill="#ffffff"/>
+  <path d="M300,104 L366,104 L366,170 Z" fill="url(#bg)"/>
+  <path d="M300,104 L366,170 L300,170 Z" fill="#ead9ff"/>
+  <rect x="178" y="186" width="150" height="16" rx="8" fill="#d9c2ff"/>
+  <rect x="178" y="220" width="118" height="16" rx="8" fill="#d9c2ff"/>
+  <!-- done check -->
+  <path d="M190,322 L238,372 L334,258" fill="none" stroke="#37d0a6" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
