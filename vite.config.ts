@@ -5,11 +5,11 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/app.ts'),
-      name: 'DocsweepApp',
+      name: 'DocSweepApp',
       formats: ['iife'],
       fileName: () => 'app.js',
     },
-    outDir: 'docsweep/server/static',
+    outDir: 'docSweep/server/static',
     emptyOutDir: false,
     minify: false,
   },

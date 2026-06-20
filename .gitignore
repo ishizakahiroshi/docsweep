@@ -71,16 +71,16 @@ secrets.*
 *.local.*
 *.secret.*
 
-# docsweep の個人作業ログ（公開しない）
+# docSweep の個人作業ログ（公開しない）
 docs/local/
 
-# docsweep 実行時の生成物（スキャン結果・履歴）
+# docSweep 実行時の生成物（スキャン結果・履歴）
 INDEX.md
 INDEX.json
-.docsweep/
+.docSweep/
 
 # テスト用 fixture / golden は上の無視パターンより優先して追跡する。
-# docsweep は INDEX.md・*.jsonl（移動ログ）・各種 *.md を生成するため、
+# docSweep は INDEX.md・*.jsonl（移動ログ）・各種 *.md を生成するため、
 # それらの期待値を testdata に置くと黙って脱落する。ディレクトリ単位で明示許可。
 !**/testdata/**
 !**/tests/fixtures/**

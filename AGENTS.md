@@ -1,6 +1,6 @@
-# Agent Entry Point (docsweep)
+# Agent Entry Point (docSweep)
 
-This repository's operational guidance for **developing docsweep itself** is
+This repository's operational guidance for **developing docSweep itself** is
 maintained in `CLAUDE.md`.
 
 - Project overview & dev guide: `./CLAUDE.md`

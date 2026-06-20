@@ -1,12 +1,12 @@
 """注入（inject）と取り消し（eject）— C7。
 
 各プロジェクトへ書き込むもの:
-1. .docsweep.yaml（ツールが読む設定。states/preset）
+1. .docSweep.yaml（ツールが読む設定。states/preset）
 2. CLAUDE.md / AGENTS.md の管理ブロック（AI が読む運用ルール文。マーカー内だけ書換）
 
 - マーカー内だけ書き換え、外側のユーザー手書きは温存。再注入でユーザー編集を壊さない（冪等）。
 - 手編集検出: 管理ブロック内が前回注入時と変わっていたら警告＋.bak バックアップしてから処理。
-- マニフェスト ~/.docsweep/injected.json にどのプロジェクトへ注入したかを記録。
+- マニフェスト ~/.docSweep/injected.json にどのプロジェクトへ注入したかを記録。
 """
 
 from __future__ import annotations
@@ -26,19 +26,19 @@ import yaml
 from .presets import Preset, get_preset
 from .states import StateModel
 
-MARK_START = "<!-- docsweep:managed:start -->"
-MARK_END = "<!-- docsweep:managed:end -->"
-MANIFEST_PATH = Path.home() / ".docsweep" / "injected.json"
+MARK_START = "<!-- docSweep:managed:start -->"
+MARK_END = "<!-- docSweep:managed:end -->"
+MANIFEST_PATH = Path.home() / ".docSweep" / "injected.json"
 DEFAULT_TARGETS = ("CLAUDE.md", "AGENTS.md")
 
 # グローバル注入をサポートする AI ツール。注入先パスは固定せず、各ツールの契約に従って動的解決する
 # （Claude=単一ファイル / Codex=CODEX_HOME 相対＋override 優先）。未対応ツールは --global-target で明示。
 SUPPORTED_GLOBAL_AGENTS = ("claude", "codex")
 
-# docsweep が所有する中央導線ファイル。実体はここ 1 つに集約し、各ツールには最小フックだけ書く
+# docSweep が所有する中央導線ファイル。実体はここ 1 つに集約し、各ツールには最小フックだけ書く
 # （Claude=@import 1 行で取り込み / Codex 等=@import 非対応のため本文をブロック展開）。
-GUIDANCE_PATH = Path.home() / ".docsweep" / "guidance.md"
-GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~ は Claude が展開する）
+GUIDANCE_PATH = Path.home() / ".docSweep" / "guidance.md"
+GUIDANCE_IMPORT = "~/.docSweep/guidance.md"  # Claude の @import 行（先頭 ~ は Claude が展開する）
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -47,16 +47,16 @@ def _shell_command(parts: list[str]) -> str:
     return shlex.join(parts)
 
 
-def docsweep_command(*args: str) -> str:
-    """PATH に依存しない docsweep 起動コマンドを返す。
+def docSweep_command(*args: str) -> str:
+    """PATH に依存しない docSweep 起動コマンドを返す。
 
-    通常の Python パッケージ実行では現在の Python 実行ファイルから ``-m docsweep`` を呼ぶ。
+    通常の Python パッケージ実行では現在の Python 実行ファイルから ``-m docSweep`` を呼ぶ。
     PyInstaller 等の単体バイナリでは、そのバイナリ自体を絶対パスで呼ぶ。
     """
     exe = str(Path(sys.executable).resolve())
     if getattr(sys, "frozen", False):
         return _shell_command([exe, *args])
-    return _shell_command([exe, "-m", "docsweep", *args])
+    return _shell_command([exe, "-m", "docSweep", *args])
 
 
 def _codex_home() -> Path:
@@ -115,9 +115,9 @@ def _block_hash(inner: str) -> str:
 
 
 def _managed_note(eject_cmd: str) -> str:
-    """人間が「docsweep が付けた」と一目で分かる注記。最小フック（@import 1 行等）にも必ず添える。"""
+    """人間が「docSweep が付けた」と一目で分かる注記。最小フック（@import 1 行等）にも必ず添える。"""
     return (
-        f"<!-- ⚠ この内容は docsweep inject が自動追加・管理します。"
+        f"<!-- ⚠ この内容は docSweep inject が自動追加・管理します。"
         f"手で編集せず `{eject_cmd}` で削除してください。 -->"
     )
 
@@ -128,11 +128,11 @@ def _hook_inner(body: str, eject_cmd: str) -> str:
 
 
 def write_guidance_file(lang: str = "ja", *, dry_run: bool = False) -> Path:
-    """docsweep 所有の中央導線ファイルを生成・再生成する（直接編集禁止の注記付き）。"""
+    """docSweep 所有の中央導線ファイルを生成・再生成する（直接編集禁止の注記付き）。"""
     content = (
-        "<!-- このファイルは docsweep が所有・自動生成します。直接編集しないでください"
-        f"（`{docsweep_command('inject', '--global')}` で再生成 / "
-        f"`{docsweep_command('eject', '--global')}` で参照解除）。 -->\n\n"
+        "<!-- このファイルは docSweep が所有・自動生成します。直接編集しないでください"
+        f"（`{docSweep_command('inject', '--global')}` で再生成 / "
+        f"`{docSweep_command('eject', '--global')}` で参照解除）。 -->\n\n"
         + generate_guidance_block(lang)
         + "\n"
     )
@@ -145,13 +145,13 @@ def write_guidance_file(lang: str = "ja", *, dry_run: bool = False) -> Path:
 def generate_label_block(sm: StateModel, lang: str = "ja", *, use_frontmatter: bool = False) -> str:
     """states から CLAUDE.md のラベル節（プロジェクト固有・状態モデル）を生成する。
 
-    `.docsweep.yaml` の states から導出するためプロジェクトごとに変わる。グローバルには置かない。
+    `.docSweep.yaml` の states から導出するためプロジェクトごとに変わる。グローバルには置かない。
     """
     lines: list[str] = [
-        "## AI 作業ドキュメントのステータスラベル（docsweep 管理）",
+        "## AI 作業ドキュメントのステータスラベル（docSweep 管理）",
         "",
-        "このブロックは `docsweep inject` が生成・同期します。手で編集しないでください",
-        f"（編集は `{docsweep_command('eject')}` で剥がしてから）。docsweep は H1 先頭のラベルを読み取り、",
+        "このブロックは `docSweep inject` が生成・同期します。手で編集しないでください",
+        f"（編集は `{docSweep_command('eject')}` で剥がしてから）。docSweep は H1 先頭のラベルを読み取り、",
         "完了/廃止を archive へ移送し、陳腐化を要判断フラグで可視化します。",
         "",
         "| 内部状態 | ラベル | 自動 archive |",
@@ -165,7 +165,7 @@ def generate_label_block(sm: StateModel, lang: str = "ja", *, use_frontmatter: b
         lines.append(f"| {st.key} | `[{st.label(lang)}]` | {mark}{note} |")
     lines += [
         "",
-        "- `[" + (sm.by_key('watching').label(lang) if sm.by_key('watching') else '様子見') + "]` は再発確認のため寝かせている状態。**docsweep は自動移送しない**。",
+        "- `[" + (sm.by_key('watching').label(lang) if sm.by_key('watching') else '様子見') + "]` は再発確認のため寝かせている状態。**docSweep は自動移送しない**。",
         "- 終端は手の意思決定: 片付いたら `[完了]`、陳腐化は `[廃止]`（削除ではなく archive へ隔離）。",
     ]
     if use_frontmatter:
@@ -180,12 +180,12 @@ def generate_guidance_block(lang: str = "ja") -> str:
 
     文言は常に同じなので、グローバル（~/.claude/CLAUDE.md 等）に一度入れれば全プロジェクトで効く。
     """
-    triage_cmd = docsweep_command("triage")
+    triage_cmd = docSweep_command("triage")
     return "\n".join([
-        "## docsweep — セッション開始時の残作業確認（必須）",
+        "## docSweep — セッション開始時の残作業確認（必須）",
         "",
         f"作業を始める前に、まず `{triage_cmd}`（MCP 接続時は `triage` ツール）を実行し、",
-        "PATH に `docsweep` コマンドが無くても、この `python -m docsweep` 形式を優先すること。",
+        "PATH に `docSweep` コマンドが無くても、この `python -m docSweep` 形式を優先すること。",
         "返ってきた残作業（要判断＋保留・古い順）を確認してから着手すること。",
         "ファイル名や場所を思い出せなくても、これで「次にやるべき作業」が先頭に出る。",
         "ユーザーが「続きやって」と言ったら、triage の先頭 item の `path` と残りを対象にする。",
@@ -206,24 +206,24 @@ def generate_managed_block(
 
 
 # プロジェクトの各ターゲットへ書く inner（CLAUDE.md=正本 / AGENTS.md 等=ポインタ）。inject と preview で共有。
-_POINTER_BODY = "docsweep の運用ルール（ステータスラベル・残作業導線）は CLAUDE.md の docsweep 管理ブロックを参照してください。"
+_POINTER_BODY = "docSweep の運用ルール（ステータスラベル・残作業導線）は CLAUDE.md の docSweep 管理ブロックを参照してください。"
 
 
 def _project_inners(sm: StateModel, lang: str, *, use_frontmatter: bool, include_guidance: bool) -> tuple[str, str]:
     claude_inner = generate_managed_block(
         sm, lang, use_frontmatter=use_frontmatter, include_guidance=include_guidance
     )
-    pointer_inner = _hook_inner(_POINTER_BODY, docsweep_command("eject"))
+    pointer_inner = _hook_inner(_POINTER_BODY, docSweep_command("eject"))
     return claude_inner, pointer_inner
 
 
 def _global_inner(agent: str, lang: str) -> str:
     """グローバル先へ書く最小フック inner。claude=@import 1 行 / その他=本文インライン。inject と preview で共有。"""
     if agent == "claude":
-        return _hook_inner(f"@{GUIDANCE_IMPORT}", docsweep_command("eject", "--global"))
+        return _hook_inner(f"@{GUIDANCE_IMPORT}", docSweep_command("eject", "--global"))
     return _hook_inner(
         generate_guidance_block(lang),
-        docsweep_command("eject", "--global", "--agent", agent),
+        docSweep_command("eject", "--global", "--agent", agent),
     )
 
 
@@ -377,14 +377,14 @@ def inject(
     )
 
     if write_yaml:
-        yaml_path = project_dir / ".docsweep.yaml"
+        yaml_path = project_dir / ".docSweep.yaml"
         if not yaml_path.exists():
             content = _render_yaml(p)
             if not dry_run:
                 yaml_path.write_text(content, encoding="utf-8")
             result.yaml_path = yaml_path.as_posix()
         else:
-            result.skipped.append(".docsweep.yaml (既存・温存)")
+            result.skipped.append(".docSweep.yaml (既存・温存)")
 
     for t in targets:
         # CLAUDE.md は常に正本を書く。AGENTS.md は存在する場合のみ、CLAUDE.md を指すポインタを書く。
@@ -412,7 +412,7 @@ def _render_yaml(p: Preset) -> str:
             f"    auto_move: {str(st.auto_move).lower()}"
         )
     return (
-        f"# docsweep 設定（preset: {p.name}）\n"
+        f"# docSweep 設定（preset: {p.name}）\n"
         f"# {p.description}\n"
         f"lang: {p.lang}\n"
         f"preset: {p.name}\n"
@@ -429,7 +429,7 @@ class EjectResult:
 
 
 def eject(project_dir: Path, *, purge: bool = False, dry_run: bool = False) -> EjectResult:
-    """管理ブロックだけ削除。ユーザー手書きは温存。--purge で .docsweep.yaml も削除。"""
+    """管理ブロックだけ削除。ユーザー手書きは温存。--purge で .docSweep.yaml も削除。"""
     project_dir = project_dir.resolve()
     result = EjectResult(project=project_dir.name)
     manifest = load_manifest()
@@ -443,7 +443,7 @@ def eject(project_dir: Path, *, purge: bool = False, dry_run: bool = False) -> E
             result.removed.append(fname)
 
     if purge:
-        yaml_path = project_dir / ".docsweep.yaml"
+        yaml_path = project_dir / ".docSweep.yaml"
         if yaml_path.is_file():
             if not dry_run:
                 yaml_path.unlink()
@@ -547,7 +547,7 @@ def preview_inject(project_dir: Path, *, preset: str | None = None, include_guid
         "project": project_dir.name,
         "path": project_dir.as_posix(),
         "blocks": blocks,
-        "yaml_exists": (project_dir / ".docsweep.yaml").is_file(),
+        "yaml_exists": (project_dir / ".docSweep.yaml").is_file(),
     }
 
 

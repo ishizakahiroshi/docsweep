@@ -17,8 +17,8 @@ from .detect import Detection, detect_status, extract_summary
 from .models import FileRecord
 
 # 常に除外するディレクトリ名。
-# docsweep 自身の生成物（INDEX.md / moves.jsonl）を再スキャンしないよう .docsweep も除外。
-ALWAYS_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".mypy_cache", ".ruff_cache", ".pytest_cache", ".docsweep"}
+# docSweep 自身の生成物（INDEX.md / moves.jsonl）を再スキャンしないよう .docSweep も除外。
+ALWAYS_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".mypy_cache", ".ruff_cache", ".pytest_cache", ".docSweep"}
 
 
 @dataclass
@@ -100,7 +100,7 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
                 continue
             type_def = config.match_type(fn)
             # 命名規約（plan_/bugfix_/pending_ 等の type パターン）に一致しない .md は
-            # docsweep の管理対象外（LICENSE・README・依存ライブラリの .md 等）。拾わない。
+            # docSweep の管理対象外（LICENSE・README・依存ライブラリの .md 等）。拾わない。
             if type_def is None:
                 continue
             project_root = detect_project_root(cur, root, config.project_markers, proj_cache)
@@ -115,7 +115,7 @@ def detect_project_root(
 ) -> Path:
     """プロジェクト境界を判定する。
 
-    ファイルのフォルダから上へ辿り、``markers``（既定 .git/.docsweep.yaml/package.json/
+    ファイルのフォルダから上へ辿り、``markers``（既定 .git/.docSweep.yaml/package.json/
     pyproject.toml）のいずれかを持つ最寄りの祖先をプロジェクトとする。スキャンルートより
     上へは辿らない。見つからなければルート直下の先頭セグメントへフォールバック。
 

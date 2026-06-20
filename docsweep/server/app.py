@@ -63,8 +63,8 @@ def _find_doc(result: ScanResult, path: str):
 def create_app(config: Config, token: str | None = None) -> FastAPI:
     token = token or secrets.token_urlsafe(16)
     state = ServerState(config, token)
-    app = FastAPI(title="docsweep", docs_url=None, redoc_url=None)
-    app.state.docsweep = state
+    app = FastAPI(title="docSweep", docs_url=None, redoc_url=None)
+    app.state.docSweep = state
 
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):
@@ -89,7 +89,7 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     def _check_token(request: Request, token_q: str | None) -> None:
-        supplied = token_q or request.headers.get("x-docsweep-token")
+        supplied = token_q or request.headers.get("x-docSweep-token")
         if not supplied or not secrets.compare_digest(supplied, state.token):
             raise HTTPException(status_code=403, detail="invalid or missing token")
 

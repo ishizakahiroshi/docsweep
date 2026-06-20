@@ -1,5 +1,5 @@
-from docsweep.detect import detect_status, extract_summary
-from docsweep.states import StateModel
+from docSweep.detect import detect_status, extract_summary
+from docSweep.states import StateModel
 
 SM = StateModel()
 

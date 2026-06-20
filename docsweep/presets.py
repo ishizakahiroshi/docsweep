@@ -1,6 +1,6 @@
 """状態モデルのプリセット（inject で各プロジェクトへ流し込む正本ラインナップ）。
 
-公式プリセット＝正本。利用者はこれを選んで注入し、必要なら .docsweep.yaml で部分上書きする。
+公式プリセット＝正本。利用者はこれを選んで注入し、必要なら .docSweep.yaml で部分上書きする。
 v0.1.0 は claude-jp（日本語・H1 ラベル運用）と frontmatter（汎用・status フィールド併記）の 2 種。
 """
 
@@ -27,7 +27,7 @@ def _default_state_model() -> StateModel:
 PRESETS: dict[str, Preset] = {
     "claude-jp": Preset(
         name="claude-jp",
-        description="Claude Code 向け日本語ルール（H1 ステータスラベル運用）。docsweep 標準。",
+        description="Claude Code 向け日本語ルール（H1 ステータスラベル運用）。docSweep 標準。",
         lang="ja",
         states=_default_state_model(),
         use_frontmatter=False,

@@ -6,8 +6,8 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from docsweep.config import load_config  # noqa: E402
-from docsweep.server.app import create_app  # noqa: E402
+from docSweep.config import load_config  # noqa: E402
+from docSweep.server.app import create_app  # noqa: E402
 
 TOKEN = "test-token-123"
 
@@ -100,7 +100,7 @@ def test_dashboard_shows_archivable_list(client):
 def test_reveal_opens_folder(client, monkeypatch):
     c, root, _ = client
     calls = []
-    monkeypatch.setattr("docsweep.server.app._reveal_in_file_manager", lambda p: calls.append(p))
+    monkeypatch.setattr("docSweep.server.app._reveal_in_file_manager", lambda p: calls.append(p))
     p = (root / "proj_a" / "plan_done.md").resolve().as_posix()
     r = c.post("/api/reveal", data={"token": TOKEN, "path": p})
     assert r.status_code == 200
@@ -110,7 +110,7 @@ def test_reveal_opens_folder(client, monkeypatch):
 
 def test_reveal_rejects_path_outside_roots(client, monkeypatch):
     c, root, outside = client
-    monkeypatch.setattr("docsweep.server.app._reveal_in_file_manager", lambda p: None)
+    monkeypatch.setattr("docSweep.server.app._reveal_in_file_manager", lambda p: None)
     r = c.post("/api/reveal", data={"token": TOKEN, "path": str(outside)})
     assert r.status_code == 403
 
@@ -129,8 +129,8 @@ def test_sweep_skips_watching(client):
 @pytest.fixture
 def iso_inject(tmp_path, monkeypatch):
     """manifest / 中央 guidance を tmp に隔離し、実 home を汚さない。"""
-    monkeypatch.setattr("docsweep.inject.MANIFEST_PATH", tmp_path / "injected.json")
-    monkeypatch.setattr("docsweep.inject.GUIDANCE_PATH", tmp_path / "guidance.md")
+    monkeypatch.setattr("docSweep.inject.MANIFEST_PATH", tmp_path / "injected.json")
+    monkeypatch.setattr("docSweep.inject.GUIDANCE_PATH", tmp_path / "guidance.md")
 
 
 def test_inject_project_preview_does_not_write(client, iso_inject):
@@ -141,7 +141,7 @@ def test_inject_project_preview_does_not_write(client, iso_inject):
     pv = r.json()
     assert pv["scope"] == "project"
     assert "CLAUDE.md" in [b["file"] for b in pv["blocks"]]
-    assert "docsweep:managed:start" in pv["blocks"][0]["text"]
+    assert "docSweep:managed:start" in pv["blocks"][0]["text"]
     assert not (root / "proj_a" / "CLAUDE.md").exists()  # プレビューは書き込まない
 
 
@@ -151,7 +151,7 @@ def test_inject_project_applies(client, iso_inject):
     r = c.post("/api/inject", data={"token": TOKEN, "scope": "project", "project": pdir, "dry_run": "false"})
     assert r.status_code == 200
     text = (root / "proj_a" / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "docsweep:managed:start" in text
+    assert "docSweep:managed:start" in text
     assert "| 内部状態 |" in text
 
 
@@ -167,7 +167,7 @@ def test_inject_global_preview_uses_import(client, iso_inject):
     assert r.status_code == 200
     pv = r.json()
     assert pv["scope"] == "global"
-    assert "@~/.docsweep/guidance.md" in pv["blocks"][0]["text"]
+    assert "@~/.docSweep/guidance.md" in pv["blocks"][0]["text"]
     assert "残作業" in pv["guidance"]
 
 
@@ -178,7 +178,7 @@ def test_eject_project_removes_block(client, iso_inject):
     r = c.post("/api/eject", data={"token": TOKEN, "scope": "project", "project": pdir, "dry_run": "false"})
     assert r.status_code == 200
     text = (root / "proj_a" / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "docsweep:managed" not in text
+    assert "docSweep:managed" not in text
 
 
 def test_inject_unknown_preset_returns_400(client, iso_inject):
@@ -194,9 +194,9 @@ def test_eject_project_purge_removes_yaml(client, iso_inject):
     pdir = (root / "proj_a").resolve().as_posix()
     c.post("/api/inject", data={"token": TOKEN, "scope": "project", "project": pdir,
                                 "preset": "frontmatter", "dry_run": "false"})
-    assert (root / "proj_a" / ".docsweep.yaml").is_file()
+    assert (root / "proj_a" / ".docSweep.yaml").is_file()
     r = c.post("/api/eject", data={"token": TOKEN, "scope": "project", "project": pdir,
                                    "purge": "true", "dry_run": "false"})
     assert r.status_code == 200
     assert r.json()["purged_yaml"] is True
-    assert not (root / "proj_a" / ".docsweep.yaml").exists()
+    assert not (root / "proj_a" / ".docSweep.yaml").exists()

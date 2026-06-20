@@ -1,5 +1,5 @@
 {
-  "name": "docsweep-frontend",
+  "name": "docSweep-frontend",
   "private": true,
   "scripts": {
     "build": "vite build",

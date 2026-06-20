@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "docsweep"
+name = "docSweep"
 version = "0.1.0"
 description = "Sweep, triage and archive AI coding agents' plan/bugfix/pending Markdown across projects."
 readme = "README.md"
@@ -44,7 +44,7 @@ mcp = [
 ]
 # 全部入り（配布既定: CLI+Web+MCP+review が 1 パッケージ）
 all = [
-    "docsweep[web,review,mcp]",
+    "docSweep[web,review,mcp]",
 ]
 dev = [
     "pytest>=8.0",
@@ -53,14 +53,14 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ishizakahiroshi/docsweep"
-Repository = "https://github.com/ishizakahiroshi/docsweep"
+Homepage = "https://github.com/ishizakahiroshi/docSweep"
+Repository = "https://github.com/ishizakahiroshi/docSweep"
 
 [project.scripts]
-docsweep = "docsweep.cli:main"
+docSweep = "docSweep.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["docsweep"]
+packages = ["docSweep"]
 
 [tool.ruff]
 line-length = 100

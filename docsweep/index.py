@@ -15,7 +15,7 @@ from .config import Config
 from .engine import ScanResult, run_scan
 from .models import Flag
 
-INDEX_DIRNAME = ".docsweep"
+INDEX_DIRNAME = ".docSweep"
 
 
 @dataclass
@@ -97,7 +97,7 @@ def _render_row(d: dict) -> str:
 def render_markdown(idx: IndexData, state_model) -> str:
     c = idx.counts
     lines: list[str] = [
-        "# docsweep INDEX",
+        "# docSweep INDEX",
         "",
         f"> 横断集約: {c['projects']} プロジェクト / {c['total']} 件 ＝ "
         f"要判断 {c['needs_decision']} · 要修正 {c['needs_fix']} · 保留 {c['pending']} · archive候補 {c['archivable']}",
@@ -133,7 +133,7 @@ def index_dir(config: Config) -> Path:
 
 
 def write_index(config: Config, result: ScanResult | None = None) -> tuple[Path, Path]:
-    """INDEX.json / INDEX.md をスキャンルート直下の .docsweep/ に書き出す。"""
+    """INDEX.json / INDEX.md をスキャンルート直下の .docSweep/ に書き出す。"""
     idx = build_index(config, result)
     out_dir = index_dir(config)
     out_dir.mkdir(parents=True, exist_ok=True)
