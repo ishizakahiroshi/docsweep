@@ -2,7 +2,7 @@
 
 「1 コマンド＝1 MCP ツール」の粒度で公開し、CLI と無改修で両対応する。
 配布は PyPI パッケージに同梱（新しい配布物を増やさない）。
-PATH に依存しない `python -m docsweep mcp` 起動を標準にする。
+PATH に依存しない `python -m docSweep mcp` 起動を標準にする。
 
 依存 ``mcp``（mcp extra）が無い環境では import 時に分かるよう遅延 import する。
 """
@@ -25,9 +25,9 @@ def build_server(config: Config):
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as e:  # pragma: no cover - mcp extra 未導入
-        raise RuntimeError("MCP には mcp extra が必要です: pip install 'docsweep[mcp]'") from e
+        raise RuntimeError("MCP には mcp extra が必要です: pip install 'docSweep[mcp]'") from e
 
-    mcp = FastMCP("docsweep")
+    mcp = FastMCP("docSweep")
 
     def _doc_for(path: str):
         result = run_scan(config)
@@ -77,7 +77,7 @@ def build_server(config: Config):
 
     @mcp.tool()
     def index() -> dict:
-        """横断 INDEX を再生成して .docsweep/ に書き出し、集計を返す。"""
+        """横断 INDEX を再生成して .docSweep/ に書き出し、集計を返す。"""
         write_index(config)
         return build_index(config).counts
 
@@ -89,10 +89,10 @@ def build_server(config: Config):
     @mcp.tool()
     def inject(project: str, preset: str | None = None, include_guidance: bool = True,
                write_yaml: bool = True, dry_run: bool = False) -> dict:
-        """指定プロジェクトへ docsweep の運用ルール（管理ブロック＋.docsweep.yaml）を注入する。
+        """指定プロジェクトへ docSweep の運用ルール（管理ブロック＋.docSweep.yaml）を注入する。
 
         導線をグローバルに寄せている場合は include_guidance=False でラベル節だけにできる
-        （CLI の --no-guidance 相当）。write_yaml=False で .docsweep.yaml を書かない（--no-yaml 相当）。
+        （CLI の --no-guidance 相当）。write_yaml=False で .docSweep.yaml を書かない（--no-yaml 相当）。
         """
         r = do_inject(Path(project), preset=preset, include_guidance=include_guidance,
                       write_yaml=write_yaml, dry_run=dry_run)

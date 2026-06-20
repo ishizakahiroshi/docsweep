@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from docsweep.config import load_config
-from docsweep.engine import apply_action, auto_sweep, run_scan
+from docSweep.config import load_config
+from docSweep.engine import apply_action, auto_sweep, run_scan
 
 
 def _write(p: Path, text: str, age_days: int = 0) -> Path:
@@ -57,13 +57,13 @@ def test_non_type_md_is_skipped(tmp_path: Path):
 def test_project_from_git_marker(tmp_path: Path):
     """深い入れ子でも最寄りの .git のフォルダ名をプロジェクトにする（構成非依存）。"""
     root = tmp_path / "dev"
-    proj = root / "github" / "public" / "docsweep"
+    proj = root / "github" / "public" / "docSweep"
     (proj / ".git").mkdir(parents=True)  # git リポジトリ境界
     _write(proj / "docs" / "local" / "plan_x.md", "# [計画] x\n\n## 概要\n\na\n")
     cfg = _cfg(root)
     rec = run_scan(cfg).records[0]
-    assert rec.project == "docsweep"
-    assert rec.project_root.endswith("/docsweep")
+    assert rec.project == "docSweep"
+    assert rec.project_root.endswith("/docSweep")
 
 
 def test_project_marker_pyproject(tmp_path: Path):
@@ -118,7 +118,7 @@ def test_auto_sweep_moves_to_archive(workspace: Path):
     assert not (workspace / "proj_a" / "docs" / "local" / "plan_done.md").exists()
     assert (workspace / "proj_a" / "archive" / "plan_done.md").exists()
     # 移動ログが残る
-    assert (workspace / ".docsweep" / "moves.jsonl").exists()
+    assert (workspace / ".docSweep" / "moves.jsonl").exists()
 
 
 def test_collision_dedupe(workspace: Path):

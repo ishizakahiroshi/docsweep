@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>docsweep</title>
+  <title>docSweep</title>
   <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/static/icons/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
@@ -12,7 +12,7 @@
 </head>
 <body data-token="{{ token }}">
   <header class="topbar">
-    <div class="brand"><span class="logo">🧹</span><b>docsweep</b></div>
+    <div class="brand"><span class="logo">🧹</span><b>docSweep</b></div>
     <nav class="filters" hx-target="#list" hx-swap="innerHTML">
       <button hx-get="/list?token={{ token }}&lang={{ lang }}&filter=needs">要判断</button>
       <button hx-get="/list?token={{ token }}&lang={{ lang }}&filter=all">全件</button>

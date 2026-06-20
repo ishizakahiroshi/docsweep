@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from docsweep.config import Config, TypeDef, load_config
-from docsweep.detect import detect_status, extract_summary
-from docsweep.engine import apply_action, auto_sweep, promote_state, relabel_file, run_scan
-from docsweep.states import StateModel, build_state_model
+from docSweep.config import Config, TypeDef, load_config
+from docSweep.detect import detect_status, extract_summary
+from docSweep.engine import apply_action, auto_sweep, promote_state, relabel_file, run_scan
+from docSweep.states import StateModel, build_state_model
 
 SM = StateModel()
 
@@ -77,7 +77,7 @@ def test_relabel_preserves_crlf(tmp_path: Path):
 # ---- F-D: pending 型接頭辞を state と誤認して誤 conflict を立てない ----
 
 def test_pending_prefix_no_false_conflict():
-    from docsweep.config import TypeDef
+    from docSweep.config import TypeDef
     pending_type = TypeDef("pending", "pending_*.md", ("概要",), "概要", 180)
     d = detect_status(text="# [実行中] foo\n", filename="pending_foo.md", sm=SM, _type=pending_type)
     assert d.state_key == "in-progress"
@@ -136,7 +136,7 @@ def test_move_log_ts_filled_for_relabel(tmp_path: Path):
     cfg = _cfg(root)
     doc = next(d for d in run_scan(cfg).docs if Path(d.record.path).name == "plan_w.md")
     apply_action(doc, "relabel", cfg, to="計画", dry_run=False)
-    log = (root / ".docsweep" / "moves.jsonl").read_text(encoding="utf-8").strip()
+    log = (root / ".docSweep" / "moves.jsonl").read_text(encoding="utf-8").strip()
     entry = json.loads(log.splitlines()[-1])
     assert entry["op"] == "relabel"
     assert entry["ts"]  # 空文字でない
@@ -197,20 +197,20 @@ def test_statemodel_duplicate_key_raises():
         ])
 
 
-# ---- [15]: プロジェクト .docsweep.yaml の相対 roots は project_dir 基準 ----
+# ---- [15]: プロジェクト .docSweep.yaml の相対 roots は project_dir 基準 ----
 
 def test_project_relative_roots_resolved_against_project_dir(tmp_path: Path):
     proj = tmp_path / "proj"
     (proj / "sub").mkdir(parents=True)
-    (proj / ".docsweep.yaml").write_text("roots:\n  - sub\n", encoding="utf-8")
+    (proj / ".docSweep.yaml").write_text("roots:\n  - sub\n", encoding="utf-8")
     cfg = load_config(project_dir=proj, global_path=tmp_path / "none.yaml")
     assert cfg.roots == [(proj / "sub").resolve()]
 
 
-# ---- [10]: docsweep new の topic パストラバーサルをサニタイズ ----
+# ---- [10]: docSweep new の topic パストラバーサルをサニタイズ ----
 
 def test_new_doc_topic_path_traversal_sanitized(tmp_path: Path):
-    from docsweep.templates_gen import new_doc
+    from docSweep.templates_gen import new_doc
     (tmp_path / "docs").mkdir()
     doc = new_doc("plan", "../../evil", project_dir=tmp_path)
     assert doc.path.name == "plan_evil.md"

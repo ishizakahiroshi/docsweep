@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "docsweep-frontend",
+      "name": "docSweep-frontend",
       "devDependencies": {
         "htmx.org": "^1.9.12",
         "typescript": "^5.0.0",

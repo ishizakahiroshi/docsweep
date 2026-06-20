@@ -1,6 +1,6 @@
 """Markdown → HTML 描画の出力サニタイズ（許可リスト方式・標準ライブラリのみ）。
 
-docsweep は横断スキャン対象（third-party clone を含みうる）の信頼できない .md を Web で
+docSweep は横断スキャン対象（third-party clone を含みうる）の信頼できない .md を Web で
 プレビューする。Python-Markdown は生 HTML（``<script>`` / ``onerror=`` 等）や
 ``javascript:`` URL を素通しするため、`{{ html|safe }}` 描画前に必ずここを通して
 危険なタグ・属性・スキームを落とす。
