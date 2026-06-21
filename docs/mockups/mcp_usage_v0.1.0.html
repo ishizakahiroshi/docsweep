@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<!--
+  docSweep — MCP 利用イメージ（静的モック）
+  - AI コーディングエージェント（Claude Code / Codex 等）が docSweep MCP を呼び出す典型シナリオ
+  - 左: AI とユーザーの会話、右: そのとき走った MCP ツールコールと戻り値
+  - 全てダミーデータ・操作不可
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>docSweep — MCP 利用イメージ</title>
+<style>
+  :root{
+    --bg:#fdf4fb; --card:#ffffff; --card-soft:#fbf3fd; --border:#f1e4f4;
+    --fg:#4a3a5c; --fg-dim:#8b7c9c; --fg-dim2:#c1b2cf; --accent:#a974ff;
+    --plan:#ffb13b; --stale:#ff6fa1; --pending:#b07cff; --done:#37d0a6; --fix:#ff8f6b;
+    --mcp:#5b9dff; --user:#37d0a6; --ai:#a974ff;
+    --sh-sm:0 1px 3px rgba(170,116,255,.10),0 1px 2px rgba(255,111,161,.08);
+    --sh-md:0 6px 18px rgba(170,116,255,.16),0 2px 8px rgba(255,111,161,.10);
+    --mono:ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,monospace;
+    --sans:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:linear-gradient(135deg,#fff0f8 0%,#f4ecff 50%,#eaf6ff 100%);
+    background-attachment:fixed;color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.55;}
+
+  header{padding:22px 32px 8px;display:flex;align-items:center;gap:14px;}
+  .logo{width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#ff7eb6,#a974ff);
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:17px;box-shadow:0 4px 10px rgba(255,126,182,.4);}
+  header h1{font-size:18px;margin:0;}
+  header .sub{color:var(--fg-dim);font-size:12px;font-family:var(--mono);}
+
+  .legend{padding:0 32px 14px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--fg-dim);}
+  .legend .item{display:flex;align-items:center;gap:6px;}
+  .legend .sw{width:12px;height:12px;border-radius:4px;}
+
+  .wrap{padding:0 32px 60px;display:grid;grid-template-columns:1.1fr 1fr;gap:22px;align-items:start;}
+  @media(max-width:1100px){.wrap{grid-template-columns:1fr;}}
+
+  .panel{background:rgba(255,255,255,.78);backdrop-filter:blur(10px);border:1px solid var(--border);
+    border-radius:16px;padding:18px 20px;box-shadow:var(--sh-sm);}
+  .panel h2{font-size:13px;margin:0 0 14px;color:var(--fg-dim);text-transform:uppercase;letter-spacing:.7px;font-weight:700;display:flex;align-items:center;gap:8px;}
+  .panel h2 .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);}
+
+  /* シナリオ見出し */
+  .scene{margin:30px 32px 10px;display:flex;align-items:center;gap:10px;}
+  .scene .num{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#ff7eb6,#a974ff);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:var(--sh-sm);}
+  .scene h3{margin:0;font-size:15px;}
+  .scene .tag{font-family:var(--mono);font-size:11px;color:var(--mcp);background:#eaf2ff;border:1px solid #d6e6ff;padding:2px 9px;border-radius:8px;}
+
+  /* チャット */
+  .msg{display:flex;gap:10px;margin-bottom:12px;}
+  .av{width:28px;height:28px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;}
+  .av.user{background:var(--user);}
+  .av.ai{background:var(--ai);}
+  .bub{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 13px;max-width:90%;}
+  .msg.user .bub{background:#eafaf3;border-color:#cbecde;}
+  .who{font-size:11px;color:var(--fg-dim);margin-bottom:2px;font-family:var(--mono);}
+  .bub code{background:var(--card-soft);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:12.5px;color:var(--accent);}
+
+  /* MCP ログ */
+  .call{margin-bottom:14px;}
+  .call .head{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;margin-bottom:6px;}
+  .call .arrow{color:var(--mcp);font-weight:700;}
+  .call .tool{background:#eaf2ff;border:1px solid #d6e6ff;color:#3672d8;padding:2px 9px;border-radius:7px;font-weight:600;}
+  .call .args{color:var(--fg-dim);}
+  .call pre{margin:0;background:#1f1830;color:#e8defa;font-family:var(--mono);font-size:11.5px;border-radius:9px;padding:10px 13px;overflow-x:auto;line-height:1.5;}
+  .call pre .k{color:#9dd9ff;} .call pre .s{color:#ffd58a;} .call pre .n{color:#ff9ec9;} .call pre .c{color:#7c6f97;font-style:italic;}
+  .call pre .lab-plan{color:#ffb13b;} .call pre .lab-stale{color:#ff6fa1;} .call pre .lab-pending{color:#b07cff;} .call pre .lab-done{color:#37d0a6;} .call pre .lab-fix{color:#ff8f6b;}
+
+  /* 注釈 */
+  .note{font-size:12px;color:var(--fg-dim);margin-top:8px;padding:8px 12px;background:var(--card-soft);border-left:3px solid var(--accent);border-radius:0 7px 7px 0;}
+
+  /* セットアップ枠 */
+  .setup{margin:30px 32px 0;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 22px;box-shadow:var(--sh-sm);}
+  .setup h3{margin:0 0 10px;font-size:14px;}
+  .setup pre{margin:0;background:#1f1830;color:#e8defa;font-family:var(--mono);font-size:12px;border-radius:9px;padding:12px 14px;overflow-x:auto;}
+  .setup pre .k{color:#9dd9ff;} .setup pre .s{color:#ffd58a;} .setup pre .c{color:#7c6f97;font-style:italic;}
+
+  footer{padding:30px 32px 40px;color:var(--fg-dim2);font-family:var(--mono);font-size:11px;text-align:center;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">d</div>
+  <div>
+    <h1>docSweep — MCP 利用イメージ</h1>
+    <div class="sub">AI コーディングエージェント × docSweep MCP（stdio）</div>
+  </div>
+</header>
+
+<div class="legend">
+  <div class="item"><div class="sw" style="background:var(--user);"></div>ユーザー</div>
+  <div class="item"><div class="sw" style="background:var(--ai);"></div>AI（Claude Code 等）</div>
+  <div class="item"><div class="sw" style="background:var(--mcp);"></div>MCP ツールコール</div>
+  <div class="item"><div class="sw" style="background:var(--plan);"></div>[計画]</div>
+  <div class="item"><div class="sw" style="background:var(--stale);"></div>[様子見]</div>
+  <div class="item"><div class="sw" style="background:var(--pending);"></div>[保留]</div>
+  <div class="item"><div class="sw" style="background:var(--done);"></div>[完了]</div>
+  <div class="item"><div class="sw" style="background:var(--fix);"></div>要修正</div>
+</div>
+
+<!-- ─────────── Scene 1 ─────────── -->
+<div class="scene">
+  <div class="num">1</div>
+  <h3>セッション開始：「続きやって」だけで AI が残作業を把握する</h3>
+  <span class="tag">triage</span>
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <h2><span class="dot"></span>会話</h2>
+
+    <div class="msg user">
+      <div class="av user">You</div>
+      <div>
+        <div class="who">ユーザー</div>
+        <div class="bub">続きやって。</div>
+      </div>
+    </div>
+
+    <div class="msg">
+      <div class="av ai">AI</div>
+      <div>
+        <div class="who">Claude Code</div>
+        <div class="bub">
+          docSweep の <code>triage</code> を呼んで残作業を確認します。
+        </div>
+      </div>
+    </div>
+
+    <div class="msg">
+      <div class="av ai">AI</div>
+      <div>
+        <div class="who">Claude Code</div>
+        <div class="bub">
+          要判断が 3 件・保留が 2 件あります。一番古い<br>
+          <code>docs/local/plan_files-tree-search-child-filter.md</code>（92 日経過・[様子見]）から進めますね。
+          検証が通っているので <code>[完了]</code> に昇格して archive に送りますか？
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--mcp);"></span>MCP ツールコール</h2>
+
+    <div class="call">
+      <div class="head"><span class="arrow">▸</span><span class="tool">triage</span><span class="args">()</span></div>
+<pre><span class="c">// 戻り値（抜粋）</span>
+{
+  <span class="k">"items"</span>: [
+    {
+      <span class="k">"rel"</span>: <span class="s">"docs/local/plan_files-tree-search-child-filter.md"</span>,
+      <span class="k">"title"</span>: <span class="s">"files タブ検索で子要素が出ない"</span>,
+      <span class="k">"state"</span>: <span class="lab-stale">"watching"</span>,   <span class="c">// [様子見]</span>
+      <span class="k">"type"</span>:  <span class="s">"plan"</span>,
+      <span class="k">"age_days"</span>: <span class="n">92</span>,
+      <span class="k">"actions"</span>: [<span class="s">"promote"</span>, <span class="s">"keep"</span>, <span class="s">"discard"</span>]
+    },
+    {
+      <span class="k">"rel"</span>: <span class="s">"docs/local/pending_winget-publish.md"</span>,
+      <span class="k">"state"</span>: <span class="lab-pending">"pending"</span>,
+      <span class="k">"age_days"</span>: <span class="n">40</span>,
+      <span class="k">"actions"</span>: [<span class="s">"resume"</span>, <span class="s">"keep"</span>, <span class="s">"discard"</span>]
+    }
+    <span class="c">// … 計 5 件</span>
+  ],
+  <span class="k">"needs_fix"</span>: []
+}</pre>
+    </div>
+
+    <div class="note">
+      ファイル名を覚えていなくても <b>「次にやるべき作業」が先頭</b>に出る。
+      AI は <code>actions</code> から実行可能な手だけ提案できる（不可な手は最初から選べない）。
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── Scene 2 ─────────── -->
+<div class="scene">
+  <div class="num">2</div>
+  <h3>ユーザーが OK → AI が 1 アクションで昇格＆archive</h3>
+  <span class="tag">apply</span>
+  <span class="tag">sweep</span>
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <h2><span class="dot"></span>会話</h2>
+
+    <div class="msg user">
+      <div class="av user">You</div>
+      <div>
+        <div class="who">ユーザー</div>
+        <div class="bub">うん、完了でいい。archive にも送って。</div>
+      </div>
+    </div>
+
+    <div class="msg">
+      <div class="av ai">AI</div>
+      <div>
+        <div class="who">Claude Code</div>
+        <div class="bub">
+          <code>promote</code> で <code>[様子見]</code>→<code>[完了]</code> に書き換えて、<code>sweep</code> で archive へ送ります。
+        </div>
+      </div>
+    </div>
+
+    <div class="msg">
+      <div class="av ai">AI</div>
+      <div>
+        <div class="who">Claude Code</div>
+        <div class="bub">
+          完了しました。<br>
+          <code>plan_files-tree-search-child-filter.md</code> を
+          <code>docs/local/archive/2026-06/</code> に移送しました（要判断 3→2、保留 2 のまま）。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--mcp);"></span>MCP ツールコール</h2>
+
+    <div class="call">
+      <div class="head"><span class="arrow">▸</span><span class="tool">apply</span><span class="args">(path=<span style="color:#ffd58a;">"…/plan_files-tree-search-child-filter.md"</span>, action=<span style="color:#ffd58a;">"promote"</span>, to=<span style="color:#ffd58a;">"done"</span>)</span></div>
+<pre>{
+  <span class="k">"ok"</span>: <span class="n">true</span>,
+  <span class="k">"path"</span>: <span class="s">"docs/local/plan_files-tree-search-child-filter.md"</span>,
+  <span class="k">"changed"</span>: {
+    <span class="k">"state"</span>: [<span class="lab-stale">"watching"</span>, <span class="lab-done">"done"</span>],
+    <span class="k">"label"</span>: [<span class="s">"[様子見]"</span>, <span class="s">"[完了]"</span>]
+  }
+}</pre>
+    </div>
+
+    <div class="call">
+      <div class="head"><span class="arrow">▸</span><span class="tool">sweep</span><span class="args">(dry_run=<span style="color:#ffd58a;">false</span>)</span></div>
+<pre>[
+  {
+    <span class="k">"from"</span>: <span class="s">"docs/local/plan_files-tree-search-child-filter.md"</span>,
+    <span class="k">"to"</span>:   <span class="s">"docs/local/archive/2026-06/plan_files-tree-search-child-filter.md"</span>,
+    <span class="k">"state"</span>: <span class="lab-done">"done"</span>
+  }
+]</pre>
+    </div>
+
+    <div class="note">
+      <code>apply</code> は <b>1 ファイルに閉じた</b>操作のみ受け付け、<code>sweep</code> は
+      done/discarded のみ移送する（<code>[様子見]</code> や <code>[保留]</code> は触らない）。AI が暴走しても被害が出ない設計。
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── Scene 3 ─────────── -->
+<div class="scene">
+  <div class="num">3</div>
+  <h3>横断ビュー：別プロジェクトに飛ぶ前に全体の様子を圧縮 JSON で読む</h3>
+  <span class="tag">summary</span>
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <h2><span class="dot"></span>会話</h2>
+
+    <div class="msg user">
+      <div class="av user">You</div>
+      <div>
+        <div class="who">ユーザー</div>
+        <div class="bub">他のリポジトリも含めて、今どこが詰まってる？</div>
+      </div>
+    </div>
+
+    <div class="msg">
+      <div class="av ai">AI</div>
+      <div>
+        <div class="who">Claude Code</div>
+        <div class="bub">
+          <code>summary</code> で全プロジェクトの要点だけ取りますね。
+        </div>
+      </div>
+    </div>
+
+    <div class="msg">
+      <div class="av ai">AI</div>
+      <div>
+        <div class="who">Claude Code</div>
+        <div class="bub">
+          詰まり順は <b>project-a（要判断 7・要修正 1）</b> ＞ <b>project-b（要判断 4）</b> ＞ docsweep（要判断 2）。<br>
+          まず project-a の壊れたラベル 1 件（<code>bugfix_login-flow_2026-05-12.md</code>）から直しましょうか？
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--mcp);"></span>MCP ツールコール</h2>
+
+    <div class="call">
+      <div class="head"><span class="arrow">▸</span><span class="tool">summary</span><span class="args">()</span></div>
+<pre>{
+  <span class="k">"projects"</span>: [
+    { <span class="k">"name"</span>: <span class="s">"project-a"</span>, <span class="k">"todo"</span>:<span class="n">7</span>, <span class="k">"pending"</span>:<span class="n">3</span>, <span class="k">"fix"</span>:<span class="n">1</span> },
+    { <span class="k">"name"</span>: <span class="s">"project-b"</span>, <span class="k">"todo"</span>:<span class="n">4</span>, <span class="k">"pending"</span>:<span class="n">1</span>, <span class="k">"fix"</span>:<span class="n">0</span> },
+    { <span class="k">"name"</span>: <span class="s">"docsweep"</span>,  <span class="k">"todo"</span>:<span class="n">2</span>, <span class="k">"pending"</span>:<span class="n">2</span>, <span class="k">"fix"</span>:<span class="n">0</span> }
+  ],
+  <span class="k">"oldest_todo"</span>: <span class="s">"project-a/docs/local/plan_login-flow-refactor.md (134d)"</span>,
+  <span class="k">"needs_fix"</span>: [
+    <span class="s">"project-a/docs/local/bugfix_login-flow_2026-05-12.md  (H1 ラベル欠落)"</span>
+  ]
+}</pre>
+    </div>
+
+    <div class="note">
+      <code>summary</code> は <b>AI のコンテキスト圧迫を避ける用</b>。フル INDEX が要るときは <code>index</code> を呼ぶ。
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── Setup ─────────── -->
+<div class="setup">
+  <h3>セットアップ（参考）</h3>
+<pre><span class="c"># 1. docSweep を MCP extra 付きで導入</span>
+<span class="k">pip install</span> <span class="s">'docSweep[mcp]'</span>
+
+<span class="c"># 2. Claude Code 側の MCP 設定（~/.claude/mcp.json など）</span>
+{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"docsweep"</span>: {
+      <span class="k">"command"</span>: <span class="s">"python"</span>,
+      <span class="k">"args"</span>: [<span class="s">"-m"</span>, <span class="s">"docSweep"</span>, <span class="s">"mcp"</span>]
+    }
+  }
+}
+
+<span class="c"># 3. グローバル導線を一発で（セッション開始時に triage を読ませる）</span>
+<span class="k">docsweep inject-global</span> --agent claude</pre>
+</div>
+
+<footer>
+  docSweep — mockup v0.1.0 / static · ダミーデータ
+</footer>
+
+</body>
+</html>

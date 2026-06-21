@@ -9,7 +9,7 @@ description = "Sweep, triage and archive AI coding agents' plan/bugfix/pending M
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-authors = [{ name = "ishizakahiroshi", email = "ishizakahiroshi@gmail.com" }]
+authors = [{ name = "ishizakahiroshi", email = "ishizakahiroshi.dev@gmail.com" }]
 keywords = ["claude-code", "codex", "markdown", "archive", "ai-agents", "cli", "mcp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -53,8 +53,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ishizakahiroshi/docSweep"
-Repository = "https://github.com/ishizakahiroshi/docSweep"
+Homepage = "https://github.com/ishizakahiroshi/docsweep"
+Repository = "https://github.com/ishizakahiroshi/docsweep"
 
 [project.scripts]
 docSweep = "docSweep.cli:main"

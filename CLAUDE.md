@@ -17,7 +17,7 @@
 `[廃止]` 等）を機械的に読み取り、完了を各プロジェクトの `archive/` へ自動移送し、
 陳腐化を「要判断」フラグで可視化し、複数プロジェクトを横断 INDEX で一望できるようにする。
 
-- GitHub リポジトリ名: `docSweep`
+- GitHub リポジトリ名: `docsweep`
 - 配布: `pip install docSweep` + 単体バイナリ（PyInstaller）、Win / Mac / Linux 対応
 - 設計の正本: [docs/local/plan_v0.1.0-product-requirements.md](docs/local/plan_v0.1.0-product-requirements.md)
   および [docs/local/plan_state-tag-orthogonalization.md](docs/local/plan_state-tag-orthogonalization.md)
