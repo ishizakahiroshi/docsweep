@@ -36,7 +36,145 @@ MCP クライアントへ登録する場合も、`docSweep mcp` ではなく `py
 }
 ```
 
+> 上記の `Python312` は **インストールされている Python のバージョンに置き換えてください**。
+> 確認方法: Windows は `where python`、macOS / Linux は `which python3`。
+> もしくは `python -c "import sys; print(sys.executable)"` でフルパスが取れます。
+
 `docSweep ...` は Python の Scripts/bin ディレクトリが PATH に入っている環境向けの短縮形です。
+
+## インストール後どこに置かれて、どう使えるか（OS 別）
+
+`pip install docSweep` は **Python の site-packages にライブラリを配置**します。
+別バイナリは生成されず、`python -m docSweep ...` で起動するのが標準動線です。
+
+### 共通の挙動
+
+- **`docsweep/` パッケージ本体**: 起動中の Python が解決する site-packages に展開される
+- **設定・状態**: `~/.docSweep/`（全 OS 共通の論理パス）
+- **MCP 設定**: AI クライアント（Claude Code 等）の設定ファイルに `python -m docSweep mcp` を 1 行登録するだけ
+- **PATH 設定不要**: `docSweep` を PATH に通さなくても、`python -m docSweep ...` ですべての機能にアクセス可能
+
+### Windows
+
+| 項目 | 場所 |
+|---|---|
+| Python 実体（per-user 標準インストール） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` |
+| docSweep 本体（pip install 後） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` |
+| docSweep 設定・状態 | `C:\Users\<you>\.docSweep\`（= `%USERPROFILE%\.docSweep\` = `~/.docSweep`） |
+| `docSweep` ショートカット | `...\Python3XX\Scripts\docSweep.exe`（PATH 通っていれば `docSweep` 直で起動可） |
+
+> **Windows ストア版 Python は避けることを推奨**。`%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe`
+> 経由のストア版は仮想ストア配置の制約で **`Scripts/` ディレクトリへの書き込みが弾かれる**ことがあり、
+> `pip install` 自体は通っても `docSweep.exe` ランチャーが正しく作られない／PATH に乗らないトラブルが
+> 起きます。python.org 配布のインストーラ（per-user）か pyenv-win を使うのが安全です。
+
+```powershell
+# インストール
+pip install 'docSweep[all]'
+
+# 起動（PATH を気にせず常に動く形）
+python -m docSweep triage
+python -m docSweep serve --root C:\dev
+python -m docSweep mcp
+
+# MCP 登録例（~\.claude\mcp.json）— 絶対パスにすると Python 切替時も安定
+# {
+#   "mcpServers": {
+#     "docSweep": {
+#       "command": "C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+#       "args": ["-m", "docSweep", "mcp"]
+#     }
+#   }
+# }
+# Python312 は実環境のバージョンに置換。確認: `where python` または `python -c "import sys; print(sys.executable)"`
+```
+
+### macOS
+
+| 項目 | 場所 |
+|---|---|
+| Python 実体（Homebrew 例） | `/opt/homebrew/bin/python3` (Apple Silicon) / `/usr/local/bin/python3` (Intel) |
+| docSweep 本体 | `/opt/homebrew/lib/python3.XX/site-packages/docsweep/` 等（`python3 -m site` で確認） |
+| docSweep 設定・状態 | `~/.docSweep/`（＝ `/Users/<you>/.docSweep/`） |
+| `docSweep` ショートカット | `/opt/homebrew/bin/docSweep` 等（PATH に既に入っていることが多い） |
+
+```bash
+# インストール（PEP 668 で system Python 保護がかかっていれば --user か venv 経由を選ぶ）
+pip3 install 'docSweep[all]'
+
+# 起動
+python3 -m docSweep triage
+python3 -m docSweep serve --root ~/dev
+python3 -m docSweep mcp
+
+# MCP 登録例（~/.claude/mcp.json）
+# {
+#   "mcpServers": {
+#     "docSweep": {
+#       "command": "/opt/homebrew/bin/python3",
+#       "args": ["-m", "docSweep", "mcp"]
+#     }
+#   }
+# }
+# 自環境の Python パスは `which python3` で確認
+```
+
+### Linux
+
+> **PEP 668 注意（Ubuntu 23.04+ / Debian 12+ / Fedora 38+ など）**: 近年の distro は system Python を保護しており、
+> 素の `pip install` は `error: externally-managed-environment` で拒否されます。
+> 解決策は **venv** か **`--user`** か **pipx** のいずれか（下記コマンド例の通り）。
+> `--break-system-packages` フラグでの強行は OS 管理パッケージとコンフリクトする原因になるので推奨しません。
+
+| 項目 | 場所 |
+|---|---|
+| Python 実体（distro pkg / pyenv 等） | `/usr/bin/python3` / `~/.pyenv/versions/3.XX.X/bin/python` 等 |
+| docSweep 本体 | `/usr/lib/python3.XX/site-packages/docsweep/` か `~/.local/lib/python3.XX/site-packages/docsweep/`（`--user` 利用時） |
+| docSweep 設定・状態 | `~/.docSweep/` |
+| `docSweep` ショートカット | `/usr/local/bin/docSweep` / `~/.local/bin/docSweep`（PATH に `~/.local/bin` が無い distro では PATH 設定要） |
+
+```bash
+# 多くの distro は system Python を pip で汚せない。venv か --user か pipx を推奨
+python3 -m venv ~/.venvs/docsweep && source ~/.venvs/docsweep/bin/activate
+pip install 'docSweep[all]'
+
+# または
+pip install --user 'docSweep[all]'
+
+# 起動
+python3 -m docSweep triage
+python3 -m docSweep serve --root ~/dev
+python3 -m docSweep mcp
+
+# MCP 登録例（~/.claude/mcp.json）— venv 内 Python の絶対パスを指定する
+# {
+#   "mcpServers": {
+#     "docSweep": {
+#       "command": "/home/you/.venvs/docsweep/bin/python",
+#       "args": ["-m", "docSweep", "mcp"]
+#     }
+#   }
+# }
+# 自環境の Python パスは `which python3` で確認
+```
+
+### インストール形態を選ぶ
+
+| 方式 | 向き不向き |
+|---|---|
+| **直接 `pip install`**（ユーザー Python に入れる） | 個人ツールとして気軽に使いたい時。最短手数 |
+| **venv 隔離**（`python -m venv ...` で専用環境） | 依存をユーザー Python に混ぜたくない時。MCP 設定は venv 内 Python の絶対パスを書く |
+| **pipx**（CLI として隔離 install） | docSweep CLI だけ使う時。MCP からは pipx の内部 venv Python を絶対パス指定 |
+| **`pip install -e .`**（リポを clone して editable install） | 自分で docSweep を開発・拡張する時。src 編集が即反映 |
+
+### アンインストール
+
+```bash
+pip uninstall docSweep
+# 設定を消したい場合は別途
+rm -rf ~/.docSweep                # macOS / Linux
+Remove-Item -Recurse ~/.docSweep  # Windows PowerShell
+```
 
 ## 使い方
 
