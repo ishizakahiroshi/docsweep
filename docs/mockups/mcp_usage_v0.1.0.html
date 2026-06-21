@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <!--
-  docSweep — MCP 利用イメージ（静的モック）
-  - AI コーディングエージェント（Claude Code / Codex 等）が docSweep MCP を呼び出す典型シナリオ
+  docsweep — MCP 利用イメージ（静的モック）
+  - AI コーディングエージェント（Claude Code / Codex 等）が docsweep MCP を呼び出す典型シナリオ
   - 左: AI とユーザーの会話、右: そのとき走った MCP ツールコールと戻り値
   - 全てダミーデータ・操作不可
 -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>docSweep — MCP 利用イメージ</title>
+<title>docsweep — MCP 利用イメージ</title>
 <style>
   :root{
     --bg:#fdf4fb; --card:#ffffff; --card-soft:#fbf3fd; --border:#f1e4f4;
@@ -86,8 +86,8 @@
 <header>
   <div class="logo">d</div>
   <div>
-    <h1>docSweep — MCP 利用イメージ</h1>
-    <div class="sub">AI コーディングエージェント × docSweep MCP（stdio）</div>
+    <h1>docsweep — MCP 利用イメージ</h1>
+    <div class="sub">AI コーディングエージェント × docsweep MCP（stdio）</div>
   </div>
 </header>
 
@@ -126,7 +126,7 @@
       <div>
         <div class="who">Claude Code</div>
         <div class="bub">
-          docSweep の <code>triage</code> を呼んで残作業を確認します。
+          docsweep の <code>triage</code> を呼んで残作業を確認します。
         </div>
       </div>
     </div>
@@ -323,15 +323,15 @@
 <!-- ─────────── Setup ─────────── -->
 <div class="setup">
   <h3>セットアップ（参考）</h3>
-<pre><span class="c"># 1. docSweep を MCP extra 付きで導入</span>
-<span class="k">pip install</span> <span class="s">'docSweep[mcp]'</span>
+<pre><span class="c"># 1. docsweep を MCP extra 付きで導入</span>
+<span class="k">pip install</span> <span class="s">'docsweep[mcp]'</span>
 
 <span class="c"># 2. Claude Code 側の MCP 設定（~/.claude/mcp.json など）</span>
 {
   <span class="k">"mcpServers"</span>: {
     <span class="k">"docsweep"</span>: {
       <span class="k">"command"</span>: <span class="s">"python"</span>,
-      <span class="k">"args"</span>: [<span class="s">"-m"</span>, <span class="s">"docSweep"</span>, <span class="s">"mcp"</span>]
+      <span class="k">"args"</span>: [<span class="s">"-m"</span>, <span class="s">"docsweep"</span>, <span class="s">"mcp"</span>]
     }
   }
 }
@@ -341,7 +341,7 @@
 </div>
 
 <footer>
-  docSweep — mockup v0.1.0 / static · ダミーデータ
+  docsweep — mockup v0.1.0 / static · ダミーデータ
 </footer>
 
 </body>

@@ -1,6 +1,6 @@
-"""設定の層: ① CLI フラグ > ② プロジェクト .docSweep.yaml > ③ グローバル ~/.docSweep/config.yaml。
+"""設定の層: ① CLI フラグ > ② プロジェクト .docsweep.yaml > ③ グローバル ~/.docsweep/config.yaml。
 
-グローバルだけ書けば体感 1 層。.docSweep.yaml は置いた時だけ部分上書きで効く。
+グローバルだけ書けば体感 1 層。.docsweep.yaml は置いた時だけ部分上書きで効く。
 states / types は単一正本で、ここから検出・archive 可否・概要抽出・stale 判定を導出する。
 """
 
@@ -14,12 +14,12 @@ import yaml
 
 from .states import StateModel, build_state_model
 
-GLOBAL_CONFIG_PATH = Path.home() / ".docSweep" / "config.yaml"
-PROJECT_CONFIG_NAME = ".docSweep.yaml"
+GLOBAL_CONFIG_PATH = Path.home() / ".docsweep" / "config.yaml"
+PROJECT_CONFIG_NAME = ".docsweep.yaml"
 
 # プロジェクト境界マーカー（最寄りの祖先がこれを持てばそこがプロジェクト）。
 # 決め打ちのフォルダ構成に依存せず、開発者が既に定義済みの実体で判定する。
-DEFAULT_PROJECT_MARKERS = [".git", ".docSweep.yaml", "package.json", "pyproject.toml"]
+DEFAULT_PROJECT_MARKERS = [".git", ".docsweep.yaml", "package.json", "pyproject.toml"]
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,7 @@ def load_config(
 
     # roots の決定（優先順位: 位置引数 > profile > roots）。
     # 相対パスは「それを定義した config のあるディレクトリ」基準で解決する。プロジェクト
-    # .docSweep.yaml の相対値は project_dir、グローバルの相対値は ~/.docSweep/ 基準。
+    # .docsweep.yaml の相対値は project_dir、グローバルの相対値は ~/.docsweep/ 基準。
     base_dir = project_dir or Path.cwd()
     g_profiles = g.get("profiles") or {}
     p_profiles = project_cfg.get("profiles") or {}

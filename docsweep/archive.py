@@ -35,7 +35,7 @@ def dedupe_path(dst: Path) -> Path:
 
 
 def move_log_path(root: Path) -> Path:
-    return root / ".docSweep" / MOVE_LOG_NAME
+    return root / ".docsweep" / MOVE_LOG_NAME
 
 
 def append_move_log(root: Path, entry: MoveLogEntry) -> None:

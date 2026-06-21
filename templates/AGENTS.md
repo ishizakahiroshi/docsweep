@@ -28,11 +28,11 @@ updated: 2026-06-12
 # [計画] タイトル
 ```
 
-docSweep は H1 ラベル方式・フロントマター方式・ファイル名プレフィックス方式の
+docsweep は H1 ラベル方式・フロントマター方式・ファイル名プレフィックス方式の
 いずれでも検出できます（優先順位は **frontmatter > H1 > filename**。食い違いは「要修正」フラグで可視化）。
 
 ### 参照の起点
 
 - ルール本体: `./CLAUDE.md`
 - 命名・ラベル仕様の解説: `./docs/conventions.md`
-- 設定サンプル: `./templates/.docSweep.yaml`
+- 設定サンプル: `./templates/.docsweep.yaml`

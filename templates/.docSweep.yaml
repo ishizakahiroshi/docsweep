@@ -1,7 +1,7 @@
-# docSweep プロジェクト設定サンプル（.docSweep.yaml）
+# docsweep プロジェクト設定サンプル（.docsweep.yaml）
 #
 # このファイルは「置いた時だけ効く」部分上書き層です。
-# 優先順位: ① CLI フラグ > ② このファイル > ③ グローバル ~/.docSweep/config.yaml
+# 優先順位: ① CLI フラグ > ② このファイル > ③ グローバル ~/.docsweep/config.yaml
 # 無い項目はグローバル／内蔵デフォルトを継承します。グローバルだけ書けば体感 1 層。
 
 # スキャンルート（このプロジェクトを単体で回すなら通常は不要。横断は global 側に書く）
@@ -20,7 +20,7 @@
 
 # プロジェクト境界マーカー（最寄りの祖先がこれを持てばそこがプロジェクト）。
 # フォルダ構成を決め打ちせず、開発者が既に定義済みの実体（gitリポジトリ等）で判定する。
-# 既定: [.git, .docSweep.yaml, package.json, pyproject.toml]
+# 既定: [.git, .docsweep.yaml, package.json, pyproject.toml]
 # project_markers:
 #   - .git
 #   - pyproject.toml

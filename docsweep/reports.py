@@ -15,7 +15,7 @@ def render_report(config: Config) -> str:
     idx = build_index(config)
     c = idx.counts
     lines = [
-        "docSweep レポート",
+        "docsweep レポート",
         "=" * 40,
         f"プロジェクト数: {c['projects']}   総ファイル: {c['total']}",
         f"要判断(陳腐化): {c['needs_decision']}   要修正: {c['needs_fix']}   "
@@ -28,7 +28,7 @@ def render_report(config: Config) -> str:
             lines.append(f"  {d['state_label']} {d['project']}/{Path(d['path']).name}  {d['age_days']}d")
         lines.append("")
     if c["archivable"]:
-        lines.append(f"■ archive へ運べる確定ファイル: {c['archivable']} 件（`python -m docSweep sweep` で移送）")
+        lines.append(f"■ archive へ運べる確定ファイル: {c['archivable']} 件（`python -m docsweep sweep` で移送）")
         lines.append("")
     return "\n".join(lines)
 

@@ -126,26 +126,26 @@ ${path.split("/").pop()}
         body.appendChild(mk("pre", "inj-pre", b.text));
       });
       if (pv.scope === "global" && pv.guidance) {
-        body.appendChild(mk("div", "inj-file", `▶ ${pv.guidance_path}（docSweep 所有・自動生成）:`));
+        body.appendChild(mk("div", "inj-file", `▶ ${pv.guidance_path}（docsweep 所有・自動生成）:`));
         body.appendChild(mk("pre", "inj-pre", pv.guidance));
       }
       if (pv.scope === "project") {
         body.appendChild(mk(
           "div",
           "inj-note",
-          pv.yaml_exists ? ".docSweep.yaml は既存（温存）" : ".docSweep.yaml を新規作成します"
+          pv.yaml_exists ? ".docsweep.yaml は既存（温存）" : ".docsweep.yaml を新規作成します"
         ));
       }
     } else {
       const removed = pv.removed || [];
-      body.appendChild(mk("div", "inj-note", removed.length ? `次のファイルから docSweep 管理ブロックを除去します: ${removed.join(", ")}` : "除去対象の管理ブロックは見つかりませんでした。"));
+      body.appendChild(mk("div", "inj-note", removed.length ? `次のファイルから docsweep 管理ブロックを除去します: ${removed.join(", ")}` : "除去対象の管理ブロックは見つかりませんでした。"));
       if (scope === "project") {
         const lab = mk("label", "inj-purge-lab");
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.id = "inj-purge";
         lab.appendChild(cb);
-        lab.appendChild(document.createTextNode(" .docSweep.yaml も削除する"));
+        lab.appendChild(document.createTextNode(" .docsweep.yaml も削除する"));
         body.appendChild(lab);
       }
     }

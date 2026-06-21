@@ -1,4 +1,4 @@
-"""docSweep ローカル Web サーバー（FastAPI + htmx/Jinja2）。UX 主役。
+"""docsweep ローカル Web サーバー（FastAPI + htmx/Jinja2）。UX 主役。
 
 127.0.0.1 固定・トークン付き URL。起動系（既定アプリで開く）は必ずサーバー側 API 経由。
 閲覧/プレビュー/起動の対象はスキャンルート配下に限定する（任意パス禁止）。

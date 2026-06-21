@@ -28,7 +28,7 @@ def run_review(config: Config) -> int:
     try:
         import questionary
     except ImportError:
-        print("--review には review extra が必要です: pip install 'docSweep[review]'")
+        print("--review には review extra が必要です: pip install 'docsweep[review]'")
         return 3
 
     result = run_scan(config)

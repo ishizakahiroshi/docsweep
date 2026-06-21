@@ -72,10 +72,28 @@ class StateModel:
         return self._by_key.get(key)
 
     def match(self, token: str | None) -> State | None:
-        """ラベル文字列または内部キーから state を引く（言語非依存）。"""
+        """ラベル文字列または内部キーから state を引く（言語非依存）。
+
+        1. まず完全一致（既存挙動）
+        2. ダメなら末尾一致を試す。`[v0.1.0 完了]` のようなバージョン情報付きラベルや
+           `[draft 計画]` のような注釈付きラベルを救うため。誤検出を抑えるため、
+           「末尾に alias があり、その直前が非英数字（空白等）」のときだけ採用する。
+        """
         if not token:
             return None
-        return self._by_alias.get(token.strip().lower())
+        t = token.strip().lower()
+        # 1. 完全一致
+        if t in self._by_alias:
+            return self._by_alias[t]
+        # 2. 末尾一致（長い alias から順に試して最初に当たったものを採用）
+        for alias in sorted(self._by_alias.keys(), key=len, reverse=True):
+            if not alias:
+                continue
+            if t.endswith(alias) and len(t) > len(alias):
+                boundary = t[-len(alias) - 1]
+                if not boundary.isalnum():
+                    return self._by_alias[alias]
+        return None
 
     @property
     def archivable_keys(self) -> set[str]:

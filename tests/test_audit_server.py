@@ -8,8 +8,8 @@ pytest.importorskip("fastapi")
 pytest.importorskip("markdown")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from docSweep.config import load_config  # noqa: E402
-from docSweep.server.app import create_app  # noqa: E402
+from docsweep.config import load_config  # noqa: E402
+from docsweep.server.app import create_app  # noqa: E402
 
 TOKEN = "test-token-xyz"
 
