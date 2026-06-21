@@ -9,7 +9,7 @@ export default defineConfig({
       formats: ['iife'],
       fileName: () => 'app.js',
     },
-    outDir: 'docSweep/server/static',
+    outDir: 'docsweep/server/static',
     emptyOutDir: false,
     minify: false,
   },

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <title>docSweep</title>
+  <title>docsweep</title>
   <defs>
     <linearGradient id="bg" x1="40" y1="20" x2="472" y2="492" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ff7eb6"/>

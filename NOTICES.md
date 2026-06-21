@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-docSweep 自体は MIT License で配布されています（リポジトリ直下 `LICENSE` 参照）。
+docsweep 自体は MIT License で配布されています（リポジトリ直下 `LICENSE` 参照）。
 本ファイルは **配布物に bundle されているサードパーティ・ソフトウェア** の出典と
 ライセンスを記録するためのものです。
 
@@ -36,9 +36,9 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 各パッケージは自身の LICENSE を同梱して配布されるため、本ファイルでの転載は不要です。
 
 - **PyYAML** — MIT License — 設定ファイル読み書き
-- **fastapi** / **uvicorn** / **jinja2** / **markdown** / **python-multipart** / **nh3** — Web UI（`docSweep[web]`）
-- **questionary** — 対話レビュー（`docSweep[review]`）
-- **mcp** — MCP stdio サーバー（`docSweep[mcp]`）
+- **fastapi** / **uvicorn** / **jinja2** / **markdown** / **python-multipart** / **nh3** — Web UI（`docsweep[web]`）
+- **questionary** — 対話レビュー（`docsweep[review]`）
+- **mcp** — MCP stdio サーバー（`docsweep[mcp]`）
 
 ## メンテナンス方針
 

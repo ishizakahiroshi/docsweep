@@ -16,7 +16,7 @@
 - 複数プロジェクトを横断する INDEX
 - AI エージェント向け **MCP サーバー**（`scan` / `triage` / `apply` / `sweep` / `promote` / `summary` / `index` / `inject` / `eject` ほか）
 - 個人グローバル設定への運用ルール **`inject --global`**（Claude Code / Codex 対応）
-- Web UI（FastAPI + htmx・`docSweep[web]`）
-- 対話レビュー（`--review` / `docSweep[review]`）
+- Web UI（FastAPI + htmx・`docsweep[web]`）
+- 対話レビュー（`--review` / `docsweep[review]`）
 
 [0.1.0]: https://github.com/ishizakahiroshi/docsweep/releases/tag/v0.1.0

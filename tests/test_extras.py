@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from docSweep.config import load_config
+from docsweep.config import load_config
 
 
 def _write(p: Path, text: str, age_days: int = 0) -> Path:
@@ -33,7 +33,7 @@ def _cfg(root: Path):
 # ---- INDEX (C5) ----
 
 def test_build_index_counts(ws):
-    from docSweep.index import build_index
+    from docsweep.index import build_index
 
     idx = build_index(_cfg(ws))
     assert idx.counts["projects"] == 2
@@ -43,18 +43,18 @@ def test_build_index_counts(ws):
 
 
 def test_write_index_files(ws):
-    from docSweep.index import write_index
+    from docsweep.index import write_index
 
     cfg = _cfg(ws)
     json_path, md_path = write_index(cfg)
     assert json_path.is_file() and md_path.is_file()
-    assert "docSweep INDEX" in md_path.read_text(encoding="utf-8")
+    assert "docsweep INDEX" in md_path.read_text(encoding="utf-8")
 
 
 def test_index_output_not_rescanned(ws):
-    """生成した .docSweep/INDEX.md を次のスキャンが拾わない（自己再帰の防止）。"""
-    from docSweep.engine import run_scan
-    from docSweep.index import write_index
+    """生成した .docsweep/INDEX.md を次のスキャンが拾わない（自己再帰の防止）。"""
+    from docsweep.engine import run_scan
+    from docsweep.index import write_index
 
     cfg = _cfg(ws)
     write_index(cfg)
@@ -65,7 +65,7 @@ def test_index_output_not_rescanned(ws):
 # ---- promote / reports (C3) ----
 
 def test_promote_watching(ws):
-    from docSweep.engine import promote_state
+    from docsweep.engine import promote_state
 
     cfg = _cfg(ws)
     moved = promote_state(cfg, from_state="watching", to_state="done")
@@ -76,7 +76,7 @@ def test_promote_watching(ws):
 def test_summary_json(ws):
     import json
 
-    from docSweep.reports import render_summary
+    from docsweep.reports import render_summary
 
     data = json.loads(render_summary(_cfg(ws)))
     assert "counts" in data and "pending" in data
@@ -85,7 +85,7 @@ def test_summary_json(ws):
 # ---- new (C3) ----
 
 def test_new_plan(tmp_path):
-    from docSweep.templates_gen import new_doc
+    from docsweep.templates_gen import new_doc
 
     (tmp_path / "docs" / "local").mkdir(parents=True)
     doc = new_doc("plan", "my-topic", project_dir=tmp_path)
@@ -95,7 +95,7 @@ def test_new_plan(tmp_path):
 
 
 def test_new_bugfix_dated(tmp_path):
-    from docSweep.templates_gen import new_doc
+    from docsweep.templates_gen import new_doc
 
     doc = new_doc("bugfix", "crash", project_dir=tmp_path)
     assert doc.path.name.startswith("bugfix_crash_")
@@ -107,26 +107,26 @@ def test_new_bugfix_dated(tmp_path):
 @pytest.fixture
 def manifest(tmp_path, monkeypatch):
     mp = tmp_path / "injected.json"
-    monkeypatch.setattr("docSweep.inject.MANIFEST_PATH", mp)
+    monkeypatch.setattr("docsweep.inject.MANIFEST_PATH", mp)
     return mp
 
 
 def test_inject_creates_block_and_yaml(tmp_path, manifest):
-    from docSweep.inject import inject
+    from docsweep.inject import inject
 
     proj = tmp_path / "proj"
     proj.mkdir()
     (proj / "CLAUDE.md").write_text("# My Project\n\n手書きの内容。\n", encoding="utf-8")
     r = inject(proj, preset="claude-jp")
     text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "docSweep:managed:start" in text
+    assert "docsweep:managed:start" in text
     assert "手書きの内容。" in text  # ユーザー手書き温存
-    assert (proj / ".docSweep.yaml").is_file()
+    assert (proj / ".docsweep.yaml").is_file()
     assert "CLAUDE.md" in r.written
 
 
 def test_inject_idempotent(tmp_path, manifest):
-    from docSweep.inject import inject
+    from docsweep.inject import inject
 
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -136,7 +136,7 @@ def test_inject_idempotent(tmp_path, manifest):
 
 
 def test_eject_removes_block_keeps_handwritten(tmp_path, manifest):
-    from docSweep.inject import eject, inject
+    from docsweep.inject import eject, inject
 
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -144,23 +144,23 @@ def test_eject_removes_block_keeps_handwritten(tmp_path, manifest):
     inject(proj, preset="claude-jp")
     eject(proj)
     text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "docSweep:managed" not in text
+    assert "docsweep:managed" not in text
     assert "手書き。" in text
-    assert (proj / ".docSweep.yaml").is_file()  # 既定では残す
+    assert (proj / ".docsweep.yaml").is_file()  # 既定では残す
 
 
 def test_eject_purge_removes_yaml(tmp_path, manifest):
-    from docSweep.inject import eject, inject
+    from docsweep.inject import eject, inject
 
     proj = tmp_path / "proj"
     proj.mkdir()
     inject(proj, preset="claude-jp")
     eject(proj, purge=True)
-    assert not (proj / ".docSweep.yaml").exists()
+    assert not (proj / ".docsweep.yaml").exists()
 
 
 def test_inject_handedit_detection(tmp_path, manifest):
-    from docSweep.inject import inject
+    from docsweep.inject import inject
 
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -176,7 +176,7 @@ def test_inject_handedit_detection(tmp_path, manifest):
 
 
 def test_list_injected(tmp_path, manifest):
-    from docSweep.inject import inject, list_injected
+    from docsweep.inject import inject, list_injected
 
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -190,7 +190,7 @@ def test_list_injected(tmp_path, manifest):
 
 def test_agents_md_gets_pointer_not_duplicate(tmp_path, manifest):
     """AGENTS.md は CLAUDE.md のフルブロックを複製せず、ポインタ＋注記だけを書く。"""
-    from docSweep.inject import inject
+    from docsweep.inject import inject
 
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -201,18 +201,18 @@ def test_agents_md_gets_pointer_not_duplicate(tmp_path, manifest):
     agents = (proj / "AGENTS.md").read_text(encoding="utf-8")
     # CLAUDE.md は正本（ラベル表を持つ）
     assert "| 内部状態 |" in claude
-    # AGENTS.md はポインタのみ（ラベル表を複製しない）＋ docSweep の注記＋マーカー
+    # AGENTS.md はポインタのみ（ラベル表を複製しない）＋ docsweep の注記＋マーカー
     assert "| 内部状態 |" not in agents
     assert "CLAUDE.md" in agents
-    assert "docSweep inject が自動追加・管理" in agents
-    assert "docSweep:managed:start" in agents
+    assert "docsweep inject が自動追加・管理" in agents
+    assert "docsweep:managed:start" in agents
 
 
 def test_inject_global_claude_uses_import(tmp_path, manifest, monkeypatch):
-    """Claude グローバルは @import 1 行＋注記。実体は docSweep 所有の guidance.md。"""
-    from docSweep import inject as I
+    """Claude グローバルは @import 1 行＋注記。実体は docsweep 所有の guidance.md。"""
+    from docsweep import inject as I
 
-    gpath = tmp_path / "home_docSweep" / "guidance.md"
+    gpath = tmp_path / "home_docsweep" / "guidance.md"
     monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
     target = tmp_path / "fake_claude" / "CLAUDE.md"
     target.parent.mkdir(parents=True)
@@ -222,15 +222,15 @@ def test_inject_global_claude_uses_import(tmp_path, manifest, monkeypatch):
     text = target.read_text(encoding="utf-8")
     assert "手書き。" in text  # 個人ファイルは温存
     assert f"@{I.GUIDANCE_IMPORT}" in text  # @import 1 行
-    assert "docSweep inject が自動追加・管理" in text  # 注記
-    assert "docSweep:managed:start" in text
+    assert "docsweep inject が自動追加・管理" in text  # 注記
+    assert "docsweep:managed:start" in text
     assert gpath.is_file()  # 中央ファイル生成
     assert "残作業" in gpath.read_text(encoding="utf-8")
 
 
 def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     """Codex は @import 非対応 → 導線本文をその場に展開（注記付き）。"""
-    from docSweep import inject as I
+    from docsweep import inject as I
 
     gpath = tmp_path / "g.md"
     monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
@@ -240,15 +240,15 @@ def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     I.inject_global(agent="codex", target=target)
     text = target.read_text(encoding="utf-8")
     assert "@" + I.GUIDANCE_IMPORT not in text  # import 行ではない
-    assert "-m docSweep triage" in text  # 本文がインライン（PATH 非依存）
-    assert "docSweep inject が自動追加・管理" in text
+    assert "-m docsweep triage" in text  # 本文がインライン（PATH 非依存）
+    assert "docsweep inject が自動追加・管理" in text
     # Codex はインライン展開で中央ファイルを参照しない → 孤児 guidance.md を作らない。
     assert not gpath.exists()
 
 
 def test_preview_global_central_only_for_claude(tmp_path, monkeypatch):
     """preview_global は中央ファイルの行を @import 参照する claude でだけ返す（Codex は出さない）。"""
-    from docSweep import inject as I
+    from docsweep import inject as I
 
     monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "g.md")
     claude = I.preview_global(agent="claude", target=tmp_path / "c" / "CLAUDE.md")
@@ -259,7 +259,7 @@ def test_preview_global_central_only_for_claude(tmp_path, monkeypatch):
 
 def test_inject_no_guidance_label_only(tmp_path, manifest):
     """include_guidance=False はラベル節だけ書き、導線（triage 行）を含めない（CLI --no-guidance / MCP 相当）。"""
-    from docSweep.inject import inject
+    from docsweep.inject import inject
 
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -271,7 +271,7 @@ def test_inject_no_guidance_label_only(tmp_path, manifest):
 
 def test_eject_global_removes_block_and_central(tmp_path, manifest, monkeypatch):
     """最後の global 参照を eject したら中央 guidance.md も撤去する。"""
-    from docSweep import inject as I
+    from docsweep import inject as I
 
     gpath = tmp_path / "g.md"
     monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
@@ -284,13 +284,13 @@ def test_eject_global_removes_block_and_central(tmp_path, manifest, monkeypatch)
     I.eject_global(agent="claude", target=target)
 
     text = target.read_text(encoding="utf-8")
-    assert "docSweep:managed" not in text  # フック除去
+    assert "docsweep:managed" not in text  # フック除去
     assert "手書き。" in text  # 手書き温存
     assert not gpath.exists()  # 中央ファイルも撤去
 
 
 def test_resolve_global_target_respects_codex_home(tmp_path, monkeypatch):
-    from docSweep import inject as I
+    from docsweep import inject as I
 
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "ch"))
     assert I.resolve_global_target("codex") == (tmp_path / "ch" / "AGENTS.md").resolve()
@@ -299,7 +299,7 @@ def test_resolve_global_target_respects_codex_home(tmp_path, monkeypatch):
 
 
 def test_preview_global_warns_on_override(tmp_path):
-    from docSweep import inject as I
+    from docsweep import inject as I
 
     d = tmp_path / "codexhome"
     d.mkdir()
@@ -313,7 +313,7 @@ def test_preview_global_warns_on_override(tmp_path):
 
 def test_eject_global_keeps_central_while_claude_present(tmp_path, manifest, monkeypatch):
     """Codex のみ eject しても、@import 参照する Claude が残る限り guidance.md は保持する。"""
-    from docSweep import inject as I
+    from docsweep import inject as I
 
     gpath = tmp_path / "g.md"
     monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
@@ -334,7 +334,7 @@ def test_eject_global_keeps_central_while_claude_present(tmp_path, manifest, mon
 
 
 def test_build_triage_shape(ws):
-    from docSweep.reports import build_triage
+    from docsweep.reports import build_triage
 
     t = build_triage(_cfg(ws))
     assert {"counts", "items", "needs_fix"} <= set(t)
@@ -349,8 +349,8 @@ def test_build_triage_shape(ws):
 
 def test_due_parsed_and_stored(tmp_path):
     """frontmatter due: が FileRecord.due に格納される。"""
-    from docSweep.config import load_config
-    from docSweep.engine import run_scan
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
 
     p = tmp_path / "a" / "plan_todo.md"
     p.parent.mkdir(parents=True)
@@ -367,9 +367,9 @@ def test_due_parsed_and_stored(tmp_path):
 
 def test_due_overdue_todo_flag(tmp_path):
     """past due + planned state → overdue_todo フラグが立つ。"""
-    from docSweep.config import load_config
-    from docSweep.engine import run_scan
-    from docSweep.models import Flag
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
 
     p = tmp_path / "a" / "plan_old.md"
     p.parent.mkdir(parents=True)
@@ -386,9 +386,9 @@ def test_due_overdue_todo_flag(tmp_path):
 
 def test_due_overdue_graduate_flag(tmp_path):
     """past due + watching state → overdue_graduate フラグが立つ。"""
-    from docSweep.config import load_config
-    from docSweep.engine import run_scan
-    from docSweep.models import Flag
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
 
     p = tmp_path / "a" / "plan_watch.md"
     p.parent.mkdir(parents=True)
@@ -405,9 +405,9 @@ def test_due_overdue_graduate_flag(tmp_path):
 
 def test_due_no_flag_when_done(tmp_path):
     """done 状態では due 超過フラグを立てない（archive 制御と切り離す）。"""
-    from docSweep.config import load_config
-    from docSweep.engine import run_scan
-    from docSweep.models import Flag
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
 
     p = tmp_path / "a" / "plan_done.md"
     p.parent.mkdir(parents=True)
@@ -426,9 +426,9 @@ def test_due_no_flag_when_done(tmp_path):
 
 def test_due_parse_error_flag(tmp_path):
     """不正な due 値 → due_parse_error フラグが立つ。"""
-    from docSweep.config import load_config
-    from docSweep.engine import run_scan
-    from docSweep.models import Flag
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
 
     p = tmp_path / "a" / "plan_bad.md"
     p.parent.mkdir(parents=True)
@@ -445,9 +445,9 @@ def test_due_parse_error_flag(tmp_path):
 
 def test_due_in_slim_record(tmp_path):
     """slim_record に due フィールドが含まれる。"""
-    from docSweep.config import load_config
-    from docSweep.engine import run_scan
-    from docSweep.reports import slim_record
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.reports import slim_record
 
     p = tmp_path / "a" / "plan_slim.md"
     p.parent.mkdir(parents=True)
@@ -464,8 +464,8 @@ def test_due_in_slim_record(tmp_path):
 
 def test_overdue_counts_in_index(tmp_path):
     """overdue_todo / overdue_graduate が build_index counts に反映される。"""
-    from docSweep.config import load_config
-    from docSweep.index import build_index
+    from docsweep.config import load_config
+    from docsweep.index import build_index
 
     (tmp_path / "a").mkdir(parents=True)
     (tmp_path / "a" / "plan_todo.md").write_text(
@@ -487,7 +487,7 @@ def test_mcp_build_server_smoke(tmp_path):
     import pytest
 
     pytest.importorskip("mcp")
-    from docSweep.config import load_config
-    from docSweep.mcp_server import build_server
+    from docsweep.config import load_config
+    from docsweep.mcp_server import build_server
 
     assert build_server(load_config(global_path=tmp_path / "no.yaml")) is not None

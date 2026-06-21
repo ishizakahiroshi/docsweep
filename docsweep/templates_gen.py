@@ -1,4 +1,4 @@
-"""`docSweep new <type> <topic>` のテンプレ即生成。
+"""`docsweep new <type> <topic>` のテンプレ即生成。
 
 規約（templates/CLAUDE.md）の必須セクション・H1 ラベルに沿った雛形を出す。
 配置先は docs/local/ があればそこ、無ければ docs/ 直下。

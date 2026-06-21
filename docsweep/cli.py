@@ -21,8 +21,8 @@ def _add_scope_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("paths", nargs="*", help="単発スキャンするルート（config 不要）")
     p.add_argument("--root", action="append", dest="roots", metavar="PATH", help="スキャンルート（複数可）")
     p.add_argument("--profile", help="config の named プロファイルを使う")
-    p.add_argument("--config", help="グローバル config のパス（既定 ~/.docSweep/config.yaml）")
-    p.add_argument("--project-dir", help="プロジェクト .docSweep.yaml を読むディレクトリ")
+    p.add_argument("--config", help="グローバル config のパス（既定 ~/.docsweep/config.yaml）")
+    p.add_argument("--project-dir", help="プロジェクト .docsweep.yaml を読むディレクトリ")
     p.add_argument("--lang", choices=("ja", "en"), help="表示言語")
 
 
@@ -43,8 +43,8 @@ def _build_config(args: argparse.Namespace):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="docSweep", description="AI 作業ドキュメントの横断スキャン・判定・archive 移送")
-    parser.add_argument("--version", action="version", version=f"docSweep {__version__}")
+    parser = argparse.ArgumentParser(prog="docsweep", description="AI 作業ドキュメントの横断スキャン・判定・archive 移送")
+    parser.add_argument("--version", action="version", version=f"docsweep {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     p_scan = sub.add_parser("scan", help="スキャンして一覧表示（既定）")
@@ -82,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_promote.add_argument("--dry-run", action="store_true")
     p_promote.add_argument("--json", action="store_true")
 
-    p_index = sub.add_parser("index", help="横断 INDEX（.docSweep/INDEX.md / .json）を再生成")
+    p_index = sub.add_parser("index", help="横断 INDEX（.docsweep/INDEX.md / .json）を再生成")
     _add_scope_args(p_index)
 
     p_pending = sub.add_parser("pending", help="全プロジェクトの [保留] を一発表示")
@@ -104,10 +104,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_review = sub.add_parser("review", help="対話チェックリストで選択分を archive へ一括移送")
     _add_scope_args(p_review)
 
-    p_inject = sub.add_parser("inject", help="運用ルール（管理ブロック＋.docSweep.yaml）を注入")
+    p_inject = sub.add_parser("inject", help="運用ルール（管理ブロック＋.docsweep.yaml）を注入")
     p_inject.add_argument("--project", default=".", help="注入先プロジェクト（既定 .）")
     p_inject.add_argument("--preset", help="プリセット名（claude-jp / frontmatter）")
-    p_inject.add_argument("--no-yaml", action="store_true", help=".docSweep.yaml を書かない")
+    p_inject.add_argument("--no-yaml", action="store_true", help=".docsweep.yaml を書かない")
     p_inject.add_argument("--no-guidance", action="store_true", help="導線を省きラベル節だけ注入（導線をグローバルに寄せる場合）")
     p_inject.add_argument("--global", dest="is_global", action="store_true", help="個人グローバル設定へ導線だけ注入（全プロジェクトで効く）")
     p_inject.add_argument("--agent", choices=("claude", "codex"), default="claude", help="グローバル注入先の AI ツール（--global 時）")
@@ -117,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_eject = sub.add_parser("eject", help="注入した管理ブロックを剥がす（手書きは温存）")
     p_eject.add_argument("--project", default=".", help="対象プロジェクト（既定 .）")
     p_eject.add_argument("--all", action="store_true", help="マニフェスト記録の全プロジェクト/グローバルから除去")
-    p_eject.add_argument("--purge", action="store_true", help=".docSweep.yaml も削除")
+    p_eject.add_argument("--purge", action="store_true", help=".docsweep.yaml も削除")
     p_eject.add_argument("--global", dest="is_global", action="store_true", help="グローバル設定から導線を剥がす")
     p_eject.add_argument("--agent", choices=("claude", "codex"), default="claude", help="グローバル先の AI ツール（--global 時）")
     p_eject.add_argument("--global-target", dest="global_target", help="グローバル先を明示パスで上書き")
@@ -290,7 +290,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
     )
     print(f"inject {r.project}{tag}: 書込={r.written or '-'} 温存/不変={r.skipped or '-'}")
     if r.yaml_path:
-        print(f"  .docSweep.yaml: {r.yaml_path}")
+        print(f"  .docsweep.yaml: {r.yaml_path}")
     for w in r.warnings:
         print(f"  ⚠ {w}")
     return 0
@@ -341,7 +341,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     try:
         from . import mcp_server
     except ImportError:
-        print("MCP には mcp extra が必要です: pip install 'docSweep[mcp]'", file=sys.stderr)
+        print("MCP には mcp extra が必要です: pip install 'docsweep[mcp]'", file=sys.stderr)
         return 3
     try:
         mcp_server.run(cfg)
@@ -364,7 +364,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
         from .server.app import create_app
     except ImportError:
-        print("Web UI には web extra が必要です: pip install 'docSweep[web]'", file=sys.stderr)
+        print("Web UI には web extra が必要です: pip install 'docsweep[web]'", file=sys.stderr)
         return 3
 
     # トークンはコマンドライン引数（他プロセスから見える）より環境変数を推奨。
