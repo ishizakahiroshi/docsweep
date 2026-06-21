@@ -243,6 +243,33 @@ bugfix:           [対応中] → [様子見] → [完了]
 
 ## AI エージェント連携
 
+### 推奨運用: MCP 登録せず CLI 一本化
+
+各 AI ツール（Claude Code / Codex / Cursor …）に MCP サーバーを個別登録するより、
+**CLI 経由（`python -m docsweep ...`）を AI に直接叩かせる運用**が最もシンプルです。
+
+- インストール 1 回で全 AI ツールから使える（MCP 登録は AI ツールごとに別ファイル）
+- 戻り値・triage の中身は MCP と同じ — AI から見た体験はほぼ変わらない
+- 唯一の手間は **AI 側で `python -m docsweep` を allowlist に追加** すること
+
+Claude Code の場合、`~/.claude/settings.json` の `permissions.allow` に 1 行追記:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m docsweep:*)"
+    ]
+  }
+}
+```
+
+> docsweep からは **この JSON を自動で書き換えません**（権限境界の操作になるため）。
+> ユーザーが意図的に貼り付ける運用に倒しています。MCP として使いたい場合は
+> 上の「MCP 登録例」を使ってください（こちらも自動登録はしません）。
+
+### triage の中身
+
 `python -m docsweep triage`（または MCP の `triage` ツール）は、**要判断＋保留を古い順に絞った残作業**を
 `counts` ＋ `items[]` ＋ `needs_fix[]` で返します。各 item は `rel`（相対パス）・`title`（H1）・
 `state`（ラベル）・`type`・`age_days`・`summary`・`actions`（`discard`/`keep`/`resume`/`relabel`/`promote`
