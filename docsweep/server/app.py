@@ -27,6 +27,8 @@ from ..inject import (
     preview_inject,
 )
 from ..models import Flag
+from .routes import board as board_routes
+from .routes import cards as cards_routes
 from .sanitize import sanitize_html
 from .security import resolve_under_roots
 
@@ -277,6 +279,11 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         r = eject(pdir, purge=purge, dry_run=dry_run)
         return JSONResponse({"project": r.project, "removed": r.removed,
                              "warnings": r.warnings, "purged_yaml": r.purged_yaml})
+
+    # v0.1.0 第 2 段階の主役 UI: 看板（カンバン）ボード。旧 dashboard はそのまま温存。
+    # ルータ側は ``request.app.state.docsweep`` 経由で同じ config/token を参照する。
+    app.include_router(board_routes.router)
+    app.include_router(cards_routes.router)
 
     return app
 

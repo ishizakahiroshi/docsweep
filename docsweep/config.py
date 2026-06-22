@@ -41,6 +41,13 @@ DEFAULT_TYPES: tuple[TypeDef, ...] = (
 )
 
 
+DEFAULT_DUE_OFFSET_DAYS: dict[str, int] = {
+    "plan": 7,
+    "pending": 14,
+    "bugfix_watching": 7,
+}
+
+
 @dataclass
 class Config:
     roots: list[Path] = field(default_factory=list)
@@ -52,6 +59,14 @@ class Config:
     state_model: StateModel = field(default_factory=StateModel)
     project_markers: list[str] = field(default_factory=lambda: list(DEFAULT_PROJECT_MARKERS))
     lang: str = "ja"
+    # 期日（due）まわりの設定。.docsweep.yaml の ``due:`` ブロックから上書き可。
+    # 既定: postpone_warn=3 / postpone_alert=5（services/due.py の warning しきい値）。
+    # default_offset_days は ``docsweep new`` のテンプレ生成と AI ショートカット用初期値。
+    due_warn_threshold: int = 3
+    due_alert_threshold: int = 5
+    due_default_offset_days: dict[str, int] = field(
+        default_factory=lambda: dict(DEFAULT_DUE_OFFSET_DAYS)
+    )
     # 由来トレース用（どのファイルから来たか）。
     sources: list[Path] = field(default_factory=list)
 
@@ -174,6 +189,21 @@ def load_config(
     types = _parse_types(merged.get("types")) or list(DEFAULT_TYPES)
     state_model = build_state_model(merged.get("states"))
 
+    # ``due:`` ブロック（.docsweep.yaml に書かれた場合のみ上書き）。
+    # 既定: postpone_warn=3 / alert=5 / default_offset_days=plan:7 pending:14 bugfix_watching:7。
+    due_cfg = merged.get("due") or {}
+    due_warn = int(due_cfg.get("postpone_warn_threshold", 3))
+    due_alert = int(due_cfg.get("postpone_alert_threshold", 5))
+    raw_offsets = due_cfg.get("default_offset_days") or {}
+    offsets: dict[str, int] = dict(DEFAULT_DUE_OFFSET_DAYS)
+    if isinstance(raw_offsets, dict):
+        for k, v in raw_offsets.items():
+            try:
+                offsets[str(k)] = int(v)
+            except (TypeError, ValueError):
+                # 不正な値は既定を温存（嘘の日付を量産しない方針）。
+                pass
+
     return Config(
         roots=roots,
         profiles=profiles_resolved,
@@ -184,5 +214,8 @@ def load_config(
         state_model=state_model,
         project_markers=list(merged.get("project_markers") or DEFAULT_PROJECT_MARKERS),
         lang=merged.get("lang") or "ja",
+        due_warn_threshold=due_warn,
+        due_alert_threshold=due_alert,
+        due_default_offset_days=offsets,
         sources=sources,
     )

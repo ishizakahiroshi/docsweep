@@ -104,6 +104,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("topic", help="ケバブケースの topic")
     p_new.add_argument("--title", help="H1 タイトル（既定は topic）")
     p_new.add_argument("--project-dir", default=".", help="生成先プロジェクト（既定 .）")
+    p_new.add_argument(
+        "--due",
+        help=(
+            "初期 due を YYYY-MM-DD で明示指定（省略時は .docsweep.yaml の "
+            "due.default_offset_days[plan/pending] から自動計算。bugfix は新規時に付けない）"
+        ),
+    )
+    p_new.add_argument(
+        "--no-due", action="store_true",
+        help="初期 due の自動付与を抑止する（.docsweep.yaml の offset を無視して frontmatter を入れない）",
+    )
 
     p_review = sub.add_parser("review", help="対話チェックリストで選択分を archive へ一括移送")
     _add_scope_args(p_review)
@@ -303,8 +314,21 @@ def cmd_summary(args: argparse.Namespace) -> int:
 def cmd_new(args: argparse.Namespace) -> int:
     from .templates_gen import new_doc
 
-    doc = new_doc(args.type, args.topic, project_dir=Path(args.project_dir), title=args.title)
-    print(f"生成しました: {doc.path}")
+    project_dir = Path(args.project_dir)
+    # ``.docsweep.yaml`` の ``due:`` ブロックから default_offset_days を読む。
+    # --no-due 指定時は空 dict を渡してオフセット計算自体を無効化する（嘘の日付防止）。
+    cfg = load_config(project_dir=project_dir)
+    offsets: dict[str, int] = {} if getattr(args, "no_due", False) else cfg.due_default_offset_days
+    doc = new_doc(
+        args.type, args.topic,
+        project_dir=project_dir, title=args.title,
+        due=getattr(args, "due", None),
+        offset_days=offsets,
+    )
+    if doc.due:
+        print(f"生成しました: {doc.path} (due={doc.due})")
+    else:
+        print(f"生成しました: {doc.path}")
     return 0
 
 

@@ -1,0 +1,240 @@
+/* docsweep — 看板（カンバン）ボード。
+   既存 app.css の配色を踏襲しつつ、3 列レイアウトとカードの左境界色分けを追加。
+   anti-slop: 強グラデは避ける（ヘッダ最小限のみ）・絵文字は意味のあるラベルだけ。 */
+
+:root {
+  --bg: #140f1e; --bg2: #1b1430;
+  --card: #1e1830; --card2: #271f3d; --card-soft: #241c3a;
+  --border: #342a4d; --border-soft: #2b2340;
+  --fg: #ece8f7; --fg-dim: #b4a9cf; --fg-dim2: #7d7099;
+  --accent: #b98cff; --pink: #ff7eb6;
+  --col-overdue: #ff5e7a;
+  --col-today: #ffd24a;
+  --col-active: #4ad29c;
+  --pp-warn: #ffd24a;
+  --pp-danger: #ff5e7a;
+  --due-overdue: #ff5e7a;
+  --due-today: #ffd24a;
+  --due-future: #b4a9cf;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: system-ui, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  font-size: 14px; line-height: 1.55; color: var(--fg);
+  background: var(--bg);
+  display: grid; grid-template-rows: auto 1fr; min-height: 100vh;
+}
+
+/* ===== top bar ===== */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 18px; border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand .logo {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #1a132b; font-weight: 700; font-size: 12px;
+}
+.brand .title { font-weight: 600; }
+.brand .subtitle { color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; margin-left: 4px; }
+.topbar-actions { display: flex; gap: 8px; }
+.ghost {
+  background: transparent; color: var(--fg-dim);
+  border: 1px solid var(--border); padding: 5px 10px; border-radius: 6px;
+  text-decoration: none; font-size: 12px; cursor: pointer;
+}
+.ghost:hover { color: var(--fg); border-color: var(--accent); }
+.primary {
+  background: var(--accent); color: #1a132b; border: 0;
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600;
+}
+.primary:hover { background: var(--pink); }
+
+/* ===== main layout: 左ボード / 右編集ペイン ===== */
+#board-main {
+  display: grid; grid-template-columns: 1fr 420px;
+  overflow: hidden;
+}
+#board-body {
+  overflow-y: auto; padding: 16px;
+}
+.edit-pane {
+  border-left: 1px solid var(--border);
+  background: var(--bg2);
+  overflow-y: auto;
+}
+
+/* ===== 3 列 ===== */
+.board-cols {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+  margin-bottom: 16px;
+}
+.col {
+  background: var(--card-soft); border: 1px solid var(--border-soft);
+  border-radius: 10px; padding: 10px; min-height: 200px;
+}
+.col-head {
+  font-size: 13px; font-weight: 600; margin: 0 0 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.col-count {
+  margin-left: auto; font-family: var(--mono); font-size: 11px;
+  background: var(--card); padding: 1px 8px; border-radius: 999px; color: var(--fg-dim);
+}
+.col-emoji { font-size: 14px; }
+.col-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* ===== カード ===== */
+.card {
+  background: var(--card); border: 1px solid var(--border-soft);
+  border-radius: 8px; padding: 10px 10px 8px 12px;
+  position: relative; cursor: pointer;
+  border-left-width: 4px;
+}
+.card:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.col-overdue .card { border-left-color: var(--col-overdue); background: rgba(255, 94, 122, 0.06); }
+.col-today    .card { border-left-color: var(--col-today); }
+.col-active   .card { border-left-color: var(--col-active); }
+.card.pp-warn { box-shadow: 0 0 0 1px var(--pp-warn) inset; }
+.card.pp-danger {
+  background: rgba(255, 94, 122, 0.12);
+  box-shadow: 0 0 0 1px var(--pp-danger) inset;
+}
+.card-head { display: flex; align-items: center; gap: 6px; }
+.card-name {
+  font-family: var(--mono); font-size: 12px; color: var(--fg);
+  margin-top: 4px; word-break: break-all;
+}
+.card-meta {
+  display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap;
+}
+.card-summary {
+  color: var(--fg-dim); font-size: 12px; margin-top: 4px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.card-actions {
+  margin-top: 8px; display: flex; gap: 6px;
+}
+.act {
+  flex: 1 1 auto; background: var(--card2); color: var(--fg);
+  border: 1px solid var(--border); padding: 4px 8px; border-radius: 6px;
+  font-size: 11px; cursor: pointer;
+}
+.act:hover { border-color: var(--accent); color: var(--accent); }
+.act-discard:hover { border-color: var(--col-overdue); color: var(--col-overdue); }
+
+/* ===== バッジ ===== */
+.state-badge {
+  background: var(--card2); color: var(--fg);
+  border: 1px solid var(--border); padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-family: var(--mono); cursor: pointer;
+}
+.state-planned     { color: #ffb13b; }
+.state-in-progress { color: #c08cff; }
+.state-active      { color: #c08cff; }
+.state-watching    { color: #b4a9cf; }
+.state-pending     { color: #b07cff; }
+.state-done        { color: #37d0a6; }
+.state-discarded   { color: #ff8f6b; }
+.pp-badge {
+  font-size: 11px; color: var(--fg-dim); background: var(--card2);
+  padding: 1px 6px; border-radius: 999px;
+}
+.card.pp-warn .pp-badge { color: var(--pp-warn); }
+.card.pp-danger .pp-badge { color: var(--pp-danger); font-weight: 700; }
+
+.due-badge {
+  background: var(--card2); color: var(--fg-dim);
+  border: 1px solid var(--border); padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-family: var(--mono); cursor: pointer;
+}
+.due-overdue { color: var(--due-overdue); border-color: var(--due-overdue); }
+.due-today   { color: var(--due-today); border-color: var(--due-today); }
+.due-future  { color: var(--due-future); }
+.due-none    { color: var(--fg-dim2); font-style: italic; }
+.due-parse_error { color: var(--col-overdue); }
+
+.proj-badge {
+  font-size: 11px; color: var(--fg-dim2); font-family: var(--mono);
+}
+
+/* ===== 折りたたみセクション ===== */
+.fold {
+  background: var(--card-soft); border: 1px solid var(--border-soft);
+  border-radius: 10px; margin-top: 12px; padding: 0 10px;
+}
+.fold > summary {
+  cursor: pointer; padding: 10px 4px; font-weight: 600; font-size: 13px;
+  display: flex; align-items: center; gap: 8px;
+  list-style: none;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold-count {
+  margin-left: auto; font-family: var(--mono); font-size: 11px;
+  background: var(--card); padding: 1px 8px; border-radius: 999px; color: var(--fg-dim);
+}
+.fold[open] > .col-cards { padding-bottom: 10px; }
+
+/* ===== ドラッグ&ドロップ視覚フィードバック ===== */
+.col.dnd-over, .fold.dnd-over { outline: 2px dashed var(--accent); outline-offset: -4px; }
+.card.dragging { opacity: 0.5; }
+
+/* ===== ラベルピッカー / 期日ピッカー（ポップオーバー） ===== */
+.label-picker, .due-picker {
+  position: absolute; z-index: 50;
+  background: var(--card2); border: 1px solid var(--accent); border-radius: 8px;
+  padding: 6px; display: flex; flex-direction: column; gap: 4px;
+  min-width: 140px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.lp-opt, .dp-quick {
+  background: transparent; color: var(--fg); border: 0;
+  padding: 6px 10px; border-radius: 4px; text-align: left; cursor: pointer;
+  font-size: 12px; font-family: var(--mono);
+}
+.lp-opt:hover, .dp-quick:hover { background: var(--card); color: var(--accent); }
+.dp-custom { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--fg-dim); padding: 4px 10px; }
+.dp-date { background: var(--bg); color: var(--fg); border: 1px solid var(--border); padding: 3px; }
+
+/* ===== 編集ペイン ===== */
+.edit-pane-inner { padding: 12px; display: flex; flex-direction: column; gap: 10px; height: 100%; }
+.ep-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ep-tabs { display: flex; gap: 4px; }
+.ep-tab {
+  background: var(--card); color: var(--fg-dim); border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px;
+}
+.ep-tab.on { background: var(--card2); color: var(--accent); border-bottom-color: var(--card2); }
+.ep-info { color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; word-break: break-all; }
+.ep-body { flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; }
+.ep-preview {
+  flex: 1 1 auto; overflow-y: auto; background: var(--card); border: 1px solid var(--border);
+  border-radius: 0 8px 8px 8px; padding: 12px;
+}
+.ep-preview.md { color: var(--fg); }
+.ep-preview.md h1 { font-size: 1.3rem; margin-top: 0.4em; }
+.ep-preview.md code { background: var(--card2); padding: 1px 4px; border-radius: 3px; font-family: var(--mono); }
+.ep-editor {
+  display: flex; flex-direction: column; flex: 1 1 auto; gap: 8px;
+}
+.ep-textarea {
+  flex: 1 1 auto; min-height: 320px; background: var(--card); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 0 8px 8px 8px; padding: 10px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.5; resize: vertical;
+}
+.ep-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ep-mtime { color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; }
+
+/* ===== 確認ダイアログ ===== */
+dialog.confirm {
+  background: var(--card2); color: var(--fg);
+  border: 1px solid var(--accent); border-radius: 10px;
+  padding: 0; max-width: 360px;
+}
+dialog.confirm::backdrop { background: rgba(0, 0, 0, 0.45); }
+.confirm-inner { padding: 16px; display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.confirm-inner menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 0; }
