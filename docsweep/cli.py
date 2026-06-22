@@ -65,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_sweep = sub.add_parser("sweep", help="--auto 相当: done/discarded を archive へ自動移送")
     _add_scope_args(p_sweep)
+    p_sweep.add_argument("--project", help="対象プロジェクトを絞る（promote と対称）")
     p_sweep.add_argument("--dry-run", action="store_true", help="移送内容を出力するだけ")
     p_sweep.add_argument("--json", action="store_true")
 
@@ -183,9 +184,38 @@ def cmd_apply(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_moves_summary(moved, cfg, *, action: str, dry_run: bool) -> None:
+    """移送/昇格ログの末尾に「合計・状態別・プロジェクト別」を出す。
+
+    フラット出力では俯瞰できないため、走査直後に確認用の集計をまとめて見せる。
+    JSON 出力には混ぜない（機械可読を汚さない）。``action`` は "移送" / "昇格" 等の
+    呼び出し側の動作語。dry-run 時は "予定" を付ける。
+    """
+    if not moved:
+        return
+    from collections import Counter
+
+    sm = cfg.state_model
+    lang = cfg.lang
+
+    def _label(k: str | None) -> str:
+        s = sm.by_key(k) if k else None
+        return s.label(lang) if s else (k or "(none)")
+
+    by_state = Counter(_label(m.status) for m in moved)
+    by_proj = Counter(m.project for m in moved)
+    verb = f"{action}予定" if dry_run else action
+    print()
+    print(f"{verb}合計: {len(moved)} 件 ({len(by_proj)} プロジェクト)")
+    print("  状態別: " + " / ".join(f"{k} {v}" for k, v in by_state.most_common()))
+    print("  プロジェクト別:")
+    for proj, n in by_proj.most_common():
+        print(f"    {proj}: {n} 件")
+
+
 def cmd_sweep(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
-    moved = auto_sweep(cfg, dry_run=args.dry_run)
+    moved = auto_sweep(cfg, project=getattr(args, "project", None), dry_run=args.dry_run)
     if not args.dry_run and cfg.roots:
         from .index import write_index
 
@@ -198,6 +228,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
             print("自動移送対象なし（done/discarded のラベル確定ファイルが無い）")
         for m in moved:
             print(f"{verb}: {m.src} -> {m.dst}")
+        _print_moves_summary(moved, cfg, action="移送", dry_run=args.dry_run)
     return 0
 
 
@@ -217,6 +248,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
             print(f"昇格対象なし（{args.state} のファイルが無い）")
         for m in moved:
             print(f"昇格→archive: {m.src} -> {m.dst}")
+        _print_moves_summary(moved, cfg, action="昇格", dry_run=args.dry_run)
     return 0
 
 

@@ -241,6 +241,48 @@ bugfix:           [対応中] → [様子見] → [完了]
 優先順位 **① CLI フラグ > ② プロジェクト `.docsweep.yaml` > ③ グローバル `~/.docsweep/config.yaml`**。
 グローバルだけ書けば体感 1 層。`.docsweep.yaml` は置いた時だけ部分上書きで効きます。
 
+### よくある 3 パターン（グローバル `~/.docsweep/config.yaml`）
+
+プロジェクト境界は `.git` / `package.json` / `pyproject.toml` 等の実体マーカーで自動判定するので、
+**root の中で各プロジェクトがどの深さにあっても OK**（フォルダ階層を決め打ちしない）。
+
+**A. 1 つの親ディレクトリ以下を丸ごと管理**
+
+```yaml
+roots:
+  - ~/dev
+```
+
+**B. 飛び飛びの複数ディレクトリを管理**
+
+```yaml
+roots:
+  - ~/dev/github/public
+  - ~/dev/works/clientA
+  - ~/dev/works/clientB
+  - /d/sandbox/experiments
+```
+
+**C. 用途別に切り替えたい（profiles）**
+
+```yaml
+roots:
+  - ~/dev/github/public        # 既定（無引数）で見る範囲
+profiles:
+  work:                         # python -m docsweep triage --profile work
+    - ~/dev/works/clientA
+    - ~/dev/works/clientB
+  all:                          # python -m docsweep triage --profile all
+    - ~/dev/github/public
+    - ~/dev/works
+```
+
+**一回きりの単発スキャン**は config を書かずに位置引数で指定もできます:
+
+```bash
+python -m docsweep triage ~/dev/foo ~/projects/bar
+```
+
 ## AI エージェント連携
 
 ### 推奨運用: MCP 登録せず CLI 一本化
