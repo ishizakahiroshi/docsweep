@@ -109,12 +109,21 @@ def _project_dir_for(doc: ScannedDoc, config: Config) -> tuple[Path, Path]:
     return (project_dir, project_dir)
 
 
-def auto_sweep(config: Config, *, dry_run: bool = False) -> list[MoveLogEntry]:
-    """--auto: auto_move 対象を各プロジェクトの archive/ へ移送。watching は触らない。"""
+def auto_sweep(
+    config: Config, *, project: str | None = None, dry_run: bool = False,
+) -> list[MoveLogEntry]:
+    """--auto: auto_move 対象を各プロジェクトの archive/ へ移送。watching は触らない。
+
+    ``project`` を指定すると、その名前のプロジェクトに属する対象だけを処理する
+    （個別プロジェクトの gitignore で docs/local が除外される問題を回避するため、
+    スキャンルートは config のまま・出力だけ後段で絞る）。
+    """
     result = run_scan(config)
     moved: list[MoveLogEntry] = []
     for doc in result.auto_movable():
         rec = doc.record
+        if project and rec.project != project:
+            continue
         project_dir, root = _project_dir_for(doc, config)
         archive_dir = _archive_dir_for(doc, config)
         dst = archive_file(
