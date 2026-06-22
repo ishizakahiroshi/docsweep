@@ -321,6 +321,40 @@ Claude Code の場合、`~/.claude/settings.json` の `permissions.allow` に 1 
 セッション開始時に AI へ自動でこの残作業を渡すには `python -m docsweep inject --global`（Claude は `@import`、
 Codex はインラインで「作業前に triage を読む」導線を個人グローバル設定へ一度だけ注入）。
 
+### 特定プロジェクトだけ調べたい時（`--project`）
+
+複数 root を横断管理していると、AI からの自然言語クエリは「全体」より
+「`<このリポ>` だけ」になりがちです。`sweep` / `promote` / `triage` / `scan` / `summary` は
+共通の `--project <name>` フラグでプロジェクト名（境界フォルダ名）に絞り込めます。
+
+```bash
+# 「many-ai-cli の archive 移送対象いくつ?」
+python -m docsweep sweep --dry-run --project many-ai-cli
+
+# 「docsweep プロジェクトの様子見昇格候補は?」
+python -m docsweep promote --dry-run --project docsweep
+
+# 「many-ai-cli の残作業ある?」
+python -m docsweep triage --project many-ai-cli
+
+# 「docsweep プロジェクトの全件だけ JSON で吐いて」
+python -m docsweep scan --all --project docsweep --json
+
+# 「docsweep プロジェクトの俯瞰を圧縮 JSON で」
+python -m docsweep summary --project docsweep
+```
+
+> 絞り込みは **スキャンルートを動かさず後段でフィルタ** します。各プロジェクトの `.gitignore`
+> が `docs/local/` を除外していても、グローバル config の `roots:` から見えていれば対象になります
+> （位置引数 `.` で当該プロジェクトを単発スキャンすると `.gitignore` で除外されて 0 件になる
+> 落とし穴を回避するための設計）。
+>
+> `triage` / `summary` の `counts` も per-project スコープに揃えて返します（フィルタ後の
+> `items` 数と一致するので、AI/人間どちらが見ても齟齬がありません）。
+
+MCP 経由でも同じく引数で絞れます。例: `triage(project="many-ai-cli")` / `summary(project="docsweep")` /
+`sweep(project="many-ai-cli", dry_run=True)`。CLI と MCP で引数名・挙動を完全に揃えています。
+
 詳細は [docs/conventions.md](docs/conventions.md) と
 [templates/AGENT_GUIDE.md](templates/AGENT_GUIDE.md) を参照してください。
 

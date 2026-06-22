@@ -66,12 +66,57 @@ def slim_record(d: dict) -> dict:
     }
 
 
-def build_triage(config: Config) -> dict:
+def _filter_by_project(items: list[dict], project: str | None) -> list[dict]:
+    """``project`` 指定時に当該プロジェクト名のレコードへ絞り込む（後段フィルタ）。
+
+    スキャンルートを動かさないのは ``auto_sweep`` / ``promote_state`` と同じ方針。
+    個別プロジェクトの ``.gitignore`` で ``docs/local/`` が除外される問題を避ける。
+    """
+    if not project:
+        return items
+    return [d for d in items if d.get("project") == project]
+
+
+def _scoped_counts(idx, project: str | None) -> dict:
+    """``project`` 指定時は当該プロジェクトのレコードだけで counts を再集計する。
+
+    フィルタ後の items 数と counts がズレると AI/人間どちらにも混乱を招くため、
+    items と counts は同じスコープで揃える（``projects`` は per-project スコープでは
+    自明に 1 になるので 1 を返す）。
+    """
+    if not project:
+        return idx.counts
+    nd = _filter_by_project(idx.needs_decision, project)
+    nf = _filter_by_project(idx.needs_fix, project)
+    pn = _filter_by_project(idx.pending, project)
+    ot = _filter_by_project(idx.overdue_todo, project)
+    og = _filter_by_project(idx.overdue_graduate, project)
+    total = sum(len(_filter_by_project(v, project)) for v in idx.by_state.values())
+    archivable = sum(
+        1 for recs in idx.by_state.values() for d in recs
+        if d.get("project") == project and d.get("auto_movable") and d.get("archivable")
+    )
+    return {
+        "total": total,
+        "projects": 1 if total else 0,
+        "needs_decision": len(nd),
+        "needs_fix": len(nf),
+        "pending": len(pn),
+        "archivable": archivable,
+        "overdue_todo": len(ot),
+        "overdue_graduate": len(og),
+    }
+
+
+def build_triage(config: Config, *, project: str | None = None) -> dict:
     """AI が「次に何を続ければいいか」を判断するための残作業ビュー。
 
     summary が横断 INDEX 全体の俯瞰なのに対し、triage はそこから *いま着手すべき
     生きた残作業だけ* を行動可能な粒度に絞った入口。既定フィルタ＝要判断（陳腐化）＋
     保留、並び順は古い順（放置されたものを上に）。壊れたラベル（要修正）は別枠で添える。
+
+    ``project`` を指定すると当該プロジェクト名に絞った subset を返す
+    （``sweep`` / ``promote`` と同じ後段フィルタパターン）。
     """
     idx = build_index(config)
     # 要判断＋保留をマージ（同一ファイルが両方に出ても path で一意化）。
@@ -79,22 +124,28 @@ def build_triage(config: Config) -> dict:
     for d in idx.needs_decision + idx.pending:
         seen[d["path"]] = d
     items = sorted(seen.values(), key=lambda d: d["age_days"], reverse=True)
+    items = _filter_by_project(items, project)
+    needs_fix = _filter_by_project(idx.needs_fix, project)
     return {
-        "counts": idx.counts,
+        "counts": _scoped_counts(idx, project),
         "items": [slim_record(d) for d in items],
-        "needs_fix": [slim_record(d) for d in idx.needs_fix],
+        "needs_fix": [slim_record(d) for d in needs_fix],
     }
 
 
-def render_summary(config: Config) -> str:
-    """AI に渡す圧縮 JSON（INDEX 全体を要点だけに絞った俯瞰）。"""
+def render_summary(config: Config, *, project: str | None = None) -> str:
+    """AI に渡す圧縮 JSON（INDEX 全体を要点だけに絞った俯瞰）。
+
+    ``project`` を指定するとそのプロジェクトの subset 版を返す
+    （他コマンドと引数を揃え、AI が当該プロジェクトを深掘りする際に使う）。
+    """
     idx = build_index(config)
     payload = {
-        "counts": idx.counts,
-        "needs_decision": [slim_record(d) for d in idx.needs_decision],
-        "pending": [slim_record(d) for d in idx.pending],
-        "needs_fix": [slim_record(d) for d in idx.needs_fix],
-        "overdue_todo": [slim_record(d) for d in idx.overdue_todo],
-        "overdue_graduate": [slim_record(d) for d in idx.overdue_graduate],
+        "counts": _scoped_counts(idx, project),
+        "needs_decision": [slim_record(d) for d in _filter_by_project(idx.needs_decision, project)],
+        "pending": [slim_record(d) for d in _filter_by_project(idx.pending, project)],
+        "needs_fix": [slim_record(d) for d in _filter_by_project(idx.needs_fix, project)],
+        "overdue_todo": [slim_record(d) for d in _filter_by_project(idx.overdue_todo, project)],
+        "overdue_graduate": [slim_record(d) for d in _filter_by_project(idx.overdue_graduate, project)],
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
