@@ -1,0 +1,25 @@
+{# 右ペイン: 本文プレビュー / 編集（textarea + Ctrl+S + mtime トラッキング）。
+   カードクリックで edit.js が GET /preview を呼び content を流し込む。
+   保存は POST /api/cards/content（mtime 不一致なら 409 → 警告ダイアログ）。 #}
+<div class="edit-pane-inner">
+  <div class="ep-head">
+    <div class="ep-tabs" role="tablist">
+      <button type="button" class="ep-tab on" data-tab="preview" role="tab" aria-selected="true">プレビュー</button>
+      <button type="button" class="ep-tab" data-tab="edit" role="tab" aria-selected="false">編集</button>
+    </div>
+    <div class="ep-info">
+      <span class="ep-path" data-bind="path">（カードを選択してください）</span>
+    </div>
+  </div>
+
+  <div class="ep-body">
+    <article class="ep-preview md" data-tabpanel="preview"></article>
+    <form class="ep-editor" data-tabpanel="edit" hidden>
+      <textarea name="content" class="ep-textarea" rows="24" spellcheck="false" aria-label="本文編集"></textarea>
+      <div class="ep-actions">
+        <span class="ep-mtime" data-bind="mtime"></span>
+        <button type="button" class="primary" data-action="save-content">保存 (Ctrl+S)</button>
+      </div>
+    </form>
+  </div>
+</div>

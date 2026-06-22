@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>docsweep — 看板（カンバン）</title>
+  <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/board.css">
+</head>
+<body data-token="{{ token }}" data-lang="{{ lang }}">
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">DS</span>
+    <span class="title">docsweep</span>
+    <span class="subtitle">看板（カンバン） v{{ data.version }}</span>
+  </div>
+  <div class="topbar-actions">
+    <button type="button" class="ghost" data-action="reload-board">再スキャン</button>
+    <a class="ghost" href="/?token={{ token }}">受信トレイへ</a>
+  </div>
+</header>
+
+<main id="board-main">
+  <section id="board-body">
+    {% include "_board_body.html" %}
+  </section>
+  <aside id="edit-pane" class="edit-pane" aria-live="polite">
+    {% include "_edit_pane.html" %}
+  </aside>
+</main>
+
+<dialog id="confirm-dialog" class="confirm">
+  <form method="dialog" class="confirm-inner">
+    <p id="confirm-message">本当に実行しますか？</p>
+    <menu>
+      <button value="cancel" class="ghost">キャンセル</button>
+      <button value="ok" class="primary">実行</button>
+    </menu>
+  </form>
+</dialog>
+
+<script src="/static/htmx.min.js"></script>
+<script src="/static/keymap.js"></script>
+<script src="/static/dnd.js"></script>
+<script src="/static/edit.js"></script>
+</body>
+</html>

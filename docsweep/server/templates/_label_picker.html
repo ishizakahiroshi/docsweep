@@ -1,0 +1,12 @@
+{# ラベル変更セグメントコントロール（バッジクリック・数字キー 1-6 で表示）。
+   ファイル種別による許可ラベルのバリデーションはサーバー側 update_status が StatusValidationError で弾く。
+   ここでは UI として全候補を出し、不正組み合わせは 400 として警告ダイアログに回す。 #}
+<div class="label-picker" role="listbox" aria-label="ラベルを選択">
+  <button type="button" role="option" class="lp-opt" data-new-state="planned"     data-key="1">1 [計画]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="in-progress" data-key="2">2 [実行中]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="active"      data-key="2">2 [対応中]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="watching"    data-key="3">3 [様子見]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="pending"     data-key="4">4 [保留]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="done"        data-key="5">5 [完了]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="discarded"   data-key="6">6 [廃止]</button>
+</div>

@@ -5,6 +5,46 @@
 
 ## [Unreleased]
 
+### Added — 看板方式 Web UI と MCP 書き込み口（親 plan `kanban-board-write-ops`）
+
+- frontmatter `due:` の書き込み側基盤を実装
+  - `docsweep/atomic.py`: アトミック書き込み（`os.replace` 経由）+ 楽観ロック（`expected_mtime`）+ バックアップ（`.docsweep/backup/`・30 日保持・自動掃除）
+  - `docsweep/state.py`: `.docsweep/state.json`（`postpone_count` / `due_history` / `label_history`・v1 スキーマ）の読み書き層
+  - 軸 1（ラベル）の遷移時に `postpone_count` を自動リセット（`[計画]→[実行中]` `[実行中]→[様子見]` `[対応中]→[様子見]` `[保留]→[計画]/[実行中]`）
+- 書き込み API の services 層（CLI / MCP / Web UI が共通で呼ぶ単一実装）
+  - `docsweep/services/due.py`: `update_due` — frontmatter `due:` 書き換え + `postpone_count` インクリメント + 相対指定（`today` / `+1d` / `+1w` / `+1m`）解釈
+  - `docsweep/services/status.py`: `update_status` — H1 ラベル書き換え + ファイル種別×ラベル組み合わせバリデーション + 自動リセット連携
+  - `docsweep/services/content.py`: `update_content` — 本文全置換（楽観ロック必須）
+  - `docsweep/services/archive.py`: `archive_done` — `[完了]` / `[廃止]` のみ移送（`[様子見]` は明示指定でも拒否・寝かせを守る）
+- 配布規約 `templates/CLAUDE.md` と運用解説 `docs/conventions.md` に「期日（due）と看板方式」セクションを追加
+- 配布設定サンプル `templates/.docsweep.yaml` に `due:` / `web_ui:` セクションのコメント例を追加
+- `templates/AGENTS.md` の frontmatter 例に `due:` を追記
+- Web UI に **看板（カンバン）ボード**を新設（`/board`・FastAPI + htmx）
+  - 3 列レイアウト（🔴やり忘れ / 🟡今日 / 🟢実行中）+ 折りたたみ（▼卒業判定 / ▶未来期日 / ▶期日未設定 / ▶archive 候補）
+  - カード UI（ラベルバッジ / 期日バッジ / 先送り回数バッジ + 3 ボタン）
+  - ラベル変更（バッジクリック → セグメント、数字キー 1-6）
+  - 期日変更（クイック +1d / +3d / +1w / +1m / 任意、キーボード d / w / m）
+  - 本文編集ペイン（textarea + Ctrl+S + mtime 競合検出 → 409 Conflict）
+  - 列ドラッグ&ドロップは**期日操作のみ**（ラベル変更には使わない・直交軸を守る）
+  - 旧 dashboard（`/`）は無改変で残存
+- MCP **書き込みツール 4 種**を追加（`docsweep mcp` 経由で AI から呼べる）
+  - `update_status(path, new_status, expected_mtime?)` — H1 ラベル書き換え + ファイル種別×ラベル検証 + `postpone_count` 自動リセット + `[完了]` / `[廃止]` で archive 自動連携
+  - `update_due(path, new_due, reason?, expected_mtime?)` — frontmatter `due:` 書き換え + 相対指定（`today` / `+1d` / `+1w` / `+1m`）解釈 + `postpone_count` インクリメント + しきい値 warning
+  - `update_content(path, new_content, expected_mtime?)` — 本文全置換 + 楽観ロック + H1 欠落警告
+  - `archive_done(paths?, auto?)` — `[完了]` / `[廃止]` のみ archive 移送（`[様子見]` は明示指定でも拒否）
+- 既存 MCP `triage` の戻り値スキーマを拡張（旧クライアント非破壊）
+  - 各 item に `due` / `due_raw` / `due_parse_error` / `overdue_kind` / `overdue_days` / `postpone_count` / `label_history_count` を追加
+  - `allowed_actions` 集合に `update_due` / `update_content` を追加
+  - `summary` ブロックに `overdue_todo` / `today` / `overdue_graduate` / `future` / `missing_due` のカウントを追加
+- パス境界チェック層を新設（`docsweep/security/path.py`）— スキャンルート配下のみ書き込み可・`realpath` 解決後にスコープ境界チェック・`..` 拒否・`.md` ファイルのみ
+- 不変条件のホワイトボックステストを追加（`tests/test_invariants.py`）— 物理削除口の不存在を AST レベルで担保
+- `Config` に `due:` セクションを追加（`due_warn_threshold` / `due_alert_threshold` / `due_default_offset_days`）— `.docsweep.yaml` の `due:` ブロックから上書き可能
+- Web UI / MCP の `update_due` がしきい値を Config から受け取るように配線（`postpone_warn_threshold` / `postpone_alert_threshold` が実際に効くようになった）
+- `docsweep new <type> <topic>` で frontmatter `due:` 初期値を自動付与（`Config.due_default_offset_days` から `today + N` を計算）
+  - `plan` は既定 today+7、`pending` は today+14、`bugfix` は新規時に付けない（`[様子見]` 遷移時に追記する設計）
+  - `--due YYYY-MM-DD` で明示指定、`--no-due` で自動付与を抑止
+- Web UI 編集ペイン用に `GET /api/cards/raw` を新規追加 — 編集 textarea を生 MD で初期化（プレビュー HTML のテキスト化では Markdown 構造が壊れるため）
+
 ### Changed
 
 - `docsweep new` で生成される plan / bugfix / pending テンプレから `> 最終更新:` 行を撤去
@@ -12,6 +52,14 @@
 - 配布規約 `templates/CLAUDE.md` と運用解説 `docs/conventions.md` からも
   `> 最終更新: ...` 行の指示・記述を撤去（書く側と読む側を整合）
 - 自リポ `CLAUDE.md` 先頭の `> 最終更新:` 行を撤去（ドッグフーディング整合）
+
+### 不変条件（新機能でも厳守）
+
+- 物理削除の口を実装として持たない（最悪でも `archive_done` 止まり・復元可能）
+- `[様子見]` は明示指定でも archive されない（寝かせを守る）
+- 期日切れだけでは絶対に `[廃止]` 化しない（AI / 人の明示意図が必須）
+- Web UI に新しい特権を持たせない（CLI / MCP と同じ services 関数を呼ぶ）
+- バインド `127.0.0.1` 固定・スキャンルート配下のみ書き込み可・`realpath` 解決後にスコープ境界チェック
 
 `docsweep/detect.py` の `>` 引用行スキップロジックと
 `tests/test_detect.py` の後方互換 fixture は残置（過去ファイルとの互換のため）。

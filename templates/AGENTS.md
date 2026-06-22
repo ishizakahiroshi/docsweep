@@ -23,6 +23,7 @@ front matter のほうが扱いやすい環境では、H1 ラベルに加えて 
 status: planned    # planned | in-progress | watching | done | discarded | pending
 type: plan         # plan | bugfix | pending
 updated: 2026-06-12
+due: 2026-06-29    # 任意・期日（YYYY-MM-DD 厳格マッチ）。看板ボードと先送り管理の対象になる
 ---
 
 # [計画] タイトル

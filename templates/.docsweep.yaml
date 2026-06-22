@@ -40,6 +40,23 @@
 #     archive: true
 #     auto_move: true
 
+# --- 期日（due）と看板方式 ---
+# frontmatter に `due: YYYY-MM-DD` を入れたファイルだけが看板ボードと先送り管理の対象になる。
+# 既存 MD を遡及書き換えしないために、未記入 = 締切管理対象外として温存する設計。
+# due:
+#   # 新規生成時に AI が自動付与する初期 due（今日 + N 日）。AI 側のショートカット用ヒント。
+#   default_offset_days:
+#     plan: 7
+#     pending: 14
+#     bugfix_watching: 7
+#   # 先送り回数のしきい値（Web UI のカード色分け）
+#   postpone_warn_threshold: 3    # 黄色化
+#   postpone_alert_threshold: 5   # 赤色化・廃止候補色
+
+# --- Web UI 看板 ---
+# web_ui:
+#   keyboard_shortcuts_enabled: true   # 数字キー (1-6) でラベル変更、d/w/m で +1d/+1w/+1m
+
 # --- type 定義: plan/bugfix/pending は内蔵。任意の種別を追加できる ---
 # types:
 #   - name: plan
