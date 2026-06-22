@@ -3,6 +3,19 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
+## [Unreleased]
+
+### Changed
+
+- `docsweep new` で生成される plan / bugfix / pending テンプレから `> 最終更新:` 行を撤去
+  （`st_mtime` ベースで判定しており重複情報だったため）
+- 配布規約 `templates/CLAUDE.md` と運用解説 `docs/conventions.md` からも
+  `> 最終更新: ...` 行の指示・記述を撤去（書く側と読む側を整合）
+- 自リポ `CLAUDE.md` 先頭の `> 最終更新:` 行を撤去（ドッグフーディング整合）
+
+`docsweep/detect.py` の `>` 引用行スキップロジックと
+`tests/test_detect.py` の後方互換 fixture は残置（過去ファイルとの互換のため）。
+
 ## [0.1.0] - 2026-06-21
 
 初回リリース。AI コーディングツール（Claude Code / Codex 等）が生成する
