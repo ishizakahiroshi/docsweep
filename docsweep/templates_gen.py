@@ -11,13 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-_WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]
-
-
-def _now_meta() -> str:
-    d = datetime.now().astimezone()
-    return f"{d.strftime('%Y-%m-%d')}({_WEEKDAYS[d.weekday()]}) {d.strftime('%H:%M:%S')}"
-
 
 def _today() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d")
@@ -42,7 +35,6 @@ def _placement_dir(project_dir: Path) -> Path:
 def _plan_body(title: str) -> str:
     return (
         f"# [計画] {title}\n\n"
-        f"> 最終更新: {_now_meta()}\n\n"
         "## context配分\n\n"
         "| C | 内容 | 種別 |\n|---|---|---|\n| C1 | <TODO> | plan |\n\n"
         "## 概要\n\n<TODO: 何をしようとしているか>\n"
@@ -52,7 +44,6 @@ def _plan_body(title: str) -> str:
 def _bugfix_body(title: str) -> str:
     return (
         f"# [対応中] {title}\n\n"
-        f"> 最終更新: {_now_meta()}\n\n"
         "## 症状\n\n<TODO>\n\n## 根本原因\n\n<TODO>\n\n## 修正内容\n\n<TODO>\n\n"
         "## 変更ファイル\n\n<TODO>\n\n## 検証\n\n<TODO>\n\n## 備忘\n\n<TODO>\n"
     )
@@ -61,7 +52,6 @@ def _bugfix_body(title: str) -> str:
 def _pending_body(title: str) -> str:
     return (
         f"# [保留] {title}\n\n"
-        f"> 最終更新: {_now_meta()}\n\n"
         "## 概要\n\n<TODO: 何を止めたか>\n\n## 保留理由\n\n<TODO>\n\n## 着手条件\n\n- <TODO>\n"
     )
 

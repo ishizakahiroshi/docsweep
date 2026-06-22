@@ -35,16 +35,25 @@ def build_server(config: Config):
         return next((d for d in result.docs if d.record.path == target), None)
 
     @mcp.tool()
-    def scan() -> list[dict]:
-        """全スキャンルートを走査し、各ファイルの状態・経過日数・flags・allowed_actions を返す。"""
-        return [r.to_dict() for r in run_scan(config).records]
+    def scan(project: str | None = None) -> list[dict]:
+        """全スキャンルートを走査し、各ファイルの状態・経過日数・flags・allowed_actions を返す。
+
+        ``project`` を指定するとそのプロジェクト名に絞る（sweep/promote と対称）。
+        """
+        records = run_scan(config).records
+        if project:
+            records = [r for r in records if r.project == project]
+        return [r.to_dict() for r in records]
 
     @mcp.tool()
-    def triage() -> dict:
+    def triage(project: str | None = None) -> dict:
         """セッション開始時の残作業ビュー。要判断＋保留を古い順に絞り、各項目に rel/title/
         state/type/age_days と機械実行できる actions を付けて返す（ファイル名を思い出さなくても
-        「次にやるべき作業」が先頭に出る）。壊れたラベルは needs_fix に別枠で添える。"""
-        return build_triage(config)
+        「次にやるべき作業」が先頭に出る）。壊れたラベルは needs_fix に別枠で添える。
+
+        ``project`` を指定すると当該プロジェクトの subset 版を返す（counts も per-project に揃う）。
+        """
+        return build_triage(config, project=project)
 
     @mcp.tool()
     def apply(path: str, action: str, to: str | None = None) -> dict:
@@ -85,9 +94,12 @@ def build_server(config: Config):
         return build_index(config).counts
 
     @mcp.tool()
-    def summary() -> str:
-        """AI に渡す圧縮 JSON（要判断・保留・要修正を要点だけに絞った INDEX）。"""
-        return render_summary(config)
+    def summary(project: str | None = None) -> str:
+        """AI に渡す圧縮 JSON（要判断・保留・要修正を要点だけに絞った INDEX）。
+
+        ``project`` を指定すると当該プロジェクトの subset 版を返す。
+        """
+        return render_summary(config, project=project)
 
     @mcp.tool()
     def inject(project: str, preset: str | None = None, include_guidance: bool = True,

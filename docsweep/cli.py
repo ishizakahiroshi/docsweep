@@ -51,10 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
     _add_scope_args(p_scan)
     p_scan.add_argument("--json", action="store_true", help="機械可読 JSON で出力")
     p_scan.add_argument("--all", action="store_true", help="全件表示（既定は要判断＋保留のみ）")
+    p_scan.add_argument("--project", help="対象プロジェクトを絞る（sweep/promote と対称）")
 
     p_triage = sub.add_parser("triage", help="要判断ファイルを allowed_actions 付きで提示")
     _add_scope_args(p_triage)
     p_triage.add_argument("--json", action="store_true", default=True, help="JSON 出力（既定）")
+    p_triage.add_argument("--project", help="対象プロジェクトを絞る")
 
     p_apply = sub.add_parser("apply", help="1 ファイルに閉じた action を適用")
     _add_scope_args(p_apply)
@@ -95,6 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_summary = sub.add_parser("summary", help="AI 要約 export（圧縮 INDEX を JSON で）")
     _add_scope_args(p_summary)
+    p_summary.add_argument("--project", help="対象プロジェクトを絞る")
 
     p_new = sub.add_parser("new", help="テンプレファイル即生成（plan/bugfix/pending）")
     p_new.add_argument("type", choices=("plan", "bugfix", "pending"))
@@ -149,6 +152,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
     result = run_scan(cfg)
     records = result.records
+    project = getattr(args, "project", None)
+    if project:
+        records = [r for r in records if r.project == project]
     if not getattr(args, "all", False):
         from .models import Flag
         records = [r for r in records if Flag.NEEDS_DECISION.value in r.flags or r.state == "pending"]
@@ -163,7 +169,10 @@ def cmd_triage(args: argparse.Namespace) -> int:
     """残作業ビュー（要判断＋保留・古い順）を JSON で出す。MCP triage と同一契約。"""
     from .reports import build_triage
 
-    print(json.dumps(build_triage(_build_config(args)), ensure_ascii=False, indent=2))
+    print(json.dumps(
+        build_triage(_build_config(args), project=getattr(args, "project", None)),
+        ensure_ascii=False, indent=2,
+    ))
     return 0
 
 
@@ -287,7 +296,7 @@ def cmd_report(args: argparse.Namespace) -> int:
 def cmd_summary(args: argparse.Namespace) -> int:
     from .reports import render_summary
 
-    print(render_summary(_build_config(args)))
+    print(render_summary(_build_config(args), project=getattr(args, "project", None)))
     return 0
 
 
