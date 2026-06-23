@@ -1,49 +1,97 @@
 {# 看板ボードの本体（htmx で部分差し替えされる単位）。
-   3 列（やり忘れ / 今日 / 実行中）+ 4 セクション（卒業判定 / 未来期日 / 期日未設定 / archive 候補）。 #}
+   3 列（やり忘れ / 今日 / 実行中）+ 4 セクション（卒業判定 / 未来期日 / 期日未設定 / archive 候補）。
+   各セクションヘッダに「全選択 + 一括ボタン」を出す（plan_kanban-bulk-edit §C2）。 #}
+
+{# 共通の一括操作ボタンセット（マクロ化）。section=セクション名、ops=ボタン定義リスト #}
+{% macro section_actions(section, ops) %}
+  <span class="sec-actions" data-section="{{ section }}">
+    <button type="button" class="sec-btn sec-select" data-action="section-select-all" data-section="{{ section }}" title="このセクションを全選択">✓ 全選択</button>
+    {% for op in ops %}
+      <button type="button" class="sec-btn sec-{{ op.kind }}"
+              data-action="section-bulk" data-section="{{ section }}"
+              data-op="{{ op.op }}"
+              {% if op.spec %}data-spec="{{ op.spec }}"{% endif %}
+              {% if op.state %}data-state="{{ op.state }}"{% endif %}
+              title="{{ op.title }}">{{ op.label }}</button>
+    {% endfor %}
+  </span>
+{% endmacro %}
+
+{# セクション別ボタン定義（plan §C2 のセクション別微調整に従う） #}
+{% set OPS_DEFAULT = [
+  {"kind": "due",       "op": "due",    "spec": "+1d", "label": "+1d", "title": "全て +1 日先送り"},
+  {"kind": "due",       "op": "due",    "spec": "+1w", "label": "+1w", "title": "全て +1 週先送り"},
+  {"kind": "status",    "op": "status", "state": "in-progress", "label": "着手", "title": "全て [実行中] に"},
+  {"kind": "discard",   "op": "status", "state": "discarded",   "label": "廃止", "title": "全て [廃止] に → archive へ"},
+] %}
+{% set OPS_GRADUATE = [
+  {"kind": "due",       "op": "due",    "spec": "+1d", "label": "+1d", "title": "全て +1 日先送り"},
+  {"kind": "due",       "op": "due",    "spec": "+1w", "label": "+1w", "title": "全て +1 週先送り"},
+  {"kind": "promote",   "op": "status", "state": "done",      "label": "完了", "title": "全て [完了] に → archive へ"},
+  {"kind": "discard",   "op": "status", "state": "discarded", "label": "廃止", "title": "全て [廃止] に → archive へ"},
+] %}
+{% set OPS_ARCHIVE = [
+  {"kind": "archive",   "op": "archive", "label": "archive へ", "title": "全て archive 配下へ移送"},
+] %}
+
 <div class="board-cols">
   <div class="col col-overdue" data-column="overdue" aria-label="やり忘れ列">
-    <h2 class="col-head"><span class="col-emoji">🔴</span> やり忘れ <span class="col-count">{{ data.counts.overdue }}</span></h2>
+    <h2 class="col-head"><span class="col-emoji">🔴</span> やり忘れ <span class="col-count">{{ data.counts.overdue }}</span>
+      {{ section_actions("overdue", OPS_DEFAULT) }}
+    </h2>
     <ol class="col-cards">
       {% for card in data.cols.overdue %}{% include "_card.html" %}{% endfor %}
     </ol>
   </div>
   <div class="col col-today" data-column="today" aria-label="今日列">
-    <h2 class="col-head"><span class="col-emoji">🟡</span> 今日 <span class="col-count">{{ data.counts.today }}</span></h2>
+    <h2 class="col-head"><span class="col-emoji">🟡</span> 今日 <span class="col-count">{{ data.counts.today }}</span>
+      {{ section_actions("today", OPS_DEFAULT) }}
+    </h2>
     <ol class="col-cards">
       {% for card in data.cols.today %}{% include "_card.html" %}{% endfor %}
     </ol>
   </div>
   <div class="col col-active" data-column="active" aria-label="実行中列">
-    <h2 class="col-head"><span class="col-emoji">🟢</span> 実行中 <span class="col-count">{{ data.counts.active }}</span></h2>
+    <h2 class="col-head"><span class="col-emoji">🟢</span> 実行中 <span class="col-count">{{ data.counts.active }}</span>
+      {{ section_actions("active", OPS_DEFAULT) }}
+    </h2>
     <ol class="col-cards">
       {% for card in data.cols.active %}{% include "_card.html" %}{% endfor %}
     </ol>
   </div>
 </div>
 
-<details class="fold fold-graduate" open>
-  <summary>▼ 卒業判定（[様子見] かつ overdue_graduate） <span class="fold-count">{{ data.counts.graduate }}</span></summary>
+<details class="fold fold-graduate" data-section="graduate" open>
+  <summary>▼ 卒業判定（[様子見] かつ overdue_graduate） <span class="fold-count">{{ data.counts.graduate }}</span>
+    {{ section_actions("graduate", OPS_GRADUATE) }}
+  </summary>
   <ol class="col-cards">
     {% for card in data.cols.graduate %}{% include "_card.html" %}{% endfor %}
   </ol>
 </details>
 
-<details class="fold fold-future">
-  <summary>▶ 未来期日 <span class="fold-count">{{ data.counts.future }}</span></summary>
+<details class="fold fold-future" data-section="future">
+  <summary>▶ 未来期日 <span class="fold-count">{{ data.counts.future }}</span>
+    {{ section_actions("future", OPS_DEFAULT) }}
+  </summary>
   <ol class="col-cards">
     {% for card in data.cols.future %}{% include "_card.html" %}{% endfor %}
   </ol>
 </details>
 
-<details class="fold fold-no-due">
-  <summary>▶ 期日未設定 <span class="fold-count">{{ data.counts.no_due }}</span></summary>
+<details class="fold fold-no-due" data-section="no_due">
+  <summary>▶ 期日未設定 <span class="fold-count">{{ data.counts.no_due }}</span>
+    {{ section_actions("no_due", OPS_DEFAULT) }}
+  </summary>
   <ol class="col-cards">
     {% for card in data.cols.no_due %}{% include "_card.html" %}{% endfor %}
   </ol>
 </details>
 
-<details class="fold fold-archivable">
-  <summary>▶ archive 候補（[完了]/[廃止]） <span class="fold-count">{{ data.counts.archivable }}</span></summary>
+<details class="fold fold-archivable" data-section="archivable">
+  <summary>▶ archive 候補（[完了]/[廃止]） <span class="fold-count">{{ data.counts.archivable }}</span>
+    {{ section_actions("archivable", OPS_ARCHIVE) }}
+  </summary>
   <ol class="col-cards">
     {% for card in data.cols.archivable %}{% include "_card.html" %}{% endfor %}
   </ol>

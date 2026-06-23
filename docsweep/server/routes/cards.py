@@ -16,7 +16,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ...atomic import ConflictError
-from ...services.archive import archive_done
+from ...services.archive import archive_done, undo_last_batch
 from ...services.content import ContentValidationError, update_content
 from ...services.due import DueParseError, update_due
 from ...services.status import StatusValidationError, update_status
@@ -186,3 +186,161 @@ def post_archive(
     cfg = request.app.state.docsweep.config
     res = archive_done(config=cfg, paths=[resolved.as_posix()], dry_run=dry_run)
     return JSONResponse(res.to_dict())
+
+
+# ------------------------------------------------------------------
+# bulk endpoints（plan_kanban-bulk-edit で追加）
+# - 既存 services を for ループで呼ぶ薄いラッパ
+# - 1 件失敗しても他は続行（部分成功）
+# - 失敗は failed[] に {path, error, kind} で集約
+# - スコープ外パス / mtime conflict / validation エラーは個別に振り分け
+# ------------------------------------------------------------------
+
+
+def _try_resolve(request: Request, raw_path: str) -> tuple[Path | None, dict | None]:
+    """スコープ境界チェック。OK で (Path, None)、NG で (None, failed-entry dict)。"""
+    cfg = request.app.state.docsweep.config
+    resolved = resolve_under_roots(raw_path, cfg.roots)
+    if resolved is None or not resolved.is_file():
+        return None, {
+            "path": raw_path,
+            "error": "path outside scan roots or not a file",
+            "kind": "path_scope",
+        }
+    return resolved, None
+
+
+@router.post("/api/cards/bulk/due")
+def post_bulk_due(
+    request: Request,
+    token: str = Form(default=""),
+    paths: list[str] = Form(...),
+    new_due: str = Form(...),
+    reason: str | None = Form(default=None),
+):
+    """複数ファイルの frontmatter ``due:`` を一括書き換え。
+
+    ``new_due`` の parse は全件共通なので、ここで失敗したら 400 で即返す。
+    各 path の mtime conflict / validation 失敗は個別に ``failed[]`` へ。
+    """
+    _check_token(request, token)
+    cfg = request.app.state.docsweep.config
+    ok: list[dict] = []
+    failed: list[dict] = []
+    for raw in paths:
+        resolved, err = _try_resolve(request, raw)
+        if err is not None:
+            failed.append(err)
+            continue
+        project_root = _project_root_for(resolved, cfg.roots)
+        try:
+            res = update_due(
+                resolved, new_due,
+                project_root=project_root, reason=reason,
+                warn_threshold=cfg.due_warn_threshold,
+                alert_threshold=cfg.due_alert_threshold,
+            )
+            ok.append(res.to_dict())
+        except DueParseError as e:
+            # new_due 自体が parse 不能なら全件失敗なので 400 で早期 return。
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except ConflictError as e:
+            failed.append({
+                "path": resolved.as_posix(), "error": str(e), "kind": "conflict",
+                "expected_mtime": e.expected, "actual_mtime": e.actual,
+            })
+        except (OSError, ValueError) as e:
+            failed.append({"path": resolved.as_posix(), "error": str(e), "kind": "internal"})
+    return JSONResponse({"ok": ok, "failed": failed})
+
+
+@router.post("/api/cards/bulk/status")
+def post_bulk_status(
+    request: Request,
+    token: str = Form(default=""),
+    paths: list[str] = Form(...),
+    new_state: str = Form(...),
+):
+    """複数ファイルの H1 ラベルを一括書き換え。``[完了]`` / ``[廃止]`` 指定で archive 移送まで一気通貫。
+
+    各 path のファイル種別×ラベル組み合わせ違反は services 層が validation で弾く
+    → 個別に ``failed[]`` へ振り分け（plan は [対応中] 不可、bugfix は [計画]/[実行中] 不可など）。
+    """
+    _check_token(request, token)
+    cfg = request.app.state.docsweep.config
+    ok: list[dict] = []
+    failed: list[dict] = []
+    archive_targets: list[str] = []
+    for raw in paths:
+        resolved, err = _try_resolve(request, raw)
+        if err is not None:
+            failed.append(err)
+            continue
+        project_root = _project_root_for(resolved, cfg.roots)
+        file_type = _file_type(request, resolved.name)
+        try:
+            res = update_status(
+                resolved, new_state,
+                project_root=project_root, config=cfg,
+                file_type=file_type,
+            )
+            ok.append(res.to_dict())
+            if res.archive_triggered:
+                archive_targets.append(resolved.as_posix())
+        except StatusValidationError as e:
+            failed.append({"path": resolved.as_posix(), "error": str(e), "kind": "validation"})
+        except ConflictError as e:
+            failed.append({
+                "path": resolved.as_posix(), "error": str(e), "kind": "conflict",
+                "expected_mtime": e.expected, "actual_mtime": e.actual,
+            })
+        except (OSError, ValueError) as e:
+            failed.append({"path": resolved.as_posix(), "error": str(e), "kind": "internal"})
+    archive_result = None
+    if archive_targets:
+        # archive_triggered のものをまとめて移送（単数 API と同じ閉じた口を通す）
+        archive_result = archive_done(config=cfg, paths=archive_targets).to_dict()
+    return JSONResponse({"ok": ok, "failed": failed, "archive": archive_result})
+
+
+@router.post("/api/cards/undo")
+def post_undo(
+    request: Request,
+    token: str = Form(default=""),
+):
+    """直近の archive バッチを取り消す（archive 配下から元の場所へ復元）。
+
+    Undo 対象は最新の未復元 batch_id のみ。restore エントリが moves.jsonl に追記され、
+    二重 Undo を防ぐ。
+    """
+    _check_token(request, token)
+    cfg = request.app.state.docsweep.config
+    res = undo_last_batch(config=cfg)
+    return JSONResponse(res.to_dict())
+
+
+@router.post("/api/cards/bulk/archive")
+def post_bulk_archive(
+    request: Request,
+    token: str = Form(default=""),
+    paths: list[str] = Form(...),
+    dry_run: bool = Form(default=False),
+):
+    """複数ファイルを archive へ一括移送。``[完了]`` / ``[廃止]`` 以外は services 層が拒否。
+
+    スコープ外パスは ``failed_validation[]`` に分けて返す（services の skipped[] とは別枠）。
+    """
+    _check_token(request, token)
+    cfg = request.app.state.docsweep.config
+    valid: list[str] = []
+    failed_validation: list[dict] = []
+    for raw in paths:
+        resolved, err = _try_resolve(request, raw)
+        if err is not None:
+            failed_validation.append(err)
+            continue
+        valid.append(resolved.as_posix())
+    res = archive_done(config=cfg, paths=valid, dry_run=dry_run)
+    out = res.to_dict()
+    out["failed_validation"] = failed_validation
+    return JSONResponse(out)

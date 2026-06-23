@@ -137,15 +137,21 @@ def auto_sweep(
     return moved
 
 
-def archive_doc(doc: ScannedDoc, config: Config, *, dry_run: bool = False) -> MoveLogEntry:
+def archive_doc(
+    doc: ScannedDoc, config: Config, *, dry_run: bool = False, batch_id: str | None = None,
+) -> MoveLogEntry:
     """1 ファイルを（ラベル書換なしで）そのまま archive へ移送する。"""
     rec = doc.record
     project_dir, root = _project_dir_for(doc, config)
     dst = archive_file(
         src=Path(rec.path), project_dir=project_dir, archive_dir=_archive_dir_for(doc, config),
         root=root, project=rec.project, status=rec.state, op="archive", dry_run=dry_run,
+        batch_id=batch_id,
     )
-    return MoveLogEntry(ts="", op="archive", project=rec.project, status=rec.state, src=rec.path, dst=dst.as_posix())
+    return MoveLogEntry(
+        ts="", op="archive", project=rec.project, status=rec.state,
+        src=rec.path, dst=dst.as_posix(), batch_id=batch_id,
+    )
 
 
 def promote_state(

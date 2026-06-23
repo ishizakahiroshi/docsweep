@@ -357,6 +357,35 @@ def test_cards_raw_rejects_path_outside(client, tmp_path):
     assert r.status_code == 403
 
 
+def test_board_card_has_project_select_button(client):
+    """カードのプロジェクトバッジが button 化されていて data-action="select-project" を持つ。"""
+    c, _, _ = client
+    r = c.get(f"/board?token={TOKEN}")
+    assert r.status_code == 200
+    assert 'data-action="select-project"' in r.text
+    # カード要素自体に data-project 属性が乗っている（JS の selectProjectOnly が CSS セレクタで照合する）
+    assert 'data-project="proj_a"' in r.text
+
+
+def test_board_renders_bulk_ui_elements(client):
+    """plan_kanban-bulk-edit §C2: 上部 sticky バー + セクションヘッダの一括ボタン + カード checkbox が描画される。"""
+    c, _, _ = client
+    r = c.get(f"/board?token={TOKEN}")
+    assert r.status_code == 200
+    body = r.text
+    # 上部 sticky バー（横断選択用）
+    assert 'id="bulk-bar"' in body
+    assert 'data-action="bulk-select-all"' in body
+    # 各セクションヘッダの「全選択」ボタン
+    assert 'data-action="section-select-all"' in body
+    # セクション別の一括ボタン（plan §C2: archive セクションのみ archive ボタン）
+    assert 'data-section="overdue"' in body
+    assert 'data-section="graduate"' in body
+    assert 'data-section="archivable"' in body
+    # カードに checkbox（このフィクスチャでは plan_overdue.md などが存在する想定）
+    assert 'class="card-check"' in body
+
+
 def test_cards_raw_rejects_non_md(client, tmp_path):
     """同じスキャンルート配下でも .md 以外は弾く（編集口の責務外）。
 

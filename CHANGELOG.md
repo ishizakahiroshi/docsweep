@@ -44,6 +44,31 @@
   - `plan` は既定 today+7、`pending` は today+14、`bugfix` は新規時に付けない（`[様子見]` 遷移時に追記する設計）
   - `--due YYYY-MM-DD` で明示指定、`--no-due` で自動付与を抑止
 - Web UI 編集ペイン用に `GET /api/cards/raw` を新規追加 — 編集 textarea を生 MD で初期化（プレビュー HTML のテキスト化では Markdown 構造が壊れるため）
+- 受信トレイ (`/`) のサイドバーに「📋 看板（カンバン）」リンクを追加（新旧 UI の導線確保）
+
+### Added — 看板の一括編集（派生 plan `kanban-bulk-edit`）
+
+- 看板の全 7 セクション（3 列 + 卒業判定 + 未来期日 + 期日未設定 + archive 候補）を横断して一括操作:
+  - 各カードに checkbox を追加
+  - 各セクションヘッダに「全選択 + 4 ボタン（+1d/+1w/着手/廃止）」セット
+    - 卒業判定は「着手」の代わりに「完了」、archive 候補は「archive へ」のみ
+  - 上部 sticky バー（N 件選択中・+1d/+1w/着手/廃止/archive/解除/画面全選択）
+  - キーバインド `a` = 画面全カード選択 / `Esc` = ピッカー閉じ + 選択解除
+- Web UI 専用 bulk API 3 種（`/api/cards/bulk/{due,status,archive}`）— 既存 services を for ループで呼ぶ薄いラッパ
+  - 部分成功 `{ok:[], failed:[]}` を返す（1 件失敗しても他は続行）
+  - スコープ外パス / mtime conflict / validation エラーは個別に `failed[]` に振り分け
+  - `[完了]` / `[廃止]` 一括指定で archive 移送が連動（単数 API と同じ閉じた口を通す）
+- 確認ダイアログ強化 — `[廃止]` / `[完了]` / archive は ⚠ 強警告メッセージ
+- 部分失敗時の集約ダイアログ — 「成功 N 件／失敗 M 件」と失敗 path の先頭 5 件を表示
+- カードの「📂 プロジェクト名」バッジをクリックで **プロジェクト単位選択切替**（同じプロジェクトのカードだけ全選択・他プロジェクトは解除・再クリックで全解除）。「1 プロジェクトずつ捌く」ワークフロー用
+- バルクバーに **プロジェクト絞り込みドロップダウン**（名前順チェックリスト・部分選択 indeterminate 表示・全 ON / 全 OFF クイックボタン）
+
+### Added — UX 拡張（kanban-bulk-edit 後追加）
+
+- **Undo（直近 archive バッチの取り消し）** — `archive_done` 実行ごとに `batch_id` を生成（`MoveLogEntry` スキーマ拡張）、`undo_last_batch()` で逆操作（archive 配下 → 元の場所へ shutil.move、restore エントリで二重 Undo 防止）。Web UI は archive 後に右下トーストで「↶ Undo」ボタンを 10 秒表示
+- `POST /api/cards/undo` — Undo API エンドポイント（services 層のラッパ）
+- **カード検索ボックス** — topbar に検索 input（ファイル名・タイトル・概要から絞り込み）。`/` キーでフォーカス・`Esc` でクリア。検索ヒット件数も表示
+- **絶対日付指定の一括設定** — バルクバーに「📅 日付」ボタン → date picker dialog → 選択 N 件の `due` を YYYY-MM-DD で一括設定
 
 ### Changed
 

@@ -7,10 +7,14 @@
     data-path="{{ card.path }}"
     data-state="{{ card.state or 'unknown' }}"
     data-type="{{ card.type or '' }}"
+    data-project="{{ card.project }}"
     data-mtime="{{ card.mtime }}"
     tabindex="0"
     draggable="true">
   <div class="card-head">
+    <label class="card-check-wrap" title="選択（一括操作対象）">
+      <input type="checkbox" class="card-check" data-path="{{ card.path }}" />
+    </label>
     <button type="button" class="state-badge state-{{ card.state or 'unknown' }}"
             data-action="open-label-picker"
             aria-haspopup="listbox">{{ card.state_label }}</button>
@@ -29,7 +33,10 @@
               data-action="open-due-picker"
               aria-haspopup="dialog">📅 期日未設定</button>
     {% endif %}
-    <span class="proj-badge">📂 {{ card.project }}</span>
+    <button type="button" class="proj-badge proj-badge-btn"
+            data-action="select-project"
+            data-project="{{ card.project }}"
+            title="クリック: このプロジェクトだけ全選択（他解除）・再クリック全解除 ／ Shift+クリック: このプロジェクトを追加（既存維持）">📂 {{ card.project }}</button>
   </div>
   {% if card.summary %}<div class="card-summary">{{ card.summary }}</div>{% endif %}
   <div class="card-actions">

@@ -55,8 +55,12 @@ def archive_file(
     status: str | None,
     op: str = "archive",
     dry_run: bool = False,
+    batch_id: str | None = None,
 ) -> Path:
-    """src を project_dir/<archive_dir>/ へ移送し、移動ログに記録する。移送先を返す。"""
+    """src を project_dir/<archive_dir>/ へ移送し、移動ログに記録する。移送先を返す。
+
+    ``batch_id`` を与えると JSONL の同名フィールドに記録され、後で Undo で逆引きできる。
+    """
     src = src.resolve()
     dest_dir = (project_dir / archive_dir).resolve()
     dst = dedupe_path(dest_dir / src.name)
@@ -70,7 +74,7 @@ def archive_file(
         root,
         MoveLogEntry(
             ts=_now_iso(), op=op, project=project, status=status,
-            src=src.as_posix(), dst=dst.as_posix(),
+            src=src.as_posix(), dst=dst.as_posix(), batch_id=batch_id,
         ),
     )
     return dst

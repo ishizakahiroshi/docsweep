@@ -2,6 +2,7 @@
   <div class="brand"><span class="logo">🧹</span><div><b>docsweep</b><small>v{{ version }}</small></div></div>
   <div class="navlabel">ビュー</div>
   <a class="nav active" href="#top" data-action="view" data-view="dashboard" data-primary><span class="ic">▦</span> ダッシュボード</a>
+  <a class="nav" href="/board?token={{ token }}"><span class="ic">📋</span> 看板（カンバン）</a>
   <a class="nav" href="#top" data-action="view" data-view="settings" data-primary><span class="ic">⚙</span> 設定</a>
   <div class="navlabel">クイック</div>
   {% if d.counts.overdue_todo or d.counts.overdue_graduate %}<a class="nav" href="#overdue" data-action="view" data-view="dashboard"><span class="ic c-overdue">📅</span> 期日超過 <span class="ct">{{ (d.counts.overdue_todo or 0) + (d.counts.overdue_graduate or 0) }}</span></a>{% endif %}
