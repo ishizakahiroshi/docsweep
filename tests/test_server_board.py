@@ -69,6 +69,11 @@ def client(tmp_path: Path):
         proj / "plan_graduate.md",
         "---\ndue: 2024-01-01\n---\n# [様子見] 卒業待ち\n\n## 概要\n\n再発確認中。\n",
     )
+    # bugfix 対応中: カード左ボタンが「様子見に戻す」になることの検証用
+    _write(
+        proj / "bugfix_inprogress_2026-06-23.md",
+        "---\ndue: 2099-12-31\n---\n# [対応中] 対応中のバグ\n\n## 症状\n\n調査中。\n",
+    )
 
     cfg = load_config(
         explicit_roots=[str(root)],
@@ -312,6 +317,46 @@ def test_label_picker_partial(client):
     assert r.status_code == 200
     assert "label-picker" in r.text
     assert "data-new-state=\"in-progress\"" in r.text
+
+
+def test_back_picker_partial(client):
+    """戻し先ピッカーは [保留] / [様子見] / [計画] の 3 択を返す（plan 用）。"""
+    c, _, _ = client
+    r = c.get(f"/board/_partial/back_picker?token={TOKEN}")
+    assert r.status_code == 200
+    assert "back-picker" in r.text
+    # 戻し先 3 つすべて含む
+    assert 'data-new-state="pending"' in r.text
+    assert 'data-new-state="watching"' in r.text
+    assert 'data-new-state="planned"' in r.text
+    # 着手ラベル（[実行中] / [対応中]）は戻し先候補に含めない
+    assert 'data-new-state="in-progress"' not in r.text
+    assert 'data-new-state="active"' not in r.text
+
+
+def test_back_picker_requires_token(client):
+    c, _, _ = client
+    assert c.get("/board/_partial/back_picker").status_code == 403
+
+
+def test_card_button_toggles_by_state_and_type(client):
+    """カード左ボタンは現在状態とファイル種別でトグルされる。
+
+    - planned plan: 「着手」+ data-action="start"
+    - in-progress plan: 「戻す▾」+ data-action="open-back-picker"
+    - active bugfix: 「様子見に戻す」+ data-action="back-watching"
+    """
+    c, _, _ = client
+    html = c.get(f"/board?token={TOKEN}").text
+
+    # plan_overdue.md は [計画] なので「着手」ボタンが出る
+    # plan_active.md は [実行中] なので「戻す▾」ボタンが出る
+    # bugfix_inprogress_2026-06-23.md は [対応中] なので「様子見に戻す」が出る
+    assert 'data-action="start"' in html
+    assert 'data-action="open-back-picker"' in html
+    assert "戻す▾" in html
+    assert 'data-action="back-watching"' in html
+    assert "様子見に戻す" in html
 
 
 def test_due_picker_partial(client):

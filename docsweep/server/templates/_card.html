@@ -2,7 +2,10 @@
    - 左境界の色は親列（col-overdue / col-today / col-active）に依存
    - 先送り回数バッジは 1-2/3-4/5+ の 3 段階で色分け（子 plan §C2）
    - 期日バッジは超過/今日/未来で色分け
-   - 3 ボタン: 着手 / 期日更新▾ / 廃止 #}
+   - 3 ボタン:
+       未着手列（state: planned/pending/watching/None）= 着手 / 期日更新▾ / 廃止
+       着手中（state: in-progress）  = 戻す▾（plan の戻し先 3 択ピッカー） / 期日更新▾ / 廃止
+       着手中（state: active=bugfix） = 様子見に戻す（1 択直接実行） / 期日更新▾ / 廃止 #}
 <li class="card pp-{% if card.postpone_count >= data.postpone_alert %}danger{% elif card.postpone_count >= data.postpone_warn %}warn{% else %}normal{% endif %}"
     data-path="{{ card.path }}"
     data-state="{{ card.state or 'unknown' }}"
@@ -40,7 +43,15 @@
   </div>
   {% if card.summary %}<div class="card-summary">{{ card.summary }}</div>{% endif %}
   <div class="card-actions">
-    <button type="button" class="act act-start" data-action="start">着手</button>
+    {% if card.state == 'in-progress' %}
+      <button type="button" class="act act-back" data-action="open-back-picker"
+              title="[保留] / [様子見] / [計画] へ戻す">戻す▾</button>
+    {% elif card.state == 'active' %}
+      <button type="button" class="act act-back" data-action="back-watching"
+              title="[様子見] に戻す（bugfix の戻し先は様子見のみ）">様子見に戻す</button>
+    {% else %}
+      <button type="button" class="act act-start" data-action="start">着手</button>
+    {% endif %}
     <button type="button" class="act act-due" data-action="open-due-picker">期日更新▾</button>
     <button type="button" class="act act-discard" data-action="discard">廃止</button>
   </div>

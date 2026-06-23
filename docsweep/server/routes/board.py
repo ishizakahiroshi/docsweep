@@ -295,6 +295,21 @@ def label_picker_partial(
     return TEMPLATES.TemplateResponse(request, "_label_picker.html", {})
 
 
+@router.get("/board/_partial/back_picker", response_class=HTMLResponse)
+def back_picker_partial(
+    request: Request,
+    token: str = Query(default=""),
+):
+    """戻し先選択 partial（plan の [実行中] からの戻し専用・3 択）。
+
+    bugfix の [対応中] からの戻しは戻し先が [様子見] 1 択のためピッカーを開かず、
+    _card.html が直接 ``data-action="back-watching"`` を出して keymap.js が
+    ``applyStatus(card, "watching")`` を呼ぶ。
+    """
+    _check_token(request, token)
+    return TEMPLATES.TemplateResponse(request, "_back_picker.html", {})
+
+
 def _settings_state(records) -> dict:
     """注入モーダル用のプロジェクト一覧 + グローバル inject 状態 + presets。"""
     injected = {it["path"]: it for it in list_injected()}

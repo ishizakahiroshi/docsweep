@@ -155,6 +155,8 @@ body {
 }
 .act:hover { border-color: var(--accent); color: var(--accent); }
 .act-discard:hover { border-color: var(--col-overdue); color: var(--col-overdue); }
+.act-back { color: var(--fg-dim); }
+.act-back:hover { border-color: #b07cff; color: #b07cff; }
 
 /* ===== バッジ ===== */
 .state-badge {
