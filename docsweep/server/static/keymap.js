@@ -767,6 +767,28 @@
     });
   }
 
+  async function openBackPicker(card, anchor) {
+    // plan の [実行中] からの戻し専用ピッカー（[保留]/[様子見]/[計画] の 3 択）。
+    // bugfix の [対応中] は戻し先が [様子見] 1 択のため、_card.html 側で
+    // data-action="back-watching" を出し、ピッカーを開かず直接 applyStatus する。
+    closePicker();
+    const html = await fetchPartial("/board/_partial/back_picker");
+    if (!html) return;
+    const wrap = document.createElement("div");
+    wrap.innerHTML = html;
+    const picker = wrap.firstElementChild;
+    placePicker(picker, anchor);
+    openPicker = picker;
+    document.body.appendChild(picker);
+    picker.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".lp-opt");
+      if (!btn) return;
+      const newState = btn.dataset.newState;
+      closePicker();
+      await applyStatus(card, newState);
+    });
+  }
+
   async function openDuePicker(card, anchor) {
     closePicker();
     const html = await fetchPartial("/board/_partial/due_picker");
@@ -802,7 +824,10 @@
   }
 
   document.addEventListener("click", (e) => {
-    if (openPicker && !openPicker.contains(e.target) && !e.target.closest("[data-action='open-label-picker']") && !e.target.closest("[data-action='open-due-picker']")) {
+    if (openPicker && !openPicker.contains(e.target)
+        && !e.target.closest("[data-action='open-label-picker']")
+        && !e.target.closest("[data-action='open-due-picker']")
+        && !e.target.closest("[data-action='open-back-picker']")) {
       closePicker();
     }
   });
@@ -871,7 +896,20 @@
     if (dueBtn) { e.stopPropagation(); openDuePicker(card, dueBtn); return; }
 
     const startBtn = e.target.closest("[data-action='start']");
-    if (startBtn) { e.stopPropagation(); applyStatus(card, "in-progress"); return; }
+    if (startBtn) {
+      e.stopPropagation();
+      // bugfix は [対応中]（active）に、それ以外は [実行中]（in-progress）に着手する。
+      // applyStatus 内のバリデーションは services 側で行うため、ここでは種別で投げ分けるだけ。
+      const t = card.dataset.type;
+      applyStatus(card, t === "bugfix" ? "active" : "in-progress");
+      return;
+    }
+
+    const backBtn = e.target.closest("[data-action='open-back-picker']");
+    if (backBtn) { e.stopPropagation(); openBackPicker(card, backBtn); return; }
+
+    const backWatchingBtn = e.target.closest("[data-action='back-watching']");
+    if (backWatchingBtn) { e.stopPropagation(); applyStatus(card, "watching"); return; }
 
     const discardBtn = e.target.closest("[data-action='discard']");
     if (discardBtn) { e.stopPropagation(); applyStatus(card, "discarded"); return; }
