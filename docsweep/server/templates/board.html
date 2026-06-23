@@ -15,11 +15,39 @@
     <span class="title">docsweep</span>
     <span class="subtitle">看板（カンバン） v{{ data.version }}</span>
   </div>
+  <div class="topbar-search">
+    <input type="search" id="card-search" class="search-input"
+           placeholder="🔍 タイトル・ファイル名・概要で絞り込み（/ でフォーカス）"
+           autocomplete="off" spellcheck="false" />
+    <span class="search-count" id="search-count" hidden></span>
+    <button type="button" class="ghost search-clear" id="search-clear" hidden data-action="search-clear" title="検索をクリア (Esc)">×</button>
+  </div>
   <div class="topbar-actions">
     <button type="button" class="ghost" data-action="reload-board">再スキャン</button>
     <a class="ghost" href="/?token={{ token }}">受信トレイへ</a>
   </div>
 </header>
+
+<div id="bulk-bar" class="bulk-bar" hidden role="region" aria-label="選択中の一括操作">
+  <span class="bulk-count"><b id="bulk-count-n">0</b> 件選択中</span>
+  <span class="bulk-breakdown" id="bulk-breakdown" title="選択カードのセクション内訳"></span>
+  <div class="bulk-projects-wrap">
+    <button type="button" class="bulk-proj-toggle" data-action="open-projects-dropdown" id="bulk-proj-toggle"
+            title="プロジェクトで絞り込み（チェックで ON/OFF）">
+      📂 プロジェクト <span id="bulk-proj-summary">—</span> ▾
+    </button>
+    <div class="bulk-projects-dropdown" id="bulk-projects-dropdown" hidden></div>
+  </div>
+  <button type="button" class="bulk-btn" data-action="bulk" data-op="due" data-spec="+1d">+1日</button>
+  <button type="button" class="bulk-btn" data-action="bulk" data-op="due" data-spec="+1w">+1週</button>
+  <button type="button" class="bulk-btn" data-action="bulk-due-date" title="絶対日付で期日を一括設定">📅 日付</button>
+  <button type="button" class="bulk-btn" data-action="bulk" data-op="status" data-state="in-progress">着手</button>
+  <button type="button" class="bulk-btn bulk-danger" data-action="bulk" data-op="status" data-state="discarded">廃止</button>
+  <button type="button" class="bulk-btn" data-action="bulk" data-op="archive">archive</button>
+  <button type="button" class="bulk-btn bulk-ghost" data-action="bulk-clear" title="選択を解除（Esc）">解除</button>
+  <a href="#" class="bulk-all" data-action="bulk-select-all" title="画面の全カードを選択 (a キー)">↳ 全選択 <span id="bulk-total-n">0</span></a>
+  <button type="button" class="bulk-close" data-action="bulk-clear" title="閉じる (Esc)" aria-label="閉じる">×</button>
+</div>
 
 <main id="board-main">
   <section id="board-body">
@@ -30,6 +58,17 @@
   </aside>
 </main>
 
+<dialog id="bulk-due-dialog" class="confirm">
+  <form method="dialog" class="confirm-inner">
+    <p>選択中の <b id="bulk-due-count">0</b> 件の期日を変更します</p>
+    <label class="bd-row">日付: <input type="date" id="bulk-due-date" required /></label>
+    <menu>
+      <button value="cancel" class="ghost">キャンセル</button>
+      <button value="ok" class="primary">設定</button>
+    </menu>
+  </form>
+</dialog>
+
 <dialog id="confirm-dialog" class="confirm">
   <form method="dialog" class="confirm-inner">
     <p id="confirm-message">本当に実行しますか？</p>
@@ -39,6 +78,12 @@
     </menu>
   </form>
 </dialog>
+
+<div id="toast" class="toast" hidden role="status" aria-live="polite">
+  <span class="toast-msg" id="toast-msg"></span>
+  <button type="button" class="toast-undo" id="toast-undo" data-action="undo">↶ Undo</button>
+  <button type="button" class="toast-close" data-action="toast-close" aria-label="閉じる">×</button>
+</div>
 
 <script src="/static/htmx.min.js"></script>
 <script src="/static/keymap.js"></script>

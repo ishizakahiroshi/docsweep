@@ -68,7 +68,12 @@ class FileRecord:
 
 @dataclass
 class MoveLogEntry:
-    """移動ログ JSONL の 1 行。eject/復元・将来の SQLite 移行の土台。"""
+    """移動ログ JSONL の 1 行。eject/復元・将来の SQLite 移行の土台。
+
+    ``batch_id`` は同一の一括操作で同時に書かれたエントリをまとめる ID（Undo に使う）。
+    1 件単位の archive では None（既存挙動互換）。bulk_archive 等の services 経由は
+    実行ごとに同じ ID を全件に振る。
+    """
 
     ts: str  # ISO8601 ローカル日時
     op: str  # archive | relabel | eject | restore | promote
@@ -76,6 +81,7 @@ class MoveLogEntry:
     status: str | None  # 移送時点の内部状態
     src: str
     dst: str | None  # relabel 等で移動を伴わない場合 None
+    batch_id: str | None = None  # 同時実行バッチの識別子（Undo 用・任意）
 
     def to_dict(self) -> dict:
         return asdict(self)
