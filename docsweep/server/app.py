@@ -98,49 +98,20 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
     def _scope(lang: str | None) -> str:
         return lang if lang in ("ja", "en") else state.config.lang
 
-    @app.get("/", response_class=HTMLResponse)
-    def index(request: Request, token: str = Query(default=""), lang: str | None = None):
-        _check_token(request, token)
-        result = run_scan(state.config)
-        return TEMPLATES.TemplateResponse(
-            request,
-            "dashboard.html",
-            {
-                "token": state.token,
-                "lang": _scope(lang),
-                "version": __version__,
-                "d": _dashboard_data(result, state.config),
-            },
-        )
+    # ------------------------------------------------------------------
+    # 旧 dashboard ルート（/, /list, /fragment）は plan_consolidate-to-board で
+    # 廃止。/ は /board へ 302 リダイレクト。テンプレと内部関数（_dashboard_data,
+    # _group, _inject_state, _health）は test_server.py 等の参照用に残置するが
+    # Web からは到達不能（注入・health は看板に統合済み）。
+    # ------------------------------------------------------------------
 
-    @app.get("/list", response_class=HTMLResponse)
-    def list_partial(
-        request: Request, token: str = Query(default=""), lang: str | None = None,
-        filter: str = "needs",
-    ):
-        _check_token(request, token)
-        result = run_scan(state.config)
-        return TEMPLATES.TemplateResponse(
-            request,
-            "_list.html",
-            {"token": state.token, "lang": _scope(lang), "groups": _group(result, state.config.state_model, _scope(lang), filter)},
-        )
+    @app.get("/")
+    def root_redirect(token: str = Query(default="")):
+        """/ は看板へリダイレクト（旧 dashboard は廃止）。"""
+        from fastapi.responses import RedirectResponse
 
-    @app.get("/fragment", response_class=HTMLResponse)
-    def fragment(request: Request, token: str = Query(default=""), lang: str | None = None):
-        """htmx 部分リフレッシュ用。#page-content 内のサイドバー+メインを再レンダリングして返す。"""
-        _check_token(request, token)
-        result = run_scan(state.config)
-        return TEMPLATES.TemplateResponse(
-            request,
-            "_dashboard_body.html",
-            {
-                "token": state.token,
-                "lang": _scope(lang),
-                "version": __version__,
-                "d": _dashboard_data(result, state.config),
-            },
-        )
+        target = f"/board?token={token}" if token else "/board"
+        return RedirectResponse(url=target, status_code=302)
 
     @app.get("/preview", response_class=HTMLResponse)
     def preview(request: Request, token: str = Query(default=""), path: str = Query(default="")):

@@ -22,7 +22,9 @@ from fastapi.templating import Jinja2Templates
 
 from ... import __version__
 from ...engine import run_scan
+from ...inject import list_injected
 from ...models import Flag
+from ...presets import DEFAULT_PRESET, PRESETS
 from ...state import get_postpone_count
 
 _DIR = Path(__file__).parent.parent
@@ -163,6 +165,20 @@ def _columns(records, config) -> dict:
     return cols
 
 
+def _health(records, top_n: int = 5) -> list[dict]:
+    """プロジェクトごとの最古経過日数 chip（topbar 表示用）。
+    上位 ``top_n`` を返す（多すぎ chip 防止）。
+    """
+    by: dict[str, int] = {}
+    for r in records:
+        cur = by.get(r.project)
+        if cur is None or r.age_days > cur:
+            by[r.project] = r.age_days
+    rows = [{"project": p, "oldest": d} for p, d in by.items()]
+    rows.sort(key=lambda x: x["oldest"], reverse=True)
+    return rows[:top_n]
+
+
 def _board_data(request: Request) -> dict:
     state = request.app.state.docsweep
     result = run_scan(state.config)
@@ -175,6 +191,7 @@ def _board_data(request: Request) -> dict:
         # _card.html がカード色分けで参照（.docsweep.yaml の due: ブロックで上書き可）。
         "postpone_warn": state.config.due_warn_threshold,
         "postpone_alert": state.config.due_alert_threshold,
+        "health": _health(result.records),
     }
 
 
@@ -276,6 +293,46 @@ def label_picker_partial(
     """ラベル選択セグメント partial（keymap.js が fetch して body に貼る）。"""
     _check_token(request, token)
     return TEMPLATES.TemplateResponse(request, "_label_picker.html", {})
+
+
+def _settings_state(records) -> dict:
+    """注入モーダル用のプロジェクト一覧 + グローバル inject 状態 + presets。"""
+    injected = {it["path"]: it for it in list_injected()}
+    projects: dict[str, dict] = {}
+    for r in records:
+        root = r.project_root
+        if root not in projects:
+            info = injected.get(root)
+            projects[root] = {
+                "name": r.project, "root": root,
+                "injected": info is not None, "preset": (info or {}).get("preset"),
+            }
+    global_agents = {it.get("agent") for it in injected.values() if it.get("scope") == "global"}
+    return {
+        "projects": sorted(projects.values(), key=lambda x: x["name"]),
+        "global_claude": "claude" in global_agents,
+        "global_codex": "codex" in global_agents,
+        "presets": list(PRESETS),
+        "default_preset": DEFAULT_PRESET,
+    }
+
+
+@router.get("/board/_partial/settings", response_class=HTMLResponse)
+def settings_partial(
+    request: Request,
+    token: str = Query(default=""),
+):
+    """⚙ 設定モーダルの中身（プロジェクト一覧 + グローバル inject タブ + presets）。"""
+    _check_token(request, token)
+    state = request.app.state.docsweep
+    result = run_scan(state.config)
+    return TEMPLATES.TemplateResponse(
+        request, "_settings.html",
+        {
+            "token": state.token,
+            "settings": _settings_state(result.records),
+        },
+    )
 
 
 @router.get("/board/_partial/due_picker", response_class=HTMLResponse)

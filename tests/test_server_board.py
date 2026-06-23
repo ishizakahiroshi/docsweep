@@ -357,6 +357,42 @@ def test_cards_raw_rejects_path_outside(client, tmp_path):
     assert r.status_code == 403
 
 
+def test_root_redirects_to_board(client):
+    """plan_consolidate-to-board: / → /board へ 302 リダイレクト。"""
+    c, _, _ = client
+    r = c.get(f"/?token={TOKEN}", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"].startswith("/board")
+
+
+def test_board_topbar_has_settings_and_health(client):
+    """plan_consolidate-to-board §C1/§C2: topbar に ⚙ 設定ボタンと health chip。"""
+    c, _, _ = client
+    r = c.get(f"/board?token={TOKEN}")
+    assert r.status_code == 200
+    assert 'data-action="open-settings"' in r.text
+    assert 'class="topbar-health"' in r.text
+    assert "health-chip" in r.text
+
+
+def test_settings_partial_lists_projects(client):
+    """⚙ 設定モーダルの partial は注入対象プロジェクト一覧を返す。"""
+    c, _, _ = client
+    r = c.get(f"/board/_partial/settings?token={TOKEN}")
+    assert r.status_code == 200
+    # 注入セクションのヘッダとプロジェクトテーブルが含まれる
+    assert "グローバル運用ルール" in r.text
+    assert "プロジェクト別運用ルール" in r.text
+    # フィクスチャの proj_a が一覧に出る
+    assert "proj_a" in r.text
+
+
+def test_settings_partial_requires_token(client):
+    c, _, _ = client
+    r = c.get("/board/_partial/settings")
+    assert r.status_code == 403
+
+
 def test_board_card_has_project_select_button(client):
     """カードのプロジェクトバッジが button 化されていて data-action="select-project" を持つ。"""
     c, _, _ = client

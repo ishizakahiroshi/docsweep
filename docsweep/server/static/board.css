@@ -407,6 +407,63 @@ button.proj-badge-btn:hover { color: var(--accent); background: var(--card2); }
 .bulk-result .ok { color: var(--col-active); }
 .bulk-result .ng { color: var(--col-overdue); }
 
+/* ===== topbar health chip（プロジェクトごとの最古経過日数）===== */
+.topbar-health {
+  display: flex; gap: 4px; flex-wrap: nowrap;
+  overflow: hidden; min-width: 0;
+}
+.health-chip {
+  background: var(--card); color: var(--fg-dim);
+  border: 1px solid var(--border-soft);
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-family: var(--mono);
+  white-space: nowrap;
+}
+.health-chip b { color: var(--accent); font-weight: 600; }
+
+/* ===== ⚙ 設定モーダル ===== */
+dialog.settings-dialog {
+  background: var(--card2); color: var(--fg);
+  border: 1px solid var(--accent); border-radius: 10px;
+  padding: 0; max-width: 720px; width: 90vw;
+}
+dialog.settings-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.settings-form { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; }
+.settings-body { padding: 16px 20px; max-height: 70vh; overflow-y: auto; }
+.settings-menu {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 20px; margin: 0; border-top: 1px solid var(--border);
+  background: var(--bg2);
+}
+.settings-title { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+.settings-section { margin-bottom: 18px; }
+.settings-section h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
+.settings-note { color: var(--fg-dim); font-size: 11px; margin: 0 0 8px; }
+.settings-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 0; border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+}
+.settings-row:last-child { border-bottom: 0; }
+.settings-label { min-width: 90px; color: var(--fg-dim); }
+.settings-state { font-family: var(--mono); font-size: 11px; }
+.settings-state.on { color: var(--col-active); }
+.settings-state.off { color: var(--fg-dim2); }
+.settings-projects {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+.settings-projects th {
+  text-align: left; color: var(--fg-dim); font-weight: normal;
+  padding: 4px 6px; border-bottom: 1px solid var(--border-soft);
+  font-size: 11px;
+}
+.settings-projects td {
+  padding: 6px; border-bottom: 1px solid var(--border-soft);
+  font-family: var(--mono);
+}
+.sp-name { color: var(--fg); word-break: break-all; }
+.sp-preset { color: var(--fg-dim2); }
+
 /* ===== Undo トースト（archive 実行後に画面右下に出現） ===== */
 .toast {
   position: fixed;

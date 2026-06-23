@@ -1,0 +1,65 @@
+{# ⚙ 設定モーダルの中身。プロジェクト一覧 + グローバル inject + プリセット選択。
+   keymap.js が fetch して dialog の中身として表示する。 #}
+<div class="settings-inner">
+  <h3 class="settings-title">⚙ 設定 / 注入</h3>
+
+  <section class="settings-section">
+    <h4>グローバル運用ルール導線（全プロジェクトで効く）</h4>
+    <p class="settings-note">セッション開始時に docsweep triage を読む導線だけを AI ツールのグローバル設定へ注入する。</p>
+    <div class="settings-row">
+      <span class="settings-label">Claude Code:</span>
+      <span class="settings-state {{ 'on' if settings.global_claude else 'off' }}">
+        {{ '✓ 注入済' if settings.global_claude else '未注入' }}
+      </span>
+      {% if settings.global_claude %}
+        <button type="button" class="ghost" data-action="settings-eject-global" data-agent="claude">eject</button>
+      {% else %}
+        <button type="button" class="primary" data-action="settings-inject-global" data-agent="claude">inject</button>
+      {% endif %}
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Codex:</span>
+      <span class="settings-state {{ 'on' if settings.global_codex else 'off' }}">
+        {{ '✓ 注入済' if settings.global_codex else '未注入' }}
+      </span>
+      {% if settings.global_codex %}
+        <button type="button" class="ghost" data-action="settings-eject-global" data-agent="codex">eject</button>
+      {% else %}
+        <button type="button" class="primary" data-action="settings-inject-global" data-agent="codex">inject</button>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="settings-section">
+    <h4>プロジェクト別運用ルール（プロジェクトの CLAUDE.md と .docsweep.yaml に注入）</h4>
+    <p class="settings-note">プリセット: 既定 <code>{{ settings.default_preset }}</code>（presets: {{ settings.presets|join(' / ') }}）</p>
+    <table class="settings-projects">
+      <thead>
+        <tr><th>プロジェクト</th><th>状態</th><th>preset</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        {% for p in settings.projects %}
+        <tr>
+          <td class="sp-name" title="{{ p.root }}">{{ p.name }}</td>
+          <td>
+            <span class="settings-state {{ 'on' if p.injected else 'off' }}">
+              {{ '✓ 注入済' if p.injected else '未注入' }}
+            </span>
+          </td>
+          <td class="sp-preset">{{ p.preset or '—' }}</td>
+          <td class="sp-actions">
+            {% if p.injected %}
+              <button type="button" class="ghost" data-action="settings-eject" data-project="{{ p.root }}">eject</button>
+            {% else %}
+              <button type="button" class="primary" data-action="settings-inject" data-project="{{ p.root }}">inject</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not settings.projects %}
+      <p class="settings-note">スキャン対象にプロジェクトがありません。</p>
+    {% endif %}
+  </section>
+</div>

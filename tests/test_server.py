@@ -37,16 +37,17 @@ def client(tmp_path: Path):
     return TestClient(app), root, outside
 
 
-def test_index_requires_token(client):
+def test_index_redirects_to_board(client):
+    """plan_consolidate-to-board: / は看板へ 302 リダイレクト（旧 dashboard 廃止）。"""
     c, root, _ = client
-    assert c.get("/").status_code == 403
-    assert c.get(f"/?token={TOKEN}").status_code == 200
+    r = c.get(f"/?token={TOKEN}", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"].startswith("/board")
 
 
+@pytest.mark.skip(reason="旧 dashboard 廃止（plan_consolidate-to-board）/list は削除済み")
 def test_index_lists_states(client):
     c, root, _ = client
-    html = c.get(f"/?token={TOKEN}&filter=all").text
-    # 既定 index は要判断フィルタだが counts は全件。stale plan は要判断に出る。
     assert "plan_stale.md" in c.get(f"/list?token={TOKEN}&filter=all").text
 
 
@@ -88,13 +89,11 @@ def test_apply_disallowed_returns_400(client):
     assert r.status_code == 400
 
 
+@pytest.mark.skip(reason="旧 dashboard 廃止（plan_consolidate-to-board）archive 候補は看板の▶archive 候補セクションで代替")
 def test_dashboard_shows_archivable_list(client):
     c, root, _ = client
     html = c.get(f"/?token={TOKEN}").text
-    # 完了ファイルが archive 可能セクションに一覧表示される（一括実行前に中身を確認できる）。
     assert 'id="archivable"' in html
-    assert "archive 可能" in html
-    assert "plan_done.md" in html
 
 
 def test_reveal_opens_folder(client, monkeypatch):

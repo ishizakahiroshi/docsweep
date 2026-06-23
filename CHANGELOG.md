@@ -70,6 +70,16 @@
 - **カード検索ボックス** — topbar に検索 input（ファイル名・タイトル・概要から絞り込み）。`/` キーでフォーカス・`Esc` でクリア。検索ヒット件数も表示
 - **絶対日付指定の一括設定** — バルクバーに「📅 日付」ボタン → date picker dialog → 選択 N 件の `due` を YYYY-MM-DD で一括設定
 
+### Changed — Web UI を看板に集約（plan `consolidate-to-board`）
+
+- 旧 dashboard（`/`）を廃止し、Web UI を **看板（`/board`）一本に集約**
+- `/` は `/board` へ **302 リダイレクト**（トークン引き継ぎ）
+- 旧 dashboard 専用ルート `GET /list` / `GET /fragment` は削除
+- 看板 topbar に **「⚙ 設定・注入」モーダル** を追加（プロジェクト一覧 / inject / eject / グローバル inject Claude・Codex 切替）
+- 看板 topbar に **health chip**（上位 5 プロジェクトの最古経過日数を `📊 mer 90d` 形式で表示）
+- 旧 dashboard テンプレ・CSS・JS（`dashboard.html` / `_dashboard_body.html` / `_list.html` / `index.html` / `app.css` / `app.js`）は **削除せず残置**（後で復活可能・Web からは到達不能）
+- 看板の編集ペインからは引き続き `/preview` `/api/cards/raw` を使用
+
 ### Changed
 
 - `docsweep new` で生成される plan / bugfix / pending テンプレから `> 最終更新:` 行を撤去
