@@ -28,8 +28,12 @@
     {% endfor %}
   </div>
   <div class="topbar-actions">
-    <button type="button" class="ghost" data-action="open-settings" title="⚙ 設定 / 注入">⚙ 設定</button>
     <button type="button" class="ghost" data-action="reload-board">再スキャン</button>
+    <button type="button" id="shutdown-btn" data-action="shutdown-server" title="サーバーを停止">⏻</button>
+    <button type="button" id="settings-btn" data-action="open-settings" title="設定 / 注入">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>設定</span>
+    </button>
   </div>
 </header>
 
@@ -46,8 +50,8 @@
   <button type="button" class="bulk-btn" data-action="bulk" data-op="due" data-spec="+1d">+1日</button>
   <button type="button" class="bulk-btn" data-action="bulk" data-op="due" data-spec="+1w">+1週</button>
   <button type="button" class="bulk-btn" data-action="bulk-due-date" title="絶対日付で期日を一括設定">📅 日付</button>
-  <button type="button" class="bulk-btn" data-action="bulk" data-op="status" data-state="in-progress">着手</button>
-  <button type="button" class="bulk-btn bulk-danger" data-action="bulk" data-op="status" data-state="discarded">廃止</button>
+  {# 2026-06-23 改修: 独立「着手」「廃止」ボタンを撤去し「ラベル変更▾」に集約 #}
+  <button type="button" class="bulk-btn" data-action="bulk-open-label-picker" title="選択カードを別のラベル ([計画]/[実行中]/[様子見]/[保留]/[完了]/[廃止]) に一括変更">ラベル変更▾</button>
   <button type="button" class="bulk-btn" data-action="bulk" data-op="archive">archive</button>
   <button type="button" class="bulk-btn bulk-ghost" data-action="bulk-clear" title="選択を解除（Esc）">解除</button>
   <a href="#" class="bulk-all" data-action="bulk-select-all" title="画面の全カードを選択 (a キー)">↳ 全選択 <span id="bulk-total-n">0</span></a>
@@ -65,12 +69,10 @@
 
 <dialog id="settings-dialog" class="settings-dialog">
   <form method="dialog" class="settings-form">
+    <button value="close" class="settings-close" title="閉じる (Esc)" aria-label="閉じる">×</button>
     <div id="settings-body" class="settings-body">
       <p class="settings-note">読み込み中…</p>
     </div>
-    <menu class="settings-menu">
-      <button value="close" class="ghost">閉じる</button>
-    </menu>
   </form>
 </dialog>
 

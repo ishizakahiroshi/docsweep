@@ -12,6 +12,7 @@
         {{ '✓ 注入済' if settings.global_claude else '未注入' }}
       </span>
       {% if settings.global_claude %}
+        <span class="settings-version" title="注入されている導線ブロックの版">v{{ settings.global_claude_version or '?' }}</span>
         <button type="button" class="ghost" data-action="settings-eject-global" data-agent="claude">eject</button>
       {% else %}
         <button type="button" class="primary" data-action="settings-inject-global" data-agent="claude">inject</button>
@@ -23,6 +24,7 @@
         {{ '✓ 注入済' if settings.global_codex else '未注入' }}
       </span>
       {% if settings.global_codex %}
+        <span class="settings-version" title="注入されている導線ブロックの版">v{{ settings.global_codex_version or '?' }}</span>
         <button type="button" class="ghost" data-action="settings-eject-global" data-agent="codex">eject</button>
       {% else %}
         <button type="button" class="primary" data-action="settings-inject-global" data-agent="codex">inject</button>
@@ -35,7 +37,7 @@
     <p class="settings-note">プリセット: 既定 <code>{{ settings.default_preset }}</code>（presets: {{ settings.presets|join(' / ') }}）</p>
     <table class="settings-projects">
       <thead>
-        <tr><th>プロジェクト</th><th>状態</th><th>preset</th><th>操作</th></tr>
+        <tr><th>プロジェクト</th><th>状態</th><th>preset</th><th>version</th><th>操作</th></tr>
       </thead>
       <tbody>
         {% for p in settings.projects %}
@@ -47,6 +49,7 @@
             </span>
           </td>
           <td class="sp-preset">{{ p.preset or '—' }}</td>
+          <td class="sp-version">{% if p.injected %}v{{ p.version or '?' }}{% else %}—{% endif %}</td>
           <td class="sp-actions">
             {% if p.injected %}
               <button type="button" class="ghost" data-action="settings-eject" data-project="{{ p.root }}">eject</button>

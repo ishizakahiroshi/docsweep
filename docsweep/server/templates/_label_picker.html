@@ -1,12 +1,14 @@
-{# ラベル変更セグメントコントロール（バッジクリック・数字キー 1-6 で表示）。
-   ファイル種別による許可ラベルのバリデーションはサーバー側 update_status が StatusValidationError で弾く。
-   ここでは UI として全候補を出し、不正組み合わせは 400 として警告ダイアログに回す。 #}
-<div class="label-picker" role="listbox" aria-label="ラベルを選択">
-  <button type="button" role="option" class="lp-opt" data-new-state="planned"     data-key="1">1 [計画]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="in-progress" data-key="2">2 [実行中]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="active"      data-key="2">2 [対応中]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="watching"    data-key="3">3 [様子見]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="pending"     data-key="4">4 [保留]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="done"        data-key="5">5 [完了]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="discarded"   data-key="6">6 [廃止]</button>
+{# ラベル一括変更ピッカー（列ヘッダー「ラベル変更▾」/ sticky バー「ラベル変更▾」専用）。
+   - 一括は対象に plan/bugfix/pending が混在しうるため種別フィルタは適用しない
+   - 2026-06-23 改修: 独立ボタン（着手・廃止）を列ヘッダーから撤去し、[廃止] もここに含める
+     ([廃止] は archive 連動の破壊的アクションなので runBulk 側で確認ダイアログ・トーストを出す)
+   - 個別カードの状態違反は services 層が StatusValidationError → failed[] に振り分け
+   経緯: 2026-06-23 改修。docs/local/kanban-card-ux-options/index.html・全独立ボタン廃止 #}
+<div class="label-picker bulk-label-picker" role="listbox" aria-label="ラベルを選択">
+  <button type="button" role="option" class="lp-opt" data-new-state="planned">[計画]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="in-progress">[実行中]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="watching">[様子見]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="pending">[保留]</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="done">[完了]</button>
+  <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded">[廃止]</button>
 </div>

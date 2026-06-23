@@ -18,6 +18,9 @@ class Preset:
     lang: str
     states: StateModel
     use_frontmatter: bool = False
+    # プリセット定義の改訂版。注入内容（ラベル節の生成・状態モデル）の意味が変わったら手で bump する。
+    # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
+    version: str = "1"
 
 
 def _default_state_model() -> StateModel:
@@ -31,6 +34,7 @@ PRESETS: dict[str, Preset] = {
         lang="ja",
         states=_default_state_model(),
         use_frontmatter=False,
+        version="1",
     ),
     "frontmatter": Preset(
         name="frontmatter",
@@ -38,6 +42,7 @@ PRESETS: dict[str, Preset] = {
         lang="en",
         states=_default_state_model(),
         use_frontmatter=True,
+        version="1",
     ),
 }
 

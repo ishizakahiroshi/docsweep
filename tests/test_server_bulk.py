@@ -137,7 +137,11 @@ def test_bulk_status_done_triggers_archive(client):
 
 
 def test_bulk_status_partial_validation_failure(client):
-    """plan に [対応中] は不可。bugfix と混ぜると bugfix だけ通る。"""
+    """bugfix に [計画] は不可。plan と混ぜると plan だけ通る（種別違反の振り分け確認）。
+
+    2026-06-23 改修: 旧 [対応中] は [実行中] に統合されたため、plan 混在テストは
+    「bugfix に [計画] 不可」というパターンに変更。
+    """
     c, _, proj = client
     paths = [
         (proj / "plan_a.md").as_posix(),
@@ -145,14 +149,14 @@ def test_bulk_status_partial_validation_failure(client):
     ]
     r = c.post(
         "/api/cards/bulk/status",
-        data={"token": TOKEN, "paths": paths, "new_state": "active"},
+        data={"token": TOKEN, "paths": paths, "new_state": "planned"},
     )
     assert r.status_code == 200
     body = r.json()
-    # plan_a は validation 違反、bugfix は active(対応中) で通る（既存ラベルが [対応中] でも書き換え可）
+    # bugfix は planned が validation 違反、plan は planned で通る
     assert len(body["failed"]) == 1
     assert body["failed"][0]["kind"] == "validation"
-    assert "plan_a.md" in body["failed"][0]["path"]
+    assert "bugfix_x" in body["failed"][0]["path"]
     assert len(body["ok"]) == 1
 
 

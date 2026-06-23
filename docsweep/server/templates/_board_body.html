@@ -2,34 +2,38 @@
    3 列（やり忘れ / 今日 / 実行中）+ 4 セクション（卒業判定 / 未来期日 / 期日未設定 / archive 候補）。
    各セクションヘッダに「全選択 + 一括ボタン」を出す（plan_kanban-bulk-edit §C2）。 #}
 
-{# 共通の一括操作ボタンセット（マクロ化）。section=セクション名、ops=ボタン定義リスト #}
+{# 共通の一括操作ボタンセット（マクロ化）。section=セクション名、ops=ボタン定義リスト
+   op.kind="label-picker" は section-bulk ではなく section-open-label-picker を出す
+   （クリックで既存 _label_picker.html を開き、選んだ state で列内全カードを一括 status 変更）。 #}
 {% macro section_actions(section, ops) %}
   <span class="sec-actions" data-section="{{ section }}">
     <button type="button" class="sec-btn sec-select" data-action="section-select-all" data-section="{{ section }}" title="このセクションを全選択">✓ 全選択</button>
     {% for op in ops %}
-      <button type="button" class="sec-btn sec-{{ op.kind }}"
-              data-action="section-bulk" data-section="{{ section }}"
-              data-op="{{ op.op }}"
-              {% if op.spec %}data-spec="{{ op.spec }}"{% endif %}
-              {% if op.state %}data-state="{{ op.state }}"{% endif %}
-              title="{{ op.title }}">{{ op.label }}</button>
+      {% if op.kind == "label-picker" %}
+        <button type="button" class="sec-btn sec-label-picker"
+                data-action="section-open-label-picker" data-section="{{ section }}"
+                title="{{ op.title }}">{{ op.label }}</button>
+      {% else %}
+        <button type="button" class="sec-btn sec-{{ op.kind }}"
+                data-action="section-bulk" data-section="{{ section }}"
+                data-op="{{ op.op }}"
+                {% if op.spec %}data-spec="{{ op.spec }}"{% endif %}
+                {% if op.state %}data-state="{{ op.state }}"{% endif %}
+                title="{{ op.title }}">{{ op.label }}</button>
+      {% endif %}
     {% endfor %}
   </span>
 {% endmacro %}
 
 {# セクション別ボタン定義（plan §C2 のセクション別微調整に従う） #}
+{# 2026-06-23 改修: 独立ボタン「着手」「廃止」「完了」を全廃。状態変更はすべて
+   「ラベル変更▾」ピッカー（_label_picker.html）に集約。[廃止] [完了] も同ピッカーから選ぶ。 #}
 {% set OPS_DEFAULT = [
-  {"kind": "due",       "op": "due",    "spec": "+1d", "label": "+1d", "title": "全て +1 日先送り"},
-  {"kind": "due",       "op": "due",    "spec": "+1w", "label": "+1w", "title": "全て +1 週先送り"},
-  {"kind": "status",    "op": "status", "state": "in-progress", "label": "着手", "title": "全て [実行中] に"},
-  {"kind": "discard",   "op": "status", "state": "discarded",   "label": "廃止", "title": "全て [廃止] に → archive へ"},
+  {"kind": "due",          "op": "due",    "spec": "+1d", "label": "+1d", "title": "全て +1 日先送り"},
+  {"kind": "due",          "op": "due",    "spec": "+1w", "label": "+1w", "title": "全て +1 週先送り"},
+  {"kind": "label-picker", "label": "ラベル変更▾", "title": "全カードを別のラベル ([計画]/[実行中]/[様子見]/[保留]/[完了]/[廃止]) に一括変更"},
 ] %}
-{% set OPS_GRADUATE = [
-  {"kind": "due",       "op": "due",    "spec": "+1d", "label": "+1d", "title": "全て +1 日先送り"},
-  {"kind": "due",       "op": "due",    "spec": "+1w", "label": "+1w", "title": "全て +1 週先送り"},
-  {"kind": "promote",   "op": "status", "state": "done",      "label": "完了", "title": "全て [完了] に → archive へ"},
-  {"kind": "discard",   "op": "status", "state": "discarded", "label": "廃止", "title": "全て [廃止] に → archive へ"},
-] %}
+{% set OPS_GRADUATE = OPS_DEFAULT %}
 {% set OPS_ARCHIVE = [
   {"kind": "archive",   "op": "archive", "label": "archive へ", "title": "全て archive 配下へ移送"},
 ] %}

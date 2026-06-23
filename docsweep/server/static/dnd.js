@@ -95,8 +95,9 @@
     if (kind === "today") {
       await postForm("/api/cards/due", { path, new_due: "today", expected_mtime: mtime });
     } else if (kind === "start") {
+      // 2026-06-23 改修: active/対応中 を in-progress/実行中 に統合したため種別分岐は不要。
       const r1 = await postForm("/api/cards/status", {
-        path, new_state: card.dataset.type === "bugfix" ? "active" : "in-progress",
+        path, new_state: "in-progress",
         expected_mtime: mtime,
       });
       // 状態書き換えで mtime が変わるので、新 mtime を以って due も更新する。

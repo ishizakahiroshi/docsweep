@@ -22,6 +22,9 @@ class State:
     labels: 言語コード -> ブラケット内のラベル文字列（例 {"ja": "計画", "en": "Planned"}）。
     archive: archive 対象になりうるか（``[完了]``/``[廃止]`` のみ True）。
     auto_move: ``--auto`` で自動移送してよいか。watching は必ず False（寝かせ中＝守る）。
+    extra_aliases: 廃止された旧ラベルや別名を「読み取り側のエイリアス」として吸収するための
+        追加文字列タプル（書き出し時には使われない）。2026-06-23 改修で廃止した
+        ``[対応中]`` を ``in-progress`` のエイリアスとして登録するために導入。
     """
 
     key: str
@@ -30,26 +33,41 @@ class State:
     auto_move: bool = False
     color: str | None = None
     icon: str | None = None
+    extra_aliases: tuple[str, ...] = ()
 
     def label(self, lang: str = "ja") -> str:
         return self.labels.get(lang) or next(iter(self.labels.values()))
 
     def aliases(self) -> set[str]:
-        """全言語のラベル文字列（小文字化）。検出時のエイリアス照合に使う。"""
-        return {v.strip().lower() for v in self.labels.values() if v}
+        """全言語のラベル文字列 + extra_aliases（すべて小文字化）。検出時のエイリアス照合に使う。"""
+        result = {v.strip().lower() for v in self.labels.values() if v}
+        result.update(a.strip().lower() for a in self.extra_aliases if a)
+        return result
 
 
 # 内蔵デフォルト（何も書かなければこれで動く）。
 # plan_v0.1.0-product-requirements.md「★ 状態モデル」の表に対応。
+#
+# 2026-06-23 改修: かつて bugfix 専用に分離していた ``active`` ([対応中]) を ``in-progress``
+# ([実行中]) に統合した。理由: 同じ「着手中」概念を 2 ラベルに分けることがユーザー UX を
+# 悪化させ、ピッカーの番号重複や種別出し分けロジックを生んでいたため。
+# 既存の `bugfix_*.md` に書かれた ``[対応中]`` は ``in-progress`` のエイリアスとして
+# 読み取り時にマッチさせる（既存ファイルは書き換えない）。
+# 経緯: docs/local/kanban-card-ux-options/index.html、設計プラン
+# plan_state-tag-orthogonalization.md（改訂版）
 DEFAULT_STATES: tuple[State, ...] = (
     State("planned", {"ja": "計画", "en": "Planned"}, archive=False, auto_move=False),
-    State("in-progress", {"ja": "実行中", "en": "In Progress"}, archive=False, auto_move=False),
+    State(
+        "in-progress",
+        {"ja": "実行中", "en": "In Progress"},
+        archive=False, auto_move=False,
+        # 旧 bugfix 用ラベル [対応中] を読み取り側のエイリアスとして吸収。
+        extra_aliases=("対応中", "Active"),
+    ),
     State("watching", {"ja": "様子見", "en": "Watching"}, archive=False, auto_move=False),
     State("done", {"ja": "完了", "en": "Done"}, archive=True, auto_move=True),
     State("discarded", {"ja": "廃止", "en": "Discarded"}, archive=True, auto_move=True),
     State("pending", {"ja": "保留", "en": "Pending"}, archive=False, auto_move=False),
-    # bugfix の調査・修正中ラベル。plan の in-progress と同じ扱い（自動移送しない）。
-    State("active", {"ja": "対応中", "en": "Active"}, archive=False, auto_move=False),
 )
 
 

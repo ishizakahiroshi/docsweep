@@ -220,6 +220,30 @@
   }
   window.__docsweepReloadBoard = reloadBoard;
 
+  // ⏻ サーバー停止（画面右上ボタン）。確認 → POST /api/shutdown → uvicorn が graceful 停止する。
+  // 停止後は HTTP が落ちるためページは「サーバーを停止しました」と表示してリンクを止める。
+  async function shutdownServer() {
+    const ok = await confirmDialog("docsweep のサーバーを停止します。停止後はブラウザのリロードでは再起動できません（端末で再度 docsweep serve を実行してください）。よろしいですか？");
+    if (!ok) return;
+    const btn = document.getElementById("shutdown-btn");
+    if (btn) btn.disabled = true;
+    try {
+      await fetch("/api/shutdown", { method: "POST", headers: headers(), body: fd({}) });
+    } catch (e) {
+      // 停止処理中にコネクションが切れることがある（むしろ正常）。エラーは無視。
+    }
+    // 画面ロック: 看板本体とトップバー操作を覆い、ユーザーに「もう動かない」と示す。
+    const overlay = document.createElement("div");
+    overlay.className = "shutdown-overlay";
+    overlay.innerHTML =
+      "<div class=\"shutdown-card\">" +
+      "<div class=\"shutdown-icon\">⏻</div>" +
+      "<h2>サーバーを停止しました</h2>" +
+      "<p>再度開くには端末で <code>docsweep serve</code> を実行してください。</p>" +
+      "</div>";
+    document.body.appendChild(overlay);
+  }
+
   // ===== 一括編集: 選択状態管理 ===========================================
   // 選択中の path 集合（ページ全体で 1 つ・リロードで消えてよい）
   const selected = new Set();
@@ -503,8 +527,10 @@
     }
     const labelMap = {
       due: `期日を ${params.spec} に更新`,
+      status_planned: "[計画] に変更",
       status_in_progress: "[実行中] に変更",
-      status_active: "[対応中] に変更",
+      status_watching: "[様子見] に変更",
+      status_pending: "[保留] に変更",
       status_done: "[完了] に変更 → archive へ移送",
       status_discarded: "[廃止] に変更 → archive へ移送",
       archive: "archive 配下へ移送",
@@ -575,6 +601,15 @@
       runBulk(op, paths, params);
       return;
     }
+    // セクション一括「ラベル変更▾」: 列内全カードを対象に label_picker を出す
+    const secLP = e.target.closest && e.target.closest("[data-action='section-open-label-picker']");
+    if (secLP) {
+      e.preventDefault();
+      e.stopPropagation();
+      const paths = sectionCardPaths(secLP.dataset.section);
+      openLabelPickerForPaths(paths, secLP);
+      return;
+    }
     // 上部 sticky バーの一括ボタン
     const bb = e.target.closest && e.target.closest("[data-action='bulk']");
     if (bb) {
@@ -583,6 +618,15 @@
       const paths = Array.from(selected);
       const params = { spec: bb.dataset.spec, state: bb.dataset.state };
       runBulk(op, paths, params);
+      return;
+    }
+    // 上部 sticky バー「ラベル変更▾」: 選択中のカードを対象に label_picker を出す
+    const bulkLP = e.target.closest && e.target.closest("[data-action='bulk-open-label-picker']");
+    if (bulkLP) {
+      e.preventDefault();
+      e.stopPropagation();
+      const paths = Array.from(selected);
+      openLabelPickerForPaths(paths, bulkLP);
       return;
     }
     // バルクバー「📅 日付」: 絶対日付で期日一括設定
@@ -671,6 +715,12 @@
       openSettings();
       return;
     }
+    // ⏻ サーバー停止
+    if (e.target.closest && e.target.closest("[data-action='shutdown-server']")) {
+      e.preventDefault();
+      shutdownServer();
+      return;
+    }
     if (e.target.closest && e.target.closest("[data-action='settings-inject']")) {
       e.preventDefault();
       const btn = e.target.closest("[data-action='settings-inject']");
@@ -748,7 +798,14 @@
     return await res.text();
   }
 
-  async function openLabelPicker(card, anchor) {
+  async function openLabelPickerForPaths(paths, anchor) {
+    // 既存 _label_picker.html を「複数 path への一括 status 適用」用に流用する。
+    // セクション一括（列内全カード）と sticky バー（選択中のみ）の両方から呼ばれる。
+    // 適用は runBulk("status", paths, {state}) — 既存 services 経由でラベル不許可は failed[] へ。
+    if (!paths || paths.length === 0) {
+      await confirmDialog("対象カードがありません（選択 or セクション内が空）。");
+      return;
+    }
     closePicker();
     const html = await fetchPartial("/board/_partial/label_picker");
     if (!html) return;
@@ -763,17 +820,27 @@
       if (!btn) return;
       const newState = btn.dataset.newState;
       closePicker();
-      await applyStatus(card, newState);
+      await runBulk("status", paths, { state: newState });
     });
   }
 
-  async function openBackPicker(card, anchor) {
-    // plan の [実行中] からの戻し専用ピッカー（[保留]/[様子見]/[計画] の 3 択）。
-    // bugfix の [対応中] は戻し先が [様子見] 1 択のため、_card.html 側で
-    // data-action="back-watching" を出し、ピッカーを開かず直接 applyStatus する。
+  async function openChangePicker(card, anchor) {
+    // 状態変更ピッカー（個別カードの「変更▾」専用・[廃止] 除く）。
+    // ファイル種別をサーバーに渡して選択肢を出し分ける:
+    //   plan / 未知 → [計画]/[実行中]/[様子見]/[保留]/[完了] の 5 択
+    //   bugfix      → [実行中]/[様子見]/[保留]/[完了] の 4 択（active→in-progress 統合済み）
+    //   pending     → [保留]/[計画] の 2 択
+    // fetchPartial は URL に "?token=..." を後付けする実装のため、
+    // type も渡したい本関数では直接 fetch して URL に両方を載せる。
     closePicker();
-    const html = await fetchPartial("/board/_partial/back_picker");
-    if (!html) return;
+    const t = card.dataset.type || "";
+    const params = new URLSearchParams({ token: TOKEN });
+    if (t) params.set("type", t);
+    const res = await fetch("/board/_partial/change_picker?" + params.toString(), {
+      headers: { "X-Docsweep-Token": TOKEN },
+    });
+    if (!res.ok) return;
+    const html = await res.text();
     const wrap = document.createElement("div");
     wrap.innerHTML = html;
     const picker = wrap.firstElementChild;
@@ -825,9 +892,10 @@
 
   document.addEventListener("click", (e) => {
     if (openPicker && !openPicker.contains(e.target)
-        && !e.target.closest("[data-action='open-label-picker']")
+        && !e.target.closest("[data-action='open-change-picker']")
         && !e.target.closest("[data-action='open-due-picker']")
-        && !e.target.closest("[data-action='open-back-picker']")) {
+        && !e.target.closest("[data-action='section-open-label-picker']")
+        && !e.target.closest("[data-action='bulk-open-label-picker']")) {
       closePicker();
     }
   });
@@ -889,30 +957,12 @@
     const card = e.target.closest(".card");
     if (!card) return;
 
-    const labelBtn = e.target.closest("[data-action='open-label-picker']");
-    if (labelBtn) { e.stopPropagation(); openLabelPicker(card, labelBtn); return; }
+    const changeBtn = e.target.closest("[data-action='open-change-picker']");
+    if (changeBtn) { e.stopPropagation(); openChangePicker(card, changeBtn); return; }
 
     const dueBtn = e.target.closest("[data-action='open-due-picker']");
     if (dueBtn) { e.stopPropagation(); openDuePicker(card, dueBtn); return; }
-
-    const startBtn = e.target.closest("[data-action='start']");
-    if (startBtn) {
-      e.stopPropagation();
-      // bugfix は [対応中]（active）に、それ以外は [実行中]（in-progress）に着手する。
-      // applyStatus 内のバリデーションは services 側で行うため、ここでは種別で投げ分けるだけ。
-      const t = card.dataset.type;
-      applyStatus(card, t === "bugfix" ? "active" : "in-progress");
-      return;
-    }
-
-    const backBtn = e.target.closest("[data-action='open-back-picker']");
-    if (backBtn) { e.stopPropagation(); openBackPicker(card, backBtn); return; }
-
-    const backWatchingBtn = e.target.closest("[data-action='back-watching']");
-    if (backWatchingBtn) { e.stopPropagation(); applyStatus(card, "watching"); return; }
-
-    const discardBtn = e.target.closest("[data-action='discard']");
-    if (discardBtn) { e.stopPropagation(); applyStatus(card, "discarded"); return; }
+    // 2026-06-23 改修: 独立「廃止」ボタンを撤去（変更▾ピッカーに集約）。discard ハンドラ削除。
 
     // それ以外はカードをフォーカス + 右ペインに本文を流し込む。
     if (typeof window.__docsweepLoadEditPane === "function") {
@@ -922,13 +972,14 @@
   });
 
   // ===== キーボード --------------------------------------------------------
+  // 2026-06-23 改修: active/対応中 を in-progress/実行中 に統合。種別分岐廃止。
+  // [廃止] は下段独立ボタンに分離（誤クリック防止）したので数字キー 6 は廃止。
   const NUMBER_TO_STATE = {
     "1": "planned",
-    // "2" は file_type 別: plan → in-progress / bugfix → active
+    "2": "in-progress",
     "3": "watching",
     "4": "pending",
     "5": "done",
-    "6": "discarded",
   };
 
   document.addEventListener("keydown", (e) => {
@@ -960,10 +1011,12 @@
       e.preventDefault();
       confirmDialog(
         "キーボードショートカット:\n" +
-        "  数字 1-6 = ラベル変更（1=計画 2=実行中/対応中 3=様子見 4=保留 5=完了 6=廃止）\n" +
+        "  数字 1-5 = ラベル変更（1=計画 2=実行中 3=様子見 4=保留 5=完了・廃止は下段ボタン）\n" +
         "  d = +1 日 / w = +1 週 / m = +1 ヶ月 / Shift+D = -1 日\n" +
         "  a = 画面全カード選択 / Esc = ピッカーを閉じる + 選択解除\n" +
-        "  Tab = カード巡回 / Ctrl+S = 編集ペインを保存"
+        "  Tab = カード巡回 / Ctrl+S = 編集ペインを保存\n" +
+        "  ※ 状態 / 期日のバッジは表示専用です。変更はカード下段の" +
+        "「変更▾」「期日更新▾」ボタンから行ってください。"
       );
       return;
     }
@@ -993,8 +1046,8 @@
     }
     if (e.key === "2") {
       e.preventDefault();
-      const t = card.dataset.type;
-      applyStatus(card, t === "bugfix" ? "active" : "in-progress");
+      // 2026-06-23 改修: active/対応中 を in-progress/実行中 に統合したため種別分岐は不要。
+      applyStatus(card, "in-progress");
       return;
     }
 

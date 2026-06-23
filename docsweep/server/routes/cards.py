@@ -264,7 +264,7 @@ def post_bulk_status(
     """複数ファイルの H1 ラベルを一括書き換え。``[完了]`` / ``[廃止]`` 指定で archive 移送まで一気通貫。
 
     各 path のファイル種別×ラベル組み合わせ違反は services 層が validation で弾く
-    → 個別に ``failed[]`` へ振り分け（plan は [対応中] 不可、bugfix は [計画]/[実行中] 不可など）。
+    → 個別に ``failed[]`` へ振り分け（bugfix は [計画] 不可、pending は [様子見]/[実行中] 不可など）。
     """
     _check_token(request, token)
     cfg = request.app.state.docsweep.config

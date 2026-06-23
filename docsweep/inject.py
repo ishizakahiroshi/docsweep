@@ -23,6 +23,7 @@ from pathlib import Path
 
 import yaml
 
+from .config import DEFAULT_DUE_OFFSET_DAYS, GLOBAL_CONFIG_PATH
 from .presets import Preset, get_preset
 from .states import StateModel
 
@@ -39,6 +40,10 @@ SUPPORTED_GLOBAL_AGENTS = ("claude", "codex")
 # （Claude=@import 1 行で取り込み / Codex 等=@import 非対応のため本文をブロック展開）。
 GUIDANCE_PATH = Path.home() / ".docsweep" / "guidance.md"
 GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~ は Claude が展開する）
+
+# グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
+# 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
+GUIDANCE_VERSION = "1"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -172,6 +177,19 @@ def generate_label_block(sm: StateModel, lang: str = "ja", *, use_frontmatter: b
         lines += [
             "- front matter に `status: <内部状態>` を併記してもよい（検出は frontmatter > H1 > filename）。",
         ]
+    lines += [
+        "",
+        "### 対応期日（`due:`）の付け方",
+        "",
+        "新規 `plan_*.md` / `pending_*.md` を作る時は frontmatter に `due: YYYY-MM-DD` を入れる。",
+        "日付は `.docsweep.yaml` の `due.default_offset_days`（無ければ ~/.docsweep/config.yaml の同設定、",
+        "それも無ければ内蔵 DEFAULT: `plan=7` / `pending=14`）から「今日 + N 日」で計算する。",
+        f"手で計算したくなければ `{docsweep_command('new', '<type>', '<topic>')}` を使えば自動で付く",
+        f"（明示したい時は `{docsweep_command('new', '<type>', '<topic>', '--due', 'YYYY-MM-DD')}`）。",
+        "`bugfix_*.md` は新規時には `due:` を付けない（`[様子見]` 遷移時に追記する設計）。",
+        "プロジェクト固有の期日が必要なら `.docsweep.yaml` の `due.default_offset_days` を編集する",
+        "（プロジェクトで書いたキーだけが全体既定を上書きする＝部分上書き可）。",
+    ]
     return "\n".join(lines)
 
 
@@ -369,6 +387,7 @@ def inject(
     key = project_dir.as_posix()
     entry = manifest["projects"].get(key, {"preset": p.name, "blocks": {}, "ts": _now()})
     entry["preset"] = p.name
+    entry["preset_version"] = p.version
 
     # CLAUDE.md = 正本（ラベル節＋導線）。AGENTS.md 等は複製せず CLAUDE.md を指すポインタにする
     # （single source of truth。Codex は AGENTS.md のポインタを読んで CLAUDE.md を参照する）。
@@ -401,6 +420,49 @@ def inject(
     return result
 
 
+def _ensure_global_config_scaffold(*, dry_run: bool = False) -> bool:
+    """``~/.docsweep/config.yaml`` が無ければ due ひな型付きで作る。既存は触らない。
+
+    既存ユーザー設定を上書きしないことを最優先（破壊回避）。新規に作る時のみ、
+    全プロジェクト共通の既定として ``due:`` ブロックの書き方が一目で分かる scaffold を置く。
+    返り値 True = 新規作成した。False = 既存があったので何もしなかった。
+    """
+    if GLOBAL_CONFIG_PATH.is_file():
+        return False
+    body = (
+        "# docsweep グローバル設定（全プロジェクト共通の既定）。\n"
+        "# プロジェクトの .docsweep.yaml がここを部分上書きする（プロジェクトの方が強い）。\n\n"
+        + _due_scaffold(scope="global")
+    )
+    if not dry_run:
+        GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        GLOBAL_CONFIG_PATH.write_text(body, encoding="utf-8")
+    return True
+
+
+def _due_scaffold(*, scope: str) -> str:
+    """``due:`` ブロックのコメントアウト済みひな型を返す（プロジェクト / グローバル共通）。
+
+    既定値そのままを例示するので、コメントを外しただけでは挙動が変わらない（嘘の上書きが起きない）。
+    値を編集して初めて反映される。プロジェクト > グローバル > 内蔵 DEFAULT の順で key 単位に重なる。
+    """
+    if scope == "project":
+        intro = (
+            "# 対応期日（自動付与の初期 offset_days）。プロジェクト固有の期日に上書きしたければ\n"
+            "# コメントを外して値を書き換える。書いたキーだけがグローバル ~/.docsweep/config.yaml と\n"
+            "# 内蔵 DEFAULT に対して優先される（書かなかったキーは上位の値を温存）。\n"
+        )
+    else:
+        intro = (
+            "# 対応期日（自動付与の初期 offset_days）の全プロジェクト共通の既定。\n"
+            "# プロジェクト側 .docsweep.yaml の due: ブロックで個別に上書きできる（プロジェクトの方が強い）。\n"
+        )
+    lines = [intro, "# due:", "#   default_offset_days:"]
+    for k, v in DEFAULT_DUE_OFFSET_DAYS.items():
+        lines.append(f"#     {k}: {v}")
+    return "\n".join(lines) + "\n"
+
+
 def _render_yaml(p: Preset) -> str:
     states_block = []
     for st in p.states.states:
@@ -416,7 +478,8 @@ def _render_yaml(p: Preset) -> str:
         f"# {p.description}\n"
         f"lang: {p.lang}\n"
         f"preset: {p.name}\n"
-        f"states:\n" + "\n".join(states_block) + "\n"
+        f"states:\n" + "\n".join(states_block) + "\n\n"
+        + _due_scaffold(scope="project")
     )
 
 
@@ -471,6 +534,13 @@ def inject_global(
     # 孤児になる（eject 側の保持判定とも整合: guidance.md は Claude が居る時だけ保持）。
     if _agent_uses_central(agent):
         write_guidance_file(lang, dry_run=dry_run)
+    # docsweep 自身のグローバル設定 (~/.docsweep/config.yaml) のひな型を「未存在のときだけ」作る。
+    # 既存ユーザー設定には触らない。due.default_offset_days を全プロジェクト共通の既定として
+    # ここに書いてもらえるよう、コメントアウト済みのブロックを提示する。
+    if _ensure_global_config_scaffold(dry_run=dry_run):
+        result.warnings.append(
+            f"~/.docsweep/config.yaml が無かったのでひな型を作成しました（due ブロックを編集すると全体既定になります）。"
+        )
     inner = _global_inner(agent, lang)
 
     manifest = load_manifest()
@@ -478,6 +548,7 @@ def inject_global(
     entry = manifest["projects"].get(key, {"scope": "global", "agent": agent, "blocks": {}, "ts": _now()})
     entry["scope"] = "global"
     entry["agent"] = agent
+    entry["guidance_version"] = GUIDANCE_VERSION
 
     if not dry_run:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -519,17 +590,22 @@ def eject_global(
 
 def list_injected() -> list[dict]:
     manifest = load_manifest()
-    return [
-        {
+    items = []
+    for k, v in manifest.get("projects", {}).items():
+        scope = v.get("scope", "project")
+        # scope=project は preset_version、scope=global は guidance_version を共通の "version" として返す
+        # （UI 側は scope を見ずに version 列を描画できる）。古いマニフェストで欠けていれば None。
+        version = v.get("preset_version") if scope == "project" else v.get("guidance_version")
+        items.append({
             "project": Path(k).name,
             "path": k,
             "preset": v.get("preset"),
-            "scope": v.get("scope", "project"),
+            "scope": scope,
             "agent": v.get("agent"),
             "ts": v.get("ts"),
-        }
-        for k, v in manifest.get("projects", {}).items()
-    ]
+            "version": version,
+        })
+    return items
 
 
 def preview_inject(project_dir: Path, *, preset: str | None = None, include_guidance: bool = True) -> dict:

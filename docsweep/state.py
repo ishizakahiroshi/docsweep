@@ -180,13 +180,12 @@ def get_postpone_count(project_root: Path, abs_path: Path) -> int:
 
 # 軸 1（ラベル）の遷移でカウンタをリセットする境界条件。
 # - [計画] → [実行中]: ようやく着手したサイン
-# - [実行中] → [様子見]: 直し終わったサイン
-# - [対応中] → [様子見]: bugfix が直し終わったサイン
+# - [実行中] → [様子見]: 直し終わったサイン（plan / bugfix 共通）
 # - 上記以外（[完了]/[廃止] への遷移など）は archive 行きなのでリセット不要
+# 2026-06-23 改修: 旧 active=[対応中] を in-progress に統合したため ("active", "watching") を撤去。
 _RESET_TRANSITIONS: frozenset[tuple[str, str]] = frozenset({
     ("planned", "in-progress"),
     ("in-progress", "watching"),
-    ("active", "watching"),
     ("pending", "planned"),
     ("pending", "in-progress"),
 })

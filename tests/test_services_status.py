@@ -107,6 +107,22 @@ def test_update_status_rejects_planned_on_bugfix(tmp_path: Path):
         )
 
 
+def test_update_status_allows_pending_on_bugfix(tmp_path: Path):
+    """2026-06-23 改訂: bugfix にも [保留] を許可する。
+    協議: docs/local/bugfix-return-target-design_review.html A1。
+    """
+    proj = _setup_project(tmp_path)
+    f = proj / "bugfix_a.md"
+    f.write_text("# [対応中] テスト\n", encoding="utf-8")
+    cfg = _cfg(tmp_path)
+    res = update_status(
+        f, "pending",
+        project_root=proj, config=cfg, file_type="bugfix",
+    )
+    assert res.new_state_key == "pending"
+    assert "[保留]" in (proj / "bugfix_a.md").read_text(encoding="utf-8")
+
+
 def test_update_status_pending_allows_pending_planned_discarded(tmp_path: Path):
     proj = _setup_project(tmp_path)
     f = proj / "pending_a.md"

@@ -40,6 +40,10 @@ class ServerState:
     def __init__(self, config: Config, token: str):
         self.config = config
         self.token = token
+        # uvicorn.Server インスタンス。cmd_serve で起動した実体だけが代入する。
+        # /api/shutdown はこれを参照して should_exit=True で graceful 停止する。
+        # テスト等でアプリ単体生成された場合は None のまま（停止不可で 503 を返す）。
+        self.server = None
 
 
 def _render_markdown(text: str) -> str:
@@ -186,6 +190,19 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         if not dry_run and state.config.roots:
             write_index(state.config)
         return JSONResponse([m.to_dict() for m in moved])
+
+    @app.post("/api/shutdown")
+    def api_shutdown(request: Request, token: str = Form(default="")):
+        """画面右上 ⏻ ボタン用。uvicorn を graceful 停止する。
+        cmd_serve から起動した実体だけが state.server を持つ。テスト等で
+        単体生成された FastAPI では server が無いため 503 を返す。"""
+        _check_token(request, token)
+        if state.server is None:
+            raise HTTPException(status_code=503, detail="server is not stoppable in this context")
+        # uvicorn.Server はメインループ内でこのフラグを毎周見てから抜ける。
+        # 走行中のリクエスト（このレスポンス含む）は完了するまで待たれる。
+        state.server.should_exit = True
+        return JSONResponse({"shutting_down": True})
 
     def _valid_project_dir(project: str) -> Path | None:
         """注入対象はスキャンで実在が確認できたプロジェクト境界に限定する（任意パスへの書込を防ぐ）。"""
@@ -341,14 +358,14 @@ def _dashboard_data(result: ScanResult, config: Config) -> dict:
     # ③ 落ち着いて確認＝保留・進行中（要判断に出ていないもの）。
     fold = [
         slim(r) for r in by_age
-        if r.state in ("pending", "in-progress", "active") and Flag.NEEDS_DECISION.value not in r.flags
+        if r.state in ("pending", "in-progress") and Flag.NEEDS_DECISION.value not in r.flags
     ]
     # 要修正（ラベル欠落等）も拾えるようにキューの末尾へ。
     queue += [slim(r) for r in by_age if Flag.NEEDS_FIX.value in r.flags and Flag.NEEDS_DECISION.value not in r.flags]
     # archive 可能（完了・廃止）＝一括移送の対象。実行前に中身を確認できるよう一覧で持つ。
     archivable = [slim(r) for r in by_age if r.auto_movable and r.archivable]
 
-    inprogress = sum(1 for r in recs if r.state in ("in-progress", "active"))
+    inprogress = sum(1 for r in recs if r.state == "in-progress")
     done = sum(1 for r in recs if r.state == "done")
 
     return {
