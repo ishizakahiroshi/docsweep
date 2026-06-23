@@ -17,12 +17,15 @@ from ..detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from ..state import record_label_transition, should_reset_postpone
 
 # ファイル種別ごとに許可されるラベル（内部 state key）。命名規約と state モデルの直交化。
-# - plan は [対応中] を持たない（bugfix 専用）
-# - bugfix は [計画] / [実行中] を持たない（plan 専用）
-# - pending は [保留] / [計画] / [廃止] のみ
+# - plan は [計画] からスタート可。bugfix は [計画] を持たない（事後記録のため）
+# - bugfix / plan ともに「着手中」は [実行中] (in-progress) で共通化
+#   （2026-06-23 改修: 旧 bugfix 専用の active=[対応中] を in-progress に統合・state モデル簡素化）
+# - bugfix も [保留] (pending) を許可（修正後の中断・寝かせ前の一時停止を表現）
+# - pending ファイルは [保留] / [計画] / [廃止] のみ
+# 経緯: docs/local/kanban-card-ux-options/index.html、plan_state-tag-orthogonalization.md 改訂版
 _ALLOWED_BY_TYPE: dict[str, frozenset[str]] = {
     "plan": frozenset({"planned", "in-progress", "watching", "pending", "done", "discarded"}),
-    "bugfix": frozenset({"active", "watching", "done", "discarded"}),
+    "bugfix": frozenset({"in-progress", "watching", "pending", "done", "discarded"}),
     "pending": frozenset({"pending", "planned", "discarded"}),
 }
 
@@ -95,7 +98,7 @@ def update_status(
 
     Args:
         abs_path: 書き込み対象 MD の絶対パス（呼び出し側でスコープ境界検証済み前提）
-        new_state_key: 内部状態キー（"planned" / "in-progress" / "watching" / "done" / "discarded" / "pending" / "active"）
+        new_state_key: 内部状態キー（"planned" / "in-progress" / "watching" / "done" / "discarded" / "pending"）
         project_root: state.json の置き場
         config: state_model（ラベル文字列の解決）と lang を持つ
         file_type: "plan" / "bugfix" / "pending"（バリデーション用・None で緩判定）

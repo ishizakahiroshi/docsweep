@@ -33,8 +33,9 @@ def classify(doc: ScannedDoc, config: Config) -> None:
     type_def = doc.type_def
     if type_def is not None and rec.age_days >= type_def.stale_days:
         flags.append(Flag.STALE.value)
-        # 陳腐化した未終端ラベル（計画/実行中/対応中/様子見）は要判断。
-        if rec.state in {"planned", "in-progress", "active", "watching"}:
+        # 陳腐化した未終端ラベル（計画/実行中/様子見）は要判断。
+        # 2026-06-23 改修: active を in-progress に統合。
+        if rec.state in {"planned", "in-progress", "watching"}:
             flags.append(Flag.NEEDS_DECISION.value)
 
     # due 超過フラグ（archive 制御には絡めない — 第2軸は気づきのみ）。
@@ -58,7 +59,8 @@ def classify(doc: ScannedDoc, config: Config) -> None:
 def _allowed_actions(rec: FileRecord) -> list[str]:
     actions: list[str] = [Action.KEEP.value]
     state = rec.state
-    if state in {"planned", "in-progress", "active", "watching", "pending"}:
+    # 2026-06-23 改修: active を in-progress に統合。
+    if state in {"planned", "in-progress", "watching", "pending"}:
         actions.append(Action.DISCARD.value)
     if state in {"watching", "discarded"}:
         actions.append(Action.RESUME.value)
@@ -228,7 +230,8 @@ def apply_action(
         return MoveLogEntry(ts="", op=action, project=rec.project, status=target_key, src=rec.path, dst=dst.as_posix())
 
     if action == Action.RESUME.value:
-        target_key = "active" if rec.type == "bugfix" else "in-progress"
+        # 2026-06-23 改修: active/対応中 を in-progress に統合。種別による振り分けは不要に。
+        target_key = "in-progress"
         st = sm.by_key(target_key)
         if st and not dry_run:
             relabel_file(path, f"[{st.label(config.lang)}]", config)

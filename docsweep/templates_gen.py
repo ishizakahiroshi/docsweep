@@ -58,7 +58,8 @@ def _bugfix_body(title: str, *, due: str | None = None) -> str:
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
     _ = due
     return (
-        f"# [対応中] {title}\n\n"
+        # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
+        f"# [実行中] {title}\n\n"
         "## 症状\n\n<TODO>\n\n## 根本原因\n\n<TODO>\n\n## 修正内容\n\n<TODO>\n\n"
         "## 変更ファイル\n\n<TODO>\n\n## 検証\n\n<TODO>\n\n## 備忘\n\n<TODO>\n"
     )

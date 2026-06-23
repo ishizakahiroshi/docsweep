@@ -51,7 +51,8 @@ def test_new_bugfix_does_not_include_due(tmp_path: Path):
     body = doc.path.read_text(encoding="utf-8")
     assert "---" not in body.splitlines()[0]  # frontmatter なし
     assert "due:" not in body
-    assert "# [対応中] login-500" in body
+    # 2026-06-23 改修: 新規 bugfix は [対応中] でなく [実行中] を書く（active 統合）
+    assert "# [実行中] login-500" in body
     assert doc.due is None
 
 

@@ -186,11 +186,12 @@ def test_cards_status_done_triggers_archive(client):
 
 def test_cards_status_validation_rejects_bad_combo(client):
     c, _, proj = client
-    p = (proj / "plan_overdue.md").resolve().as_posix()
-    # plan_*.md は [対応中] (active) を持てない（services/status.py で拒否）
+    # 2026-06-23 改修: active を in-progress に統合したため、plan に active 違反テストは消滅。
+    # 代わりに「bugfix に [計画] (planned) は不可」のバリデーション違反で確認する。
+    p = (proj / "bugfix_inprogress_2026-06-23.md").resolve().as_posix()
     r = c.post(
         "/api/cards/status",
-        data={"token": TOKEN, "path": p, "new_state": "active"},
+        data={"token": TOKEN, "path": p, "new_state": "planned"},
     )
     assert r.status_code == 400
 
@@ -319,44 +320,162 @@ def test_label_picker_partial(client):
     assert "data-new-state=\"in-progress\"" in r.text
 
 
-def test_back_picker_partial(client):
-    """戻し先ピッカーは [保留] / [様子見] / [計画] の 3 択を返す（plan 用）。"""
+def test_change_picker_partial_plan(client):
+    """状態変更ピッカー（plan）は [計画]/[実行中]/[様子見]/[保留]/[完了]/[廃止] の 6 択（全状態集約）。
+
+    2026-06-23 改修: 独立ボタン（着手・廃止）を撤去し、[廃止] もピッカーに含める。
+    """
     c, _, _ = client
-    r = c.get(f"/board/_partial/back_picker?token={TOKEN}")
+    r = c.get(f"/board/_partial/change_picker?token={TOKEN}&type=plan")
     assert r.status_code == 200
-    assert "back-picker" in r.text
-    # 戻し先 3 つすべて含む
-    assert 'data-new-state="pending"' in r.text
-    assert 'data-new-state="watching"' in r.text
+    assert "change-picker" in r.text
     assert 'data-new-state="planned"' in r.text
-    # 着手ラベル（[実行中] / [対応中]）は戻し先候補に含めない
-    assert 'data-new-state="in-progress"' not in r.text
+    assert 'data-new-state="in-progress"' in r.text
+    assert 'data-new-state="watching"' in r.text
+    assert 'data-new-state="pending"' in r.text
+    assert 'data-new-state="done"' in r.text
+    # [廃止] もピッカーに含まれる（独立ボタン撤去のため）
+    assert 'data-new-state="discarded"' in r.text
+    # bugfix 専用ラベル active は廃止済み
     assert 'data-new-state="active"' not in r.text
 
 
-def test_back_picker_requires_token(client):
+def test_change_picker_partial_bugfix(client):
+    """bugfix の状態変更ピッカーは [実行中]/[様子見]/[保留]/[完了]/[廃止] の 5 択（[計画] 除外）。"""
     c, _, _ = client
-    assert c.get("/board/_partial/back_picker").status_code == 403
+    r = c.get(f"/board/_partial/change_picker?token={TOKEN}&type=bugfix")
+    assert r.status_code == 200
+    assert 'data-new-state="in-progress"' in r.text
+    assert 'data-new-state="watching"' in r.text
+    assert 'data-new-state="pending"' in r.text
+    assert 'data-new-state="done"' in r.text
+    assert 'data-new-state="discarded"' in r.text
+    # plan 専用の [計画] は bugfix では出さない
+    assert 'data-new-state="planned"' not in r.text
+    # 廃止 active キーは消えた
+    assert 'data-new-state="active"' not in r.text
 
 
-def test_card_button_toggles_by_state_and_type(client):
-    """カード左ボタンは現在状態とファイル種別でトグルされる。
+def test_change_picker_partial_pending(client):
+    """pending ファイルの状態変更ピッカーは [保留]/[計画]/[廃止] の 3 択。"""
+    c, _, _ = client
+    r = c.get(f"/board/_partial/change_picker?token={TOKEN}&type=pending")
+    assert r.status_code == 200
+    assert 'data-new-state="pending"' in r.text
+    assert 'data-new-state="planned"' in r.text
+    assert 'data-new-state="discarded"' in r.text
 
-    - planned plan: 「着手」+ data-action="start"
-    - in-progress plan: 「戻す▾」+ data-action="open-back-picker"
-    - active bugfix: 「様子見に戻す」+ data-action="back-watching"
+
+def test_change_picker_partial_no_type_falls_back_to_plan(client):
+    """type 未指定は plan 相当（6 択）にフォールバック。"""
+    c, _, _ = client
+    r = c.get(f"/board/_partial/change_picker?token={TOKEN}")
+    assert r.status_code == 200
+    assert 'data-new-state="planned"' in r.text
+    assert 'data-new-state="in-progress"' in r.text
+    assert 'data-new-state="discarded"' in r.text
+
+
+def test_label_picker_partial_includes_discarded(client):
+    """一括ピッカー（_label_picker.html）も [廃止] を含む（列ヘッダーから独立廃止ボタン撤去のため）。"""
+    c, _, _ = client
+    r = c.get(f"/board/_partial/label_picker?token={TOKEN}")
+    assert r.status_code == 200
+    assert 'data-new-state="discarded"' in r.text
+    assert 'data-new-state="done"' in r.text
+
+
+def test_change_picker_requires_token(client):
+    c, _, _ = client
+    assert c.get("/board/_partial/change_picker").status_code == 403
+
+
+def test_back_picker_route_removed(client):
+    """旧 _back_picker.html とそのルートは削除済み（404）。"""
+    c, _, _ = client
+    assert c.get(f"/board/_partial/back_picker?token={TOKEN}").status_code == 404
+
+
+def test_section_actions_include_label_picker(client):
+    """各列のセクション一括ボタン群に「ラベル変更▾」が含まれる。
+
+    OPS_DEFAULT/OPS_GRADUATE に label-picker 種を追加した事を保証する。
+    クリック時に列内全カードの path を集めて label_picker を出す動線は keymap.js 側。
+    """
+    c, _, _ = client
+    html = c.get(f"/board?token={TOKEN}").text
+    # マクロが kind="label-picker" 用の data-action を section-bulk と別経路で出す
+    assert 'data-action="section-open-label-picker"' in html
+    # 「やり忘れ」「今日」「実行中」+ 卒業判定セクション全てで使えるべき（OPS_DEFAULT / OPS_GRADUATE 双方）
+    assert html.count('data-action="section-open-label-picker"') >= 4
+    # ボタン文言
+    assert "ラベル変更▾" in html
+
+
+def test_bulk_bar_includes_label_picker(client):
+    """上部 sticky バー（選択中カードへの一括）にも「ラベル変更▾」が含まれる。"""
+    c, _, _ = client
+    html = c.get(f"/board?token={TOKEN}").text
+    assert 'data-action="bulk-open-label-picker"' in html
+
+
+def test_card_actions_are_unified(client):
+    """カード下段は全カードで「変更▾ / 期日更新▾」の 2 ボタン固定。
+
+    2026-06-23 改修:
+    - バッジクリック動線を撤去（state-badge / due-badge は表示専用）
+    - 独立ボタン（着手・廃止）を全廃し、状態変更は「変更▾」ピッカーに集約
+    協議: docs/local/kanban-card-ux-options/index.html。
     """
     c, _, _ = client
     html = c.get(f"/board?token={TOKEN}").text
 
-    # plan_overdue.md は [計画] なので「着手」ボタンが出る
-    # plan_active.md は [実行中] なので「戻す▾」ボタンが出る
-    # bugfix_inprogress_2026-06-23.md は [対応中] なので「様子見に戻す」が出る
-    assert 'data-action="start"' in html
-    assert 'data-action="open-back-picker"' in html
-    assert "戻す▾" in html
-    assert 'data-action="back-watching"' in html
-    assert "様子見に戻す" in html
+    # 新ボタン
+    assert 'data-action="open-change-picker"' in html
+    assert "変更▾" in html
+
+    # カード下段の独立ボタン群は全廃
+    assert 'data-action="discard"' not in html
+    assert 'data-action="start"' not in html
+    assert 'data-action="open-back-picker"' not in html
+    assert 'data-action="back-watching"' not in html
+    assert "戻す▾" not in html
+    assert "様子見に戻す" not in html
+    assert 'class="act act-start"' not in html
+    assert 'class="act act-discard"' not in html
+
+
+def test_section_actions_no_independent_status_buttons(client):
+    """列ヘッダー一括は「+1d / +1w / ラベル変更▾」のみ。独立「着手」「廃止」「完了」は撤去。"""
+    c, _, _ = client
+    html = c.get(f"/board?token={TOKEN}").text
+    # 一括「ラベル変更▾」は残る
+    assert 'data-action="section-open-label-picker"' in html
+    # 列ヘッダーで in-progress / discarded / done への直行 section-bulk は撤去
+    assert 'data-action="section-bulk" data-section="overdue" data-op="status" data-state="in-progress"' not in html
+    assert 'data-action="section-bulk" data-section="overdue" data-op="status" data-state="discarded"' not in html
+    assert 'data-action="section-bulk" data-section="graduate" data-op="status" data-state="done"' not in html
+    # ただし期日先送り (+1d / +1w) は section-bulk として残る
+    assert 'data-action="section-bulk"' in html  # due は残る
+
+
+def test_badges_are_display_only(client):
+    """state-badge と due-badge は表示専用（クリック動線を持たない）。
+
+    2026-06-23 改修: バッジから開くピッカーを廃止し、操作は下段ボタンに集約。
+    プロジェクトバッジ（絞り込み機能）は下段に同等機能が無いためクリック可能のまま残す。
+    """
+    c, _, _ = client
+    html = c.get(f"/board?token={TOKEN}").text
+
+    # state-badge / due-badge から data-action が消えている
+    assert 'data-action="open-label-picker"' not in html
+    # 個別カードの open-due-picker は下段「期日更新▾」ボタンには残る（バッジ側を消した）。
+    # state-badge-static / due-badge-static の表示専用クラスが付く
+    assert "state-badge-static" in html
+    assert "due-badge-static" in html
+    # プロジェクトバッジは引き続きクリック可能（絞り込み）
+    assert 'data-action="select-project"' in html
 
 
 def test_due_picker_partial(client):

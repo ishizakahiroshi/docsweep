@@ -189,20 +189,24 @@ def load_config(
     types = _parse_types(merged.get("types")) or list(DEFAULT_TYPES)
     state_model = build_state_model(merged.get("states"))
 
-    # ``due:`` ブロック（.docsweep.yaml に書かれた場合のみ上書き）。
-    # 既定: postpone_warn=3 / alert=5 / default_offset_days=plan:7 pending:14 bugfix_watching:7。
-    due_cfg = merged.get("due") or {}
-    due_warn = int(due_cfg.get("postpone_warn_threshold", 3))
-    due_alert = int(due_cfg.get("postpone_alert_threshold", 5))
-    raw_offsets = due_cfg.get("default_offset_days") or {}
+    # ``due:`` ブロックは shallow merge ではなくキー単位の deep merge で重ねる。
+    # 優先順位: プロジェクト > グローバル > 内蔵 DEFAULT。
+    # 例: グローバルで plan=7、プロジェクトで pending=3 だけ設定したい時、
+    # 両者の値が共存し片方が片方を巻き添えで消さない（「プロジェクトの方が強い」を
+    # 「プロジェクトが書いたキーだけ強い」として正確に表現する）。
+    g_due = g.get("due") or {}
+    p_due = project_cfg.get("due") or {}
+    due_warn = int(p_due.get("postpone_warn_threshold", g_due.get("postpone_warn_threshold", 3)))
+    due_alert = int(p_due.get("postpone_alert_threshold", g_due.get("postpone_alert_threshold", 5)))
     offsets: dict[str, int] = dict(DEFAULT_DUE_OFFSET_DAYS)
-    if isinstance(raw_offsets, dict):
-        for k, v in raw_offsets.items():
-            try:
-                offsets[str(k)] = int(v)
-            except (TypeError, ValueError):
-                # 不正な値は既定を温存（嘘の日付を量産しない方針）。
-                pass
+    for layer in (g_due.get("default_offset_days"), p_due.get("default_offset_days")):
+        if isinstance(layer, dict):
+            for k, v in layer.items():
+                try:
+                    offsets[str(k)] = int(v)
+                except (TypeError, ValueError):
+                    # 不正な値は前段（global → DEFAULT）の値を温存（嘘の日付を量産しない方針）。
+                    pass
 
     return Config(
         roots=roots,

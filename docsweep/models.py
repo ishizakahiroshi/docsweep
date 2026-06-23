@@ -18,7 +18,7 @@ class Action(str, Enum):
 
     DISCARD = "discard"  # [廃止] にして archive へ
     KEEP = "keep"  # 現状維持（何もしない）
-    RESUME = "resume"  # 様子見/廃止候補 → 実行中/対応中 へ戻す
+    RESUME = "resume"  # 様子見/廃止候補 → 実行中 へ戻す
     RELABEL = "relabel"  # 任意ラベルへ書き換え（to を伴う）
     PROMOTE = "promote"  # 様子見 → 完了 へ昇格し archive へ（release sweep）
 

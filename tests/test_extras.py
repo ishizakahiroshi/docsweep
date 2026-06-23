@@ -99,7 +99,8 @@ def test_new_bugfix_dated(tmp_path):
 
     doc = new_doc("bugfix", "crash", project_dir=tmp_path)
     assert doc.path.name.startswith("bugfix_crash_")
-    assert "[対応中]" in doc.path.read_text(encoding="utf-8")
+    # 2026-06-23 改修: 新規 bugfix は [対応中] でなく [実行中] を書く（active 統合）
+    assert "[実行中]" in doc.path.read_text(encoding="utf-8")
 
 
 # ---- inject / eject (C7) ----
@@ -108,6 +109,9 @@ def test_new_bugfix_dated(tmp_path):
 def manifest(tmp_path, monkeypatch):
     mp = tmp_path / "injected.json"
     monkeypatch.setattr("docsweep.inject.MANIFEST_PATH", mp)
+    # inject_global は GLOBAL_CONFIG_PATH のひな型生成も行うので、実 home を汚さないよう
+    # tmp 側へ向けておく（既存テストの暗黙副作用を防ぐ）。
+    monkeypatch.setattr("docsweep.inject.GLOBAL_CONFIG_PATH", tmp_path / "global_config.yaml")
     return mp
 
 
@@ -177,6 +181,7 @@ def test_inject_handedit_detection(tmp_path, manifest):
 
 def test_list_injected(tmp_path, manifest):
     from docsweep.inject import inject, list_injected
+    from docsweep.presets import PRESETS
 
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -184,6 +189,19 @@ def test_list_injected(tmp_path, manifest):
     items = list_injected()
     assert len(items) == 1
     assert items[0]["preset"] == "frontmatter"
+    # プリセット定義の改訂版がマニフェスト経由で UI に届くこと（v0.1.0 初期は "1"）
+    assert items[0]["version"] == PRESETS["frontmatter"].version
+
+
+def test_list_injected_records_global_guidance_version(tmp_path, manifest, monkeypatch):
+    """グローバル inject の場合は導線ブロックの版 (GUIDANCE_VERSION) が version に乗る。"""
+    from docsweep import inject as I
+
+    target = tmp_path / "CLAUDE.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "guidance.md")
+    I.inject_global(agent="claude", target=target)
+    items = [it for it in I.list_injected() if it.get("scope") == "global"]
+    assert items and items[0]["version"] == I.GUIDANCE_VERSION
 
 
 # ---- pointer / @import モード（single source of truth） ----
@@ -309,6 +327,74 @@ def test_preview_global_warns_on_override(tmp_path):
     assert any("AGENTS.override.md" in w for w in I.preview_global(agent="codex", target=d / "TEAM_GUIDE.md")["warnings"])
     # Claude は override の概念が無いので警告しない。
     assert not I.preview_global(agent="claude", target=d / "CLAUDE.md")["warnings"]
+
+
+def test_inject_yaml_includes_due_scaffold(tmp_path, manifest):
+    """プロジェクト inject 生成の .docsweep.yaml に due ひな型（コメント）が含まれる。
+
+    既定値そのままを例示するので、コメントを外しただけでは挙動が変わらない（嘘の上書きが起きない）。
+    """
+    from docsweep.inject import inject
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    inject(proj, preset="claude-jp")
+    body = (proj / ".docsweep.yaml").read_text(encoding="utf-8")
+    assert "due:" in body  # ひな型行（コメントアウト中）が存在
+    assert "default_offset_days" in body
+    assert "plan: 7" in body
+    assert "pending: 14" in body
+
+
+def test_inject_global_creates_docsweep_config_scaffold(tmp_path, manifest, monkeypatch):
+    """グローバル inject で ~/.docsweep/config.yaml が無ければ due ひな型付きで作る。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "claude" / "CLAUDE.md"
+    target.parent.mkdir(parents=True)
+
+    assert not I.GLOBAL_CONFIG_PATH.exists()  # 前提: ひな型は未生成
+    r = I.inject_global(agent="claude", target=target)
+    assert I.GLOBAL_CONFIG_PATH.is_file()
+    body = I.GLOBAL_CONFIG_PATH.read_text(encoding="utf-8")
+    assert "due:" in body
+    assert "default_offset_days" in body
+    # 作成時は warning として通知（UI で見える）
+    assert any("config.yaml" in w for w in r.warnings)
+
+
+def test_inject_global_keeps_existing_docsweep_config(tmp_path, manifest, monkeypatch):
+    """既存の ~/.docsweep/config.yaml には触らない（ユーザー設定保護）。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "claude" / "CLAUDE.md"
+    target.parent.mkdir(parents=True)
+    # ユーザーが既に config を持っている状態を作る
+    I.GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    I.GLOBAL_CONFIG_PATH.write_text("roots:\n  - C:/dev\n", encoding="utf-8")
+
+    r = I.inject_global(agent="claude", target=target)
+    body = I.GLOBAL_CONFIG_PATH.read_text(encoding="utf-8")
+    assert body == "roots:\n  - C:/dev\n"  # 完全に温存
+    assert not any("config.yaml" in w for w in r.warnings)  # 通知も出さない
+
+
+def test_inject_label_block_mentions_due(tmp_path, manifest):
+    """生成された CLAUDE.md 管理ブロックに due ルールの説明節が入る。"""
+    from docsweep.inject import inject
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    inject(proj, preset="claude-jp")
+    text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "対応期日" in text
+    assert "default_offset_days" in text
+    # bugfix は新規時 due を付けない仕様も明記
+    assert "[様子見]" in text and "bugfix" in text
 
 
 def test_eject_global_keeps_central_while_claude_present(tmp_path, manifest, monkeypatch):

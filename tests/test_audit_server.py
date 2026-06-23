@@ -83,7 +83,9 @@ def test_apostrophe_path_renders_safe(tmp_path: Path):
     html = c.get(f"/?token={TOKEN}").text
     assert "onclick=" not in html            # inline ハンドラは廃止（CSP 対応）
     assert "bob&#39;s-proj" in html          # path は data 属性に autoescape されて入る
-    assert 'data-action="discard"' in html   # 委譲用 data-action で配線
+    # 2026-06-23 改修: 「廃止」独立ボタンを撤去（変更▾ピッカーに集約）。CSP 配線確認は
+    # 「変更▾」ボタンの data-action で代替する（同じ委譲方式）。
+    assert 'data-action="open-change-picker"' in html
 
 
 # ---- CSP + inline ハンドラ撤廃（多層防御）----
@@ -98,3 +100,63 @@ def test_csp_and_no_inline_handlers(tmp_path: Path):
     assert "script-src 'self'" in csp        # inline/注入 script を遮断
     assert "default-src 'none'" in csp
     assert "onclick=" not in r.text          # ダッシュボードに inline ハンドラなし
+
+
+# ---- ⏻ shutdown エンドポイント（画面右上ボタンから呼ばれる）----
+
+def test_shutdown_requires_token(tmp_path: Path):
+    """token 無し / 偽物では拒否する（任意リクエストでサーバーを落とされたら困る）。"""
+    root = tmp_path / "dev"
+    (root / "proj").mkdir(parents=True)
+    (root / "proj" / "plan_x.md").write_text("# [計画] x\n\n## 概要\n\nx\n", encoding="utf-8")
+    c = _client(root)
+    assert c.post("/api/shutdown").status_code == 403
+    assert c.post("/api/shutdown", data={"token": "WRONG"}).status_code == 403
+
+
+def test_shutdown_without_server_returns_503(tmp_path: Path):
+    """TestClient 経由（uvicorn.Server を持たない）では落とせないので 503 を返す。"""
+    root = tmp_path / "dev"
+    (root / "proj").mkdir(parents=True)
+    (root / "proj" / "plan_x.md").write_text("# [計画] x\n\n## 概要\n\nx\n", encoding="utf-8")
+    c = _client(root)
+    r = c.post("/api/shutdown", data={"token": TOKEN})
+    assert r.status_code == 503
+
+
+def test_shutdown_sets_should_exit(tmp_path: Path):
+    """uvicorn.Server を差し込んだ状態では POST /api/shutdown が should_exit=True にする。"""
+    root = tmp_path / "dev"
+    (root / "proj").mkdir(parents=True)
+    (root / "proj" / "plan_x.md").write_text("# [計画] x\n\n## 概要\n\nx\n", encoding="utf-8")
+    from docsweep.config import load_config
+    from docsweep.server.app import create_app
+    cfg = load_config(explicit_roots=[str(root)], global_path=root / "no.yaml")
+    app = create_app(cfg, token=TOKEN)
+
+    class _FakeServer:
+        should_exit = False
+
+    fake = _FakeServer()
+    app.state.docsweep.server = fake
+    c = TestClient(app)
+    r = c.post("/api/shutdown", data={"token": TOKEN})
+    assert r.status_code == 200
+    assert r.json() == {"shutting_down": True}
+    assert fake.should_exit is True
+
+
+def test_board_has_shutdown_and_settings_buttons(tmp_path: Path):
+    """画面右上に ⏻ サーバー停止ボタンと ⚙ 設定ボタンが両方出ている。
+    配置・配線（data-action）まで確認する（many-ai-cli と同じ並びを維持する保証）。"""
+    root = tmp_path / "dev"
+    (root / "proj").mkdir(parents=True)
+    (root / "proj" / "plan_x.md").write_text("# [計画] x\n\n## 概要\n\nx\n", encoding="utf-8")
+    c = _client(root)
+    html = c.get(f"/board?token={TOKEN}").text
+    assert 'id="shutdown-btn"' in html
+    assert 'data-action="shutdown-server"' in html
+    assert 'id="settings-btn"' in html
+    assert 'data-action="open-settings"' in html
+    # 古い「⚙ 設定」テキストだけのボタンは置換済みであること（SVG 化）。
+    assert ">⚙ 設定<" not in html

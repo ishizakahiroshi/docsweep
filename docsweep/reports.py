@@ -55,11 +55,11 @@ _WRITE_ACTIONS_BY_STATE: dict[str | None, tuple[str, ...]] = {
     # archive は state.archive を見て個別判定（done/discarded のみ）。
     "planned": ("update_due", "update_content"),
     "in-progress": ("update_due", "update_content"),
-    "active": ("update_due", "update_content"),
     "watching": ("update_due", "update_content"),
     "pending": ("update_due", "update_content"),
     "done": ("update_content",),  # 期日は意味を失うので update_due を出さない
     "discarded": ("update_content",),
+    # 2026-06-23 改修: active を in-progress に統合。
 }
 
 
@@ -98,7 +98,7 @@ def _overdue_kind(d: dict, *, today: date | None = None) -> tuple[str | None, in
     """(overdue_kind, overdue_days) を返す。
 
     overdue_kind の値:
-    - "overdue_todo": 計画/実行中/対応中/保留 で due 超過（やり忘れ）
+    - "overdue_todo": 計画/実行中/保留 で due 超過（やり忘れ）
     - "overdue_graduate": 様子見で due 超過（卒業判定どき）
     - "today": 今日が期日（state が可動なもの）
     - "future": 未来期日

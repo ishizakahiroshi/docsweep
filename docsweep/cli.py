@@ -397,7 +397,8 @@ def cmd_list(args: argparse.Namespace) -> int:
         for it in items:
             scope = it.get("scope", "project")
             tag = f"global:{it.get('agent')}" if scope == "global" else (it.get("preset") or "-")
-            print(f"{tag:<16} {it['path']}  ({it['ts']})")
+            ver = f"v{it['version']}" if it.get("version") else "v?"
+            print(f"{tag:<16} {ver:<4} {it['path']}  ({it['ts']})")
     return 0
 
 
@@ -440,13 +441,18 @@ def cmd_serve(args: argparse.Namespace) -> int:
     print("  ブラウザでこのアドレスを開いてください（自動で開きます）:")
     print(f"  {url}")
     print("=" * 60)
-    print("（Ctrl+C で停止）")
+    print("（Ctrl+C または画面右上の ⏻ で停止）")
     if not args.no_browser:
         import threading
         import webbrowser
 
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    # uvicorn.run(app, ...) だと外から graceful 停止できないため、Server/Config を直接使い、
+    # インスタンスを app.state に渡すことで /api/shutdown から should_exit=True できるようにする。
+    config = uvicorn.Config(app, host="127.0.0.1", port=args.port, log_level="warning")
+    server = uvicorn.Server(config)
+    app.state.docsweep.server = server
+    server.run()
     return 0
 
 

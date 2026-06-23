@@ -1,11 +1,16 @@
 {# 1 カード分の partial。`card` 変数を期待する（_board_body.html / cards.py の dict）。
    - 左境界の色は親列（col-overdue / col-today / col-active）に依存
    - 先送り回数バッジは 1-2/3-4/5+ の 3 段階で色分け（子 plan §C2）
-   - 期日バッジは超過/今日/未来で色分け
-   - 3 ボタン:
-       未着手列（state: planned/pending/watching/None）= 着手 / 期日更新▾ / 廃止
-       着手中（state: in-progress）  = 戻す▾（plan の戻し先 3 択ピッカー） / 期日更新▾ / 廃止
-       着手中（state: active=bugfix） = 様子見に戻す（1 択直接実行） / 期日更新▾ / 廃止 #}
+   - 期日バッジは超過/今日/未来で色分け（表示専用・操作は下段ボタンに集約）
+   - 操作は下段 2 ボタンに集約:
+       変更▾ … 状態変更ピッカー（_change_picker.html・[廃止] も含む全状態）
+                plan   = [計画] / [実行中] / [様子見] / [保留] / [完了] / [廃止] の 6 択
+                bugfix = [実行中] / [様子見] / [保留] / [完了] / [廃止] の 5 択
+                pending= [保留] / [計画] / [廃止] の 3 択
+       期日更新▾ … 期日ピッカー（_due_picker.html）
+   経緯: docs/local/kanban-card-ux-options/index.html — 独立ボタン（着手・廃止）を
+   撤去してピッカーに完全集約。バッジクリックと下段ボタンの機能重複も解消済み。
+   プロジェクトバッジは絞り込み機能（下段に同等機能が無い）なのでクリック可能のまま残す。 #}
 <li class="card pp-{% if card.postpone_count >= data.postpone_alert %}danger{% elif card.postpone_count >= data.postpone_warn %}warn{% else %}normal{% endif %}"
     data-path="{{ card.path }}"
     data-state="{{ card.state or 'unknown' }}"
@@ -18,9 +23,7 @@
     <label class="card-check-wrap" title="選択（一括操作対象）">
       <input type="checkbox" class="card-check" data-path="{{ card.path }}" />
     </label>
-    <button type="button" class="state-badge state-{{ card.state or 'unknown' }}"
-            data-action="open-label-picker"
-            aria-haspopup="listbox">{{ card.state_label }}</button>
+    <span class="state-badge state-badge-static state-{{ card.state or 'unknown' }}">{{ card.state_label }}</span>
     {% if card.postpone_count > 0 %}
       <span class="pp-badge" title="先送り回数">🔁 {{ card.postpone_count }}</span>
     {% endif %}
@@ -28,13 +31,9 @@
   <div class="card-name">{{ card.name }}</div>
   <div class="card-meta">
     {% if card.due %}
-      <button type="button" class="due-badge due-{{ card.due_kind }}"
-              data-action="open-due-picker"
-              aria-haspopup="dialog">📅 {{ card.due }}{% if card.due_label %}（{{ card.due_label }}）{% endif %}</button>
+      <span class="due-badge due-badge-static due-{{ card.due_kind }}">📅 {{ card.due }}{% if card.due_label %}（{{ card.due_label }}）{% endif %}</span>
     {% else %}
-      <button type="button" class="due-badge due-none"
-              data-action="open-due-picker"
-              aria-haspopup="dialog">📅 期日未設定</button>
+      <span class="due-badge due-badge-static due-none">📅 期日未設定</span>
     {% endif %}
     <button type="button" class="proj-badge proj-badge-btn"
             data-action="select-project"
@@ -43,16 +42,9 @@
   </div>
   {% if card.summary %}<div class="card-summary">{{ card.summary }}</div>{% endif %}
   <div class="card-actions">
-    {% if card.state == 'in-progress' %}
-      <button type="button" class="act act-back" data-action="open-back-picker"
-              title="[保留] / [様子見] / [計画] へ戻す">戻す▾</button>
-    {% elif card.state == 'active' %}
-      <button type="button" class="act act-back" data-action="back-watching"
-              title="[様子見] に戻す（bugfix の戻し先は様子見のみ）">様子見に戻す</button>
-    {% else %}
-      <button type="button" class="act act-start" data-action="start">着手</button>
-    {% endif %}
-    <button type="button" class="act act-due" data-action="open-due-picker">期日更新▾</button>
-    <button type="button" class="act act-discard" data-action="discard">廃止</button>
+    <button type="button" class="act act-change" data-action="open-change-picker"
+            title="状態を変える（[計画]/[実行中]/[様子見]/[保留]/[完了]/[廃止] から選択）">変更▾</button>
+    <button type="button" class="act act-due" data-action="open-due-picker"
+            title="期日を変える">期日更新▾</button>
   </div>
 </li>

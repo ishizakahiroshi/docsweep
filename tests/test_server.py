@@ -127,9 +127,10 @@ def test_sweep_skips_watching(client):
 
 @pytest.fixture
 def iso_inject(tmp_path, monkeypatch):
-    """manifest / 中央 guidance を tmp に隔離し、実 home を汚さない。"""
+    """manifest / 中央 guidance / グローバル config を tmp に隔離し、実 home を汚さない。"""
     monkeypatch.setattr("docsweep.inject.MANIFEST_PATH", tmp_path / "injected.json")
     monkeypatch.setattr("docsweep.inject.GUIDANCE_PATH", tmp_path / "guidance.md")
+    monkeypatch.setattr("docsweep.inject.GLOBAL_CONFIG_PATH", tmp_path / "config.yaml")
 
 
 def test_inject_project_preview_does_not_write(client, iso_inject):

@@ -117,8 +117,26 @@ def test_should_reset_postpone_inprogress_to_watching():
     assert should_reset_postpone(old_state_key="in-progress", new_state_key="watching")
 
 
-def test_should_reset_postpone_active_to_watching():
-    assert should_reset_postpone(old_state_key="active", new_state_key="watching")
+def test_should_not_reset_for_obsolete_active_key():
+    """2026-06-23 改修: active を in-progress に統合した結果、旧 active キーは
+    _RESET_TRANSITIONS から消えた。エイリアス検出後は in-progress として扱われるため
+    本テストは「廃止キーは直接マッチしない」確認に書き換え。"""
+    assert not should_reset_postpone(old_state_key="active", new_state_key="watching")
+
+
+def test_state_model_resolves_taiou_chu_alias_to_in_progress():
+    """2026-06-23 改修: 旧 bugfix 専用ラベル ``[対応中]`` は ``in-progress`` の
+    エイリアスとして検出される（既存 bugfix_*.md の書き換え不要・読み取り側互換）。"""
+    from docsweep.states import StateModel
+
+    sm = StateModel()
+    st = sm.match("対応中")
+    assert st is not None
+    assert st.key == "in-progress"
+    # 英語エイリアス "Active" も同様に in-progress に解決
+    st_en = sm.match("Active")
+    assert st_en is not None
+    assert st_en.key == "in-progress"
 
 
 def test_should_not_reset_for_done_or_discarded():

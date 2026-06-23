@@ -126,11 +126,15 @@ def test_update_status_rejects_dotdot_path(tmp_path: Path):
 
 
 def test_update_status_validation_violation_returns_error_dict(tmp_path: Path):
-    """plan_*.md に [対応中] は拒否される（bugfix 専用ラベル）。"""
+    """bugfix_*.md に [計画] は拒否される（plan 専用ラベル）。
+
+    2026-06-23 改修: 旧 [対応中] は [実行中] のエイリアスとなり plan でも通るようになった
+    ため、本テストは「bugfix で [計画] を拒否」というバリデーション違反パターンに変更。
+    """
     root, proj = _setup(tmp_path)
-    f = _write(proj / "docs" / "plan_a.md", "# [計画] x\n\n## 概要\n\na\n")
+    f = _write(proj / "docs" / "bugfix_x_2026-01-01.md", "# [実行中] x\n\n## 症状\n\na\n")
     server = build_server(_cfg(root))
-    res = _tools(server)["update_status"](str(f), "対応中")
+    res = _tools(server)["update_status"](str(f), "計画")
     assert res.get("kind") == "validation"
 
 

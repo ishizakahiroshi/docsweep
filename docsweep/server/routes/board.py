@@ -67,7 +67,8 @@ def _column_key(rec, today: date) -> str:
         # OVERDUE フラグが立たないケース（done/discarded を除く）への保険。
         return "overdue"
     # d > today
-    if rec.state in ("in-progress", "active"):
+    # 2026-06-23 改修: active を in-progress に統合。
+    if rec.state == "in-progress":
         return "active_future"
     return "future"
 
@@ -295,19 +296,30 @@ def label_picker_partial(
     return TEMPLATES.TemplateResponse(request, "_label_picker.html", {})
 
 
-@router.get("/board/_partial/back_picker", response_class=HTMLResponse)
-def back_picker_partial(
+@router.get("/board/_partial/change_picker", response_class=HTMLResponse)
+def change_picker_partial(
     request: Request,
     token: str = Query(default=""),
+    type: str | None = Query(default=None),
 ):
-    """戻し先選択 partial（plan の [実行中] からの戻し専用・3 択）。
+    """状態変更ピッカー partial（個別カードの「変更▾」専用・[廃止] を除く全許可状態）。
 
-    bugfix の [対応中] からの戻しは戻し先が [様子見] 1 択のためピッカーを開かず、
-    _card.html が直接 ``data-action="back-watching"`` を出して keymap.js が
-    ``applyStatus(card, "watching")`` を呼ぶ。
+    file_type に応じて選択肢を出し分ける（種別連番）:
+    - plan / 未知: [計画] / [実行中] / [様子見] / [保留] / [完了] の 5 択
+    - bugfix:     [実行中] / [様子見] / [保留] / [完了] の 4 択
+    - pending:    [保留] / [計画] の 2 択
+    2026-06-23 改修: active/対応中 を in-progress/実行中 に統合。bugfix と plan の唯一の差は
+    「bugfix に [計画] が無い」だけになった。
+
+    [廃止] はカード下段の独立ボタン（誤クリック防止）に分離されているためピッカーから除外。
+
+    経緯: docs/local/kanban-card-ux-options/index.html — バッジクリック動線を廃し、
+    下段 3 ボタン（変更▾ / 期日更新▾ / 廃止）に全操作を集約する方針。
     """
     _check_token(request, token)
-    return TEMPLATES.TemplateResponse(request, "_back_picker.html", {})
+    return TEMPLATES.TemplateResponse(
+        request, "_change_picker.html", {"file_type": type}
+    )
 
 
 def _settings_state(records) -> dict:
@@ -320,13 +332,17 @@ def _settings_state(records) -> dict:
             info = injected.get(root)
             projects[root] = {
                 "name": r.project, "root": root,
-                "injected": info is not None, "preset": (info or {}).get("preset"),
+                "injected": info is not None,
+                "preset": (info or {}).get("preset"),
+                "version": (info or {}).get("version"),
             }
-    global_agents = {it.get("agent") for it in injected.values() if it.get("scope") == "global"}
+    global_by_agent = {it.get("agent"): it for it in injected.values() if it.get("scope") == "global"}
     return {
         "projects": sorted(projects.values(), key=lambda x: x["name"]),
-        "global_claude": "claude" in global_agents,
-        "global_codex": "codex" in global_agents,
+        "global_claude": "claude" in global_by_agent,
+        "global_codex": "codex" in global_by_agent,
+        "global_claude_version": (global_by_agent.get("claude") or {}).get("version"),
+        "global_codex_version": (global_by_agent.get("codex") or {}).get("version"),
         "presets": list(PRESETS),
         "default_preset": DEFAULT_PRESET,
     }

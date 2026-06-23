@@ -70,13 +70,64 @@ body {
 }
 .brand .title { font-weight: 600; }
 .brand .subtitle { color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; margin-left: 4px; }
-.topbar-actions { display: flex; gap: 8px; }
+.topbar-actions { display: flex; gap: 8px; align-items: center; }
 .ghost {
   background: transparent; color: var(--fg-dim);
   border: 1px solid var(--border); padding: 5px 10px; border-radius: 6px;
   text-decoration: none; font-size: 12px; cursor: pointer;
 }
 .ghost:hover { color: var(--fg); border-color: var(--accent); }
+
+/* ⏻ 電源 OFF（サーバー停止） / ⚙ 設定 — many-ai-cli ヘッダの見た目を踏襲。
+   ghost と並べても浮かないように透明ベース、hover で shutdown は赤系・settings は accent 系。 */
+#shutdown-btn,
+#settings-btn {
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+#shutdown-btn {
+  padding: 3px 8px;
+  font-size: 1rem;
+  line-height: 1;
+}
+#shutdown-btn:hover {
+  color: #ff8a8a;
+  border-color: rgba(255, 94, 122, 0.4);
+  background: rgba(255, 94, 122, 0.08);
+}
+#settings-btn {
+  padding: 4px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+#settings-btn:hover { color: var(--fg); border-color: var(--accent); background: var(--card-soft); }
+
+/* ⏻ 停止後の全画面ロック。サーバーが止まっているのに UI が生きているように見える誤解を防ぐ。 */
+.shutdown-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(20, 15, 30, 0.92);
+  display: flex; align-items: center; justify-content: center;
+}
+.shutdown-card {
+  background: var(--card); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 32px 40px; max-width: 460px; text-align: center;
+}
+.shutdown-card .shutdown-icon { font-size: 48px; color: #ff8a8a; margin-bottom: 8px; }
+.shutdown-card h2 { margin: 8px 0 12px; font-size: 18px; }
+.shutdown-card p { color: var(--fg-dim); font-size: 13px; margin: 0; }
+.shutdown-card code {
+  background: var(--card2); padding: 2px 6px; border-radius: 4px;
+  font-family: var(--mono); font-size: 12px;
+}
 .primary {
   background: var(--accent); color: #1a132b; border: 0;
   padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600;
@@ -155,15 +206,20 @@ body {
 }
 .act:hover { border-color: var(--accent); color: var(--accent); }
 .act-discard:hover { border-color: var(--col-overdue); color: var(--col-overdue); }
-.act-back { color: var(--fg-dim); }
-.act-back:hover { border-color: #b07cff; color: #b07cff; }
+.act-change { color: var(--fg); }
+.act-change:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ===== バッジ ===== */
+/* state-badge / due-badge は 2026-06-23 改修で表示専用に変更（state-badge-static / due-badge-static）。
+   操作（ラベル変更・期日変更）はカード下段の「変更▾」「期日更新▾」ボタンに集約。
+   経緯: docs/local/kanban-card-ux-options/index.html */
 .state-badge {
   background: var(--card2); color: var(--fg);
   border: 1px solid var(--border); padding: 1px 8px; border-radius: 999px;
   font-size: 11px; font-family: var(--mono); cursor: pointer;
 }
+.state-badge-static { cursor: default; }
+.state-badge-static:hover { border-color: var(--border); }
 .state-planned     { color: #ffb13b; }
 .state-in-progress { color: #c08cff; }
 .state-active      { color: #c08cff; }
@@ -183,6 +239,8 @@ body {
   border: 1px solid var(--border); padding: 1px 8px; border-radius: 999px;
   font-size: 11px; font-family: var(--mono); cursor: pointer;
 }
+.due-badge-static { cursor: default; }
+.due-badge-static:hover { border-color: var(--border); }
 .due-overdue { color: var(--due-overdue); border-color: var(--due-overdue); }
 .due-today   { color: var(--due-today); border-color: var(--due-today); }
 .due-future  { color: var(--due-future); }
@@ -232,6 +290,9 @@ button.proj-badge-btn:hover { color: var(--accent); background: var(--card2); }
   font-size: 12px; font-family: var(--mono);
 }
 .lp-opt:hover, .dp-quick:hover { background: var(--card); color: var(--accent); }
+/* 破壊的アクション（[廃止]）はピッカー内でも色で区別 */
+.lp-opt.lp-danger { color: var(--col-overdue); }
+.lp-opt.lp-danger:hover { background: var(--card); color: var(--col-overdue); border: 1px solid var(--col-overdue); padding: 5px 9px; }
 .dp-custom { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--fg-dim); padding: 4px 10px; }
 .dp-date { background: var(--bg); color: var(--fg); border: 1px solid var(--border); padding: 3px; }
 
@@ -430,14 +491,20 @@ dialog.settings-dialog {
   padding: 0; max-width: 720px; width: 90vw;
 }
 dialog.settings-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
-.settings-form { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; }
+.settings-form { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; position: relative; }
 .settings-body { padding: 16px 20px; max-height: 70vh; overflow-y: auto; }
-.settings-menu {
-  display: flex; justify-content: flex-end; gap: 8px;
-  padding: 10px 20px; margin: 0; border-top: 1px solid var(--border);
-  background: var(--bg2);
+.settings-close {
+  position: absolute;
+  top: 8px; right: 10px;
+  width: 26px; height: 26px;
+  background: transparent; color: var(--fg-dim2);
+  border: 0; border-radius: 4px;
+  cursor: pointer; padding: 0;
+  font-size: 20px; line-height: 1;
+  z-index: 2;
 }
-.settings-title { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+.settings-close:hover { background: var(--bg2); color: var(--fg); }
+.settings-title { margin: 0 0 12px; font-size: 16px; font-weight: 600; padding-right: 32px; }
 .settings-section { margin-bottom: 18px; }
 .settings-section h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
 .settings-note { color: var(--fg-dim); font-size: 11px; margin: 0 0 8px; }
@@ -465,6 +532,8 @@ dialog.settings-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 }
 .sp-name { color: var(--fg); word-break: break-all; }
 .sp-preset { color: var(--fg-dim2); }
+.sp-version { color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; }
+.settings-version { color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; }
 
 /* ===== Undo トースト（archive 実行後に画面右下に出現） ===== */
 .toast {
