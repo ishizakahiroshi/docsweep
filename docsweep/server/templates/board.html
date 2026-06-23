@@ -22,9 +22,14 @@
     <span class="search-count" id="search-count" hidden></span>
     <button type="button" class="ghost search-clear" id="search-clear" hidden data-action="search-clear" title="検索をクリア (Esc)">×</button>
   </div>
+  <div class="topbar-health" title="プロジェクトごとの最古経過日数（上位 {{ data.health|length }} 件）">
+    {% for h in data.health %}
+      <span class="health-chip">📊 {{ h.project }} <b>{{ h.oldest }}d</b></span>
+    {% endfor %}
+  </div>
   <div class="topbar-actions">
+    <button type="button" class="ghost" data-action="open-settings" title="⚙ 設定 / 注入">⚙ 設定</button>
     <button type="button" class="ghost" data-action="reload-board">再スキャン</button>
-    <a class="ghost" href="/?token={{ token }}">受信トレイへ</a>
   </div>
 </header>
 
@@ -57,6 +62,17 @@
     {% include "_edit_pane.html" %}
   </aside>
 </main>
+
+<dialog id="settings-dialog" class="settings-dialog">
+  <form method="dialog" class="settings-form">
+    <div id="settings-body" class="settings-body">
+      <p class="settings-note">読み込み中…</p>
+    </div>
+    <menu class="settings-menu">
+      <button value="close" class="ghost">閉じる</button>
+    </menu>
+  </form>
+</dialog>
 
 <dialog id="bulk-due-dialog" class="confirm">
   <form method="dialog" class="confirm-inner">

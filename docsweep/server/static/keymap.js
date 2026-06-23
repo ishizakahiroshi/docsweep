@@ -35,6 +35,60 @@
     try { return await res.json(); } catch (e) { return null; }
   }
 
+  // ===== ⚙ 設定モーダル（注入 / eject / グローバル inject） ==================
+  async function openSettings() {
+    const dlg = document.getElementById("settings-dialog");
+    const body = document.getElementById("settings-body");
+    if (!dlg || !body) return;
+    body.innerHTML = "<p class='settings-note'>読み込み中…</p>";
+    try { dlg.showModal(); } catch (e) { return; }
+    await refreshSettings();
+  }
+  async function refreshSettings() {
+    const body = document.getElementById("settings-body");
+    if (!body) return;
+    const res = await fetch("/board/_partial/settings?token=" + encodeURIComponent(TOKEN), {
+      headers: { "X-Docsweep-Token": TOKEN },
+    });
+    if (!res.ok) {
+      body.innerHTML = `<p class="settings-note">設定の読み込みに失敗: ${res.status}</p>`;
+      return;
+    }
+    body.innerHTML = await res.text();
+  }
+  async function settingsInject(opts) {
+    // opts: { scope: 'project'|'global', project?, agent? }
+    const data = { token: TOKEN, scope: opts.scope };
+    if (opts.project) data.project = opts.project;
+    if (opts.agent) data.agent = opts.agent;
+    const res = await fetch("/api/inject", {
+      method: "POST", headers: headers(), body: fd(data),
+    });
+    const json = await safeJson(res);
+    if (!res.ok) {
+      showToast(`注入失敗: ${(json && json.detail) || res.status}`, { undoable: false });
+      return;
+    }
+    showToast(`✓ 注入しました${json && json.yaml ? `（${basename(json.yaml)}）` : ""}`, { undoable: false, duration: 6000 });
+    refreshSettings();
+  }
+  async function settingsEject(opts) {
+    const data = { token: TOKEN, scope: opts.scope };
+    if (opts.project) data.project = opts.project;
+    if (opts.agent) data.agent = opts.agent;
+    const res = await fetch("/api/eject", {
+      method: "POST", headers: headers(), body: fd(data),
+    });
+    const json = await safeJson(res);
+    if (!res.ok) {
+      showToast(`eject 失敗: ${(json && json.detail) || res.status}`, { undoable: false });
+      return;
+    }
+    const removed = (json && json.removed) || [];
+    showToast(`✓ eject しました（${removed.length} 件除去）`, { undoable: false, duration: 6000 });
+    refreshSettings();
+  }
+
   // ===== 一括の絶対日付ダイアログ =============================================
   function bulkDateDialog() {
     const dlg = document.getElementById("bulk-due-dialog");
@@ -609,6 +663,36 @@
     if (e.target.closest && e.target.closest("[data-action='toast-close']")) {
       e.preventDefault();
       hideToast();
+      return;
+    }
+    // ⚙ 設定モーダル
+    if (e.target.closest && e.target.closest("[data-action='open-settings']")) {
+      e.preventDefault();
+      openSettings();
+      return;
+    }
+    if (e.target.closest && e.target.closest("[data-action='settings-inject']")) {
+      e.preventDefault();
+      const btn = e.target.closest("[data-action='settings-inject']");
+      settingsInject({ scope: "project", project: btn.dataset.project });
+      return;
+    }
+    if (e.target.closest && e.target.closest("[data-action='settings-eject']")) {
+      e.preventDefault();
+      const btn = e.target.closest("[data-action='settings-eject']");
+      settingsEject({ scope: "project", project: btn.dataset.project });
+      return;
+    }
+    if (e.target.closest && e.target.closest("[data-action='settings-inject-global']")) {
+      e.preventDefault();
+      const btn = e.target.closest("[data-action='settings-inject-global']");
+      settingsInject({ scope: "global", agent: btn.dataset.agent });
+      return;
+    }
+    if (e.target.closest && e.target.closest("[data-action='settings-eject-global']")) {
+      e.preventDefault();
+      const btn = e.target.closest("[data-action='settings-eject-global']");
+      settingsEject({ scope: "global", agent: btn.dataset.agent });
       return;
     }
     // 検索クリア
