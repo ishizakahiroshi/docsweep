@@ -8,6 +8,24 @@
 # roots:
 #   - .
 
+# --- SQLite 索引が走査するプロジェクトルート群（wings / C1） ---
+# 通常はグローバル ~/.docsweep/config.yaml に書く（横断索引のため）。
+# プロジェクト .docsweep.yaml で上書きするケースは稀。
+# projects:
+#   search_paths:
+#     - C:/dev/github/public/*
+#     - C:/dev/github/private/*
+#     - C:/dev/work/*
+#   exclude:
+#     - "**/node_modules/**"
+#     - "**/archive-vault/**"
+
+# --- capture (会話履歴 → 草案抽出) の LLM provider（wings / C2） ---
+# 既定 "mock" でヒューリスティック / Mock LLM が動く。実 provider は別 plan で対応。
+# llm:
+#   provider: mock
+#   model: null
+
 # archive の移送先（プロジェクト直下からの相対）。既定 archive/
 # archive_dir: archive
 

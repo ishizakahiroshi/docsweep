@@ -48,6 +48,28 @@ DEFAULT_DUE_OFFSET_DAYS: dict[str, int] = {
 }
 
 
+# C2: `docsweep stale` のしきい値（review_status 別の経過日数）。``.docsweep.yaml`` の
+# ``stale_thresholds:`` ブロックで上書き可能。draft / review は前倒し検知、published は
+# 「再レビューが必要になる日数」。
+DEFAULT_STALE_THRESHOLDS: dict[str, int] = {
+    "draft": 14,
+    "review": 7,
+    "published": 90,
+}
+
+
+# C1（wings）: SQLite 索引が走査するプロジェクトルートのグロブパターン群。
+# ``projects.search_paths`` 未設定なら従来通り ``roots`` を使うフォールバック動作。
+DEFAULT_SEARCH_EXCLUDE: tuple[str, ...] = (
+    "**/node_modules/**",
+    "**/.venv/**",
+    "**/venv/**",
+    "**/__pycache__/**",
+    "**/.git/**",
+    "**/archive-vault/**",
+)
+
+
 @dataclass
 class Config:
     roots: list[Path] = field(default_factory=list)
@@ -67,6 +89,25 @@ class Config:
     due_default_offset_days: dict[str, int] = field(
         default_factory=lambda: dict(DEFAULT_DUE_OFFSET_DAYS)
     )
+    # C2 で追加: 任意の tag 語彙宣言（補完候補に使う・宣言外は warn する未来拡張用）。
+    known_tags: list[str] = field(default_factory=list)
+    # C2 で追加: `docsweep stale` の review_status 別しきい値（日数）。
+    stale_thresholds: dict[str, int] = field(
+        default_factory=lambda: dict(DEFAULT_STALE_THRESHOLDS)
+    )
+    # C2 で追加: `docsweep config user.name` / `user.email` のユーザー設定。
+    # ``~/.docsweep/config.yaml`` の ``user:`` ブロックから読み、Web UI と CLI で共有する。
+    user_name: str | None = None
+    user_email: str | None = None
+    # C1 (wings): SQLite 索引が再帰走査するルート群のグロブパターン。
+    # 例: ["C:/dev/github/public/*", "C:/dev/github/private/*"]
+    # 未設定の場合は索引機能は ``roots`` をフォールバック走査する。
+    search_paths: list[str] = field(default_factory=list)
+    search_exclude: list[str] = field(default_factory=lambda: list(DEFAULT_SEARCH_EXCLUDE))
+    # C2 (wings): capture で使う LLM provider 名。現状は "mock" のみ実装済。
+    # 実 provider (openai / anthropic) は別 plan で対応。
+    capture_llm_provider: str = "mock"
+    capture_llm_model: str | None = None  # 将来用（モデル ID 指定）
     # 由来トレース用（どのファイルから来たか）。
     sources: list[Path] = field(default_factory=list)
 
@@ -208,6 +249,71 @@ def load_config(
                     # 不正な値は前段（global → DEFAULT）の値を温存（嘘の日付を量産しない方針）。
                     pass
 
+    # C2: `known_tags` / `stale_thresholds` も deep merge（project 上書き優先）。
+    known_tags_set: list[str] = []
+    for layer in (g.get("known_tags"), project_cfg.get("known_tags")):
+        if isinstance(layer, list):
+            for t in layer:
+                s = str(t).strip()
+                if s and s not in known_tags_set:
+                    known_tags_set.append(s)
+
+    stale_thresholds: dict[str, int] = dict(DEFAULT_STALE_THRESHOLDS)
+    for layer in (g.get("stale_thresholds"), project_cfg.get("stale_thresholds")):
+        if isinstance(layer, dict):
+            for k, v in layer.items():
+                try:
+                    stale_thresholds[str(k)] = int(v)
+                except (TypeError, ValueError):
+                    pass
+
+    # C1 (wings): ``projects:`` ブロックは ~/.docsweep/config.yaml の所属。
+    # ``search_paths`` (グロブ文字列のリスト) と ``exclude`` (除外グロブ) を読み込む。
+    # プロジェクト側で上書きするケースは稀（プロジェクト自身が含まれてしまうため）だが
+    # 一応 deep merge する（project が強い）。
+    g_proj = g.get("projects") or {}
+    p_proj = project_cfg.get("projects") or {}
+    search_paths: list[str] = []
+    for layer in (g_proj.get("search_paths"), p_proj.get("search_paths")):
+        if isinstance(layer, list):
+            search_paths = [str(p) for p in layer if p]
+    # exclude は積み重ね（DEFAULT に追記する形）。明示空配列が来たらクリアする。
+    search_exclude: list[str] = list(DEFAULT_SEARCH_EXCLUDE)
+    for layer in (g_proj.get("exclude"), p_proj.get("exclude")):
+        if isinstance(layer, list):
+            for pat in layer:
+                s = str(pat).strip()
+                if s and s not in search_exclude:
+                    search_exclude.append(s)
+
+    # C2 (wings): ``llm:`` ブロックで capture の LLM provider を指定する。
+    # 例: llm: { provider: mock, model: null }。実 provider 追加は別 plan で対応。
+    g_llm = g.get("llm") or {}
+    p_llm = project_cfg.get("llm") or {}
+    capture_llm_provider = "mock"
+    capture_llm_model: str | None = None
+    for layer in (g_llm, p_llm):
+        if not isinstance(layer, dict):
+            continue
+        if layer.get("provider"):
+            capture_llm_provider = str(layer["provider"]).strip() or "mock"
+        if layer.get("model"):
+            capture_llm_model = str(layer["model"]).strip() or None
+
+    # C2: ``user:`` ブロックは ~/.docsweep/config.yaml にだけ書く想定だが、プロジェクト側で
+    # 上書きしたいケースも想定して両方マージする（project が強い）。
+    g_user = g.get("user") or {}
+    p_user = project_cfg.get("user") or {}
+    user_name = None
+    user_email = None
+    for layer in (g_user, p_user):
+        if not isinstance(layer, dict):
+            continue
+        if layer.get("name"):
+            user_name = str(layer["name"]).strip() or None
+        if layer.get("email"):
+            user_email = str(layer["email"]).strip() or None
+
     return Config(
         roots=roots,
         profiles=profiles_resolved,
@@ -221,5 +327,78 @@ def load_config(
         due_warn_threshold=due_warn,
         due_alert_threshold=due_alert,
         due_default_offset_days=offsets,
+        known_tags=known_tags_set,
+        stale_thresholds=stale_thresholds,
+        user_name=user_name,
+        user_email=user_email,
+        search_paths=search_paths,
+        search_exclude=search_exclude,
+        capture_llm_provider=capture_llm_provider,
+        capture_llm_model=capture_llm_model,
         sources=sources,
     )
+
+
+# ------------------------------------------------------------------
+# C2: `docsweep config` CLI / Web UI 共通の user 設定読み書き
+# 保存先は ~/.docsweep/config.yaml。``user:`` ブロックだけを単独で更新し、他のキーは温存する。
+# ------------------------------------------------------------------
+
+
+# `docsweep config` で扱える key の許可リスト（typo 防止）。
+# ネスト記法 ``user.name`` / ``user.email`` のフラット表現で受ける。
+SETTABLE_KEYS: frozenset[str] = frozenset({"user.name", "user.email"})
+
+
+def get_user_setting(key: str, *, global_path: Path | None = None) -> str | None:
+    """``user.name`` / ``user.email`` を ~/.docsweep/config.yaml から読む。
+
+    プロジェクト側の上書きは load_config 経由で見る（こちらはグローバル単体読み出し用）。
+    """
+    if key not in SETTABLE_KEYS:
+        raise ValueError(f"未知の設定キー: {key}（許可: {sorted(SETTABLE_KEYS)}）")
+    data = _load_yaml(global_path or GLOBAL_CONFIG_PATH)
+    section, name = key.split(".", 1)
+    sec = data.get(section) if isinstance(data, dict) else None
+    if not isinstance(sec, dict):
+        return None
+    v = sec.get(name)
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
+
+
+def set_user_setting(
+    key: str, value: str | None, *, global_path: Path | None = None
+) -> Path:
+    """``user.name`` / ``user.email`` を ~/.docsweep/config.yaml に書く。
+
+    既存の他キーは温存（YAML 全体を読み込み → ``user:`` セクションだけ書き換え → 全部書き戻す）。
+    ``value=None`` でキー削除。書き込み先のパスを返す。
+    """
+    if key not in SETTABLE_KEYS:
+        raise ValueError(f"未知の設定キー: {key}（許可: {sorted(SETTABLE_KEYS)}）")
+    path = global_path or GLOBAL_CONFIG_PATH
+    data = _load_yaml(path) if path.exists() else {}
+    section, name = key.split(".", 1)
+    sec = data.get(section) if isinstance(data, dict) else None
+    if not isinstance(sec, dict):
+        sec = {}
+    if value is None or value == "":
+        sec.pop(name, None)
+    else:
+        sec[name] = str(value).strip()
+    if sec:
+        data[section] = sec
+    else:
+        data.pop(section, None)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
+    return path
+
+
+def list_settings(*, global_path: Path | None = None) -> dict[str, str | None]:
+    """``--list`` 用の現在値スナップショット（None = 未設定）。"""
+    return {k: get_user_setting(k, global_path=global_path) for k in sorted(SETTABLE_KEYS)}

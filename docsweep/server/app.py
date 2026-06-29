@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from .. import __version__
 from ..config import Config
 from ..engine import ScanResult, apply_action, auto_sweep, run_scan
-from ..index import build_index, write_index
+from ..aggregate_index import build_index, write_index
 from ..inject import (
     eject,
     eject_global,
@@ -28,7 +28,12 @@ from ..inject import (
 )
 from ..models import Flag
 from .routes import board as board_routes
+from .routes import brief as brief_routes
 from .routes import cards as cards_routes
+from .routes import capture as capture_routes
+from .routes import cross as cross_routes
+from .routes import graph as graph_routes
+from .routes import resurrect as resurrect_routes
 from .sanitize import sanitize_html
 from .security import resolve_under_roots
 
@@ -271,7 +276,12 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
     # v0.1.0 第 2 段階の主役 UI: 看板（カンバン）ボード。旧 dashboard はそのまま温存。
     # ルータ側は ``request.app.state.docsweep`` 経由で同じ config/token を参照する。
     app.include_router(board_routes.router)
+    app.include_router(brief_routes.router)
     app.include_router(cards_routes.router)
+    app.include_router(capture_routes.router)
+    app.include_router(cross_routes.router)
+    app.include_router(graph_routes.router)
+    app.include_router(resurrect_routes.router)
 
     return app
 

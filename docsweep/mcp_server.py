@@ -20,7 +20,7 @@ from pathlib import Path
 from .atomic import ConflictError
 from .config import Config
 from .engine import apply_action, auto_sweep, promote_state, run_scan
-from .index import build_index, write_index
+from .aggregate_index import build_index, write_index
 from .inject import eject as do_eject
 from .inject import eject_global as do_eject_global
 from .inject import inject as do_inject
@@ -105,6 +105,117 @@ def build_server(config: Config):
         if project:
             records = [r for r in records if r.project == project]
         return [r.to_dict() for r in records]
+
+    @mcp.tool()
+    def brief(project: str | None = None, all_projects: bool = False) -> dict:
+        """朝の入口 = 今日 1 個だけやろうを断定する。CLI ``docsweep brief`` と同一契約。
+
+        典型ユーザー発話: 「今日の続きやって」「ブリーフして」「朝の状況」「何やればいい？」
+        「全プロジェクトの状況」（``all_projects=True``）。
+
+        既定は cwd プロジェクト（git remote から推定）を 1 件だけ返す。``all_projects=True``
+        で ``search_paths`` 全体を横並びにする（cross 相当の俯瞰になる）。
+
+        返り値:
+            ``{mode, generated_at, projects: [{project, today_pick, co_running, watchouts,
+            yesterday_done, open_count, stale_count}]}``。``today_pick`` は最高スコアの
+            1 件で、AI はこれを「次に着手すべき作業」として扱ってよい。
+        """
+        from .brief import build_brief
+
+        result = build_brief(config, project=project, all_projects=all_projects)
+        return result.to_dict()
+
+    @mcp.tool()
+    def capture_extract(
+        text: str,
+        project: str | None = None,
+        use_llm: bool = False,
+        max_drafts: int = 5,
+    ) -> dict:
+        """会話履歴 ``text`` から plan / bugfix / pending の草案候補を抽出する。
+
+        典型ユーザー発話: 「これ plan にして」「直前の会話を docsweep にキャプチャ」
+        「このバグ bugfix にして」「保留にしておいて」。
+
+        ``use_llm=False`` で heuristic 経路（決定マーカー検出）。``use_llm=True`` で LLM
+        provider（現状は ``mock`` のみ実装）。
+
+        返り値: ``{drafts: [{id, kind, title, body, suggested_filename, source_hint,
+        project, tags}], count}``。採用する候補があれば ``capture_save`` を続けて呼ぶ。
+        """
+        from .capture import extract_drafts
+
+        drafts = extract_drafts(
+            text, config=config, project=project,
+            max_drafts=max_drafts, use_llm=use_llm,
+        )
+        return {
+            "drafts": [d.to_dict() for d in drafts],
+            "count": len(drafts),
+        }
+
+    @mcp.tool()
+    def capture_save(
+        drafts: list[dict],
+        project: str | None = None,
+        out_dir: str | None = None,
+    ) -> dict:
+        """``capture_extract`` で得た draft を採用して docs/local/ 配下へ保存する。
+
+        典型ユーザー発話: 「採用して」「2 と 3 を採用」「全部 plan にして保存」。
+
+        ``drafts`` は ``capture_extract`` の戻り値 ``drafts`` をそのまま渡せる（ユーザーが
+        採用したい subset を AI が絞って渡す想定）。返り値: ``{saved: [path...], count}``。
+        """
+        from pathlib import Path as _P
+        from .capture import save_drafts
+        from .capture.models import Draft as _Draft
+
+        # dict -> Draft へ復元
+        as_drafts = [
+            _Draft(
+                id=d.get("id", ""),
+                kind=d.get("kind", "plan"),
+                title=d.get("title", ""),
+                body=d.get("body", ""),
+                suggested_filename=d.get("suggested_filename", "draft.md"),
+                source_hint=d.get("source_hint", ""),
+                project=d.get("project") or project,
+                tags=list(d.get("tags") or []),
+            )
+            for d in (drafts or [])
+        ]
+
+        if out_dir:
+            target = _P(out_dir)
+        elif config.roots:
+            target = _P(config.roots[0]) / "docs" / "local"
+        else:
+            target = _P.cwd() / "docs" / "local"
+
+        saved = save_drafts(as_drafts, config=config, target_dir=target)
+        return {"saved": [str(p) for p in saved], "count": len(saved)}
+
+    @mcp.tool()
+    def cross(projects: list[str] | None = None) -> dict:
+        """全プロジェクト束ねて『今日の 1 個』を 1 件断定 + 凍結予備軍を一覧。
+
+        典型ユーザー発話: 「全プロジェクトの状況」「クロスで見せて」「どのプロジェクトから
+        手をつける？」「凍結予備軍出して」「archive 候補は？」。
+
+        ``projects=['a','b']`` で対象プロジェクトを絞れる（指定なしで search_paths 全体）。
+
+        返り値:
+            ``{generated_at, project_filter, top_pick, runners_up[], frozen_candidates[],
+            project_summaries[{project, open_count, stale_count, today_one}],
+            total_projects, total_open}``。``top_pick`` は 1 件で、AI はこれを「全体で
+            次に着手すべき作業」として扱ってよい。``frozen_candidates`` は archive 推奨。
+        """
+        from .cross import build_cross
+
+        result = build_cross(config, projects=projects)
+        return result.to_dict()
 
     @mcp.tool()
     def triage(project: str | None = None) -> dict:

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>docsweep — cross</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem; color: #1c1c1c; display: grid; grid-template-columns: 240px 1fr; gap: 1.5rem; }
+  aside { border-right: 1px solid #e0e0e0; padding-right: 1rem; }
+  aside h3 { font-size: .92rem; margin: 0 0 .6rem; color: #555; letter-spacing: .04em; }
+  aside ul { list-style: none; padding: 0; margin: 0; }
+  aside li { padding: .35rem .4rem; border-radius: 3px; }
+  aside li:hover { background: #f0f0f0; }
+  aside li a { color: #1c1c1c; text-decoration: none; display: block; }
+  aside .meta { color: #999; font-size: .78rem; }
+  main h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  .top-pick { background: #fff8d6; border-left: 4px solid #d4a72c; padding: .9rem 1rem; border-radius: 4px; margin-bottom: 1.4rem; }
+  .top-pick .label { font-weight: 600; color: #765d12; font-size: .85rem; }
+  .top-pick .title { font-size: 1.15rem; margin: .25rem 0; }
+  .top-pick .meta { color: #777; font-size: .82rem; }
+  h2 { font-size: 1.05rem; margin: 1.4rem 0 .4rem; border-bottom: 1px solid #e0e0e0; padding-bottom: .2rem; }
+  ul.cards { list-style: none; padding: 0; margin: .4rem 0; }
+  ul.cards li { padding: .35rem .6rem; border-left: 3px solid #d0d0d0; margin-bottom: .25rem; background: #fafafa; }
+  .empty { color: #888; font-style: italic; }
+  .score { color: #999; font-size: .78rem; }
+</style>
+</head>
+<body>
+<aside>
+  <h3>プロジェクト ({{ cross.total_projects }})</h3>
+  <ul>
+    {% for p in cross.project_summaries %}
+    <li>
+      <a href="/board?token={{ token }}&project={{ p.project|urlencode }}">
+        {{ p.project }}
+        <div class="meta">open {{ p.open_count }} · stale {{ p.stale_count }}</div>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</aside>
+
+<main>
+  <h1>cross <span class="score">— {{ cross.generated_at }}</span></h1>
+
+  {% if cross.top_pick %}
+  <div class="top-pick">
+    <div class="label">全プロジェクト束ねた『今日の 1 個』</div>
+    <div class="title">{{ cross.top_pick.state_label or '[?]' }} {{ cross.top_pick.title or cross.top_pick.rel }}</div>
+    <div class="meta">{{ cross.top_pick.project }}/{{ cross.top_pick.rel }} · {{ cross.top_pick.age_days }}d · score {{ cross.top_pick.score }}</div>
+  </div>
+  {% else %}
+  <p class="empty">対象 open ファイル無し</p>
+  {% endif %}
+
+  {% if cross.runners_up %}
+  <h2>次点</h2>
+  <ul class="cards">
+    {% for d in cross.runners_up %}
+    <li>{{ d.state_label or '[?]' }} {{ d.project }}/{{ d.rel }} <span class="score">score {{ d.score }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if cross.frozen_candidates %}
+  <h2>凍結予備軍 — archive 候補 ({{ cross.frozen_candidates|length }})</h2>
+  <ul class="cards">
+    {% for d in cross.frozen_candidates %}
+    <li>{{ d.state_label or '[?]' }} {{ d.project }}/{{ d.rel }} <span class="score">{{ d.age_days }}d</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</main>
+</body>
+</html>

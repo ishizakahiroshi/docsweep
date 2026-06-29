@@ -41,6 +41,24 @@
             title="クリック: このプロジェクトだけ全選択（他解除）・再クリック全解除 ／ Shift+クリック: このプロジェクトを追加（既存維持）">📂 {{ card.project }}</button>
   </div>
   {% if card.summary %}<div class="card-summary">{{ card.summary }}</div>{% endif %}
+  {# OKF（plan_okf-adoption_2026-06-29.md C4）拡張: frontmatter 由来の tags / owner / related を
+     カード末尾に並べる。値が無いカードは行ごと省略（後方互換 100%）。 #}
+  {% if card.tags or card.owner or card.related_count or card.backref_count %}
+  <div class="card-okf">
+    {% if card.owner %}
+      <span class="okf-owner" title="owner: {{ card.owner }}">👤 {{ card.owner }}</span>
+    {% endif %}
+    {% for tag in card.tags %}
+      <span class="okf-tag" data-tag="{{ tag }}" title="tag: {{ tag }}">#{{ tag }}</span>
+    {% endfor %}
+    {% if card.related_count %}
+      <span class="okf-related" title="related: {{ card.related|length }} 件">↔ {{ card.related_count }}</span>
+    {% endif %}
+    {% if card.backref_count %}
+      <span class="okf-backref" title="このファイルを参照している plan/bugfix/pending: {{ card.backref_count }} 件">↩ {{ card.backref_count }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
   <div class="card-actions">
     <button type="button" class="act act-change" data-action="open-change-picker"
             title="状態を変える（[計画]/[実行中]/[様子見]/[保留]/[完了]/[廃止] から選択）">変更▾</button>

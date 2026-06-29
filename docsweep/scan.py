@@ -167,6 +167,13 @@ def _build_doc(
     age = _age_days(stat.st_mtime)
     state = sm.by_key(det.state_key) if det.state_key else None
 
+    # 型矛盾は warn として stderr へ出す（自動上書きしない）。
+    # plan_okf-adoption_2026-06-29.md C1 の方針: 矛盾を可視化するが直さない。
+    if det.frontmatter_warnings:
+        import sys
+        for w in det.frontmatter_warnings:
+            print(f"warning: {fpath}: {w}", file=sys.stderr)
+
     record = FileRecord(
         path=fpath.resolve().as_posix(),
         project=project_root.name,
@@ -183,6 +190,11 @@ def _build_doc(
         auto_movable=bool(state and state.auto_move),
         due=det.due,
         due_parse_error=det.due_parse_error,
+        tags=list(det.tags),
+        owner=det.owner,
+        review_status=det.review_status,
+        related=list(det.related),
+        last_reviewed=det.last_reviewed,
     )
     return ScannedDoc(record=record, detection=det, type_def=type_def, text=text)
 
@@ -197,3 +209,202 @@ def scan(config: Config) -> list[ScannedDoc]:
             seen.add(d.record.path)
             docs.append(d)
     return docs
+
+
+# ===================================================================
+# C1 (wings): SQLite 索引への差分同期
+# ===================================================================
+
+
+@dataclass
+class SyncStats:
+    """sync_index の戻り値。run/JSON 出力にそのまま使える形式。"""
+
+    projects: int = 0
+    files_total: int = 0
+    files_added: int = 0
+    files_updated: int = 0
+    files_unchanged: int = 0
+    files_deleted: int = 0
+
+
+def _resolve_project_id(root: Path) -> tuple[str, str | None]:
+    """プロジェクト識別子と remote_url を返す。
+
+    優先順: ``git remote get-url origin`` の repo 名（.git を除く最後の segment）→ ディレクトリ名。
+    git remote が無い／git でない場合は単にディレクトリ名を ID とする。
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            if url:
+                tail = url.rstrip("/").split("/")[-1]
+                if tail.endswith(".git"):
+                    tail = tail[:-4]
+                return (tail or root.name, url)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return (root.name, None)
+
+
+def _expand_search_paths(config: Config) -> list[Path]:
+    """``projects.search_paths`` のグロブパターンを展開し実在ディレクトリのみ返す。
+
+    search_paths 未設定なら ``roots`` をフォールバックとして使う（後方互換）。
+    """
+    import glob
+
+    raw: list[str] = list(config.search_paths) if config.search_paths else []
+    expanded: list[Path] = []
+    seen: set[Path] = set()
+
+    for pat in raw:
+        # 環境変数 / ~ を展開してからグロブ展開
+        p = os.path.expandvars(os.path.expanduser(str(pat)))
+        for hit in glob.glob(p):
+            cand = Path(hit).resolve()
+            if cand.is_dir() and cand not in seen:
+                seen.add(cand)
+                expanded.append(cand)
+
+    # フォールバック: search_paths 未設定なら roots を使う
+    if not expanded:
+        for r in config.roots:
+            cand = Path(r).resolve()
+            if cand.is_dir() and cand not in seen:
+                seen.add(cand)
+                expanded.append(cand)
+
+    # exclude グロブで除外
+    if config.search_exclude:
+        filtered: list[Path] = []
+        for p in expanded:
+            posix = p.as_posix()
+            if any(fnmatch(posix, pat) for pat in config.search_exclude):
+                continue
+            filtered.append(p)
+        expanded = filtered
+
+    return expanded
+
+
+def _body_sha(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+
+
+def sync_index(
+    config: Config,
+    *,
+    full: bool = False,
+    db_path_override: Path | None = None,
+) -> SyncStats:
+    """``search_paths`` 配下を走査し SQLite 索引へ差分同期する。
+
+    Args:
+        config: ロード済み Config
+        full: True で全件再構築（DB の files を一旦 truncate してから挿入）
+        db_path_override: テスト用に DB パスを上書き
+
+    Returns:
+        SyncStats — 同期件数の集計
+    """
+    import json as _json
+    from datetime import datetime, timezone
+
+    from . import index as db
+    from .engine import classify
+
+    stats = SyncStats()
+    roots = _expand_search_paths(config)
+
+    with db.connect(db_path_override) as conn:
+        if full:
+            # 全再構築: files を空にする（projects と tags/related は ON DELETE CASCADE で連鎖）
+            conn.execute("DELETE FROM files")
+            conn.commit()
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        for root in roots:
+            project_id, remote_url = _resolve_project_id(root)
+            db.upsert_project(conn, project_id, str(root), remote_url, now_iso)
+            stats.projects += 1
+
+            existing = db.known_files(conn, project_id)
+            seen_rel: set[str] = set()
+
+            docs = scan_root(root, config)
+            for doc in docs:
+                # classify を呼んで flags / allowed_actions を FileRecord に充填
+                classify(doc, config)
+                rec = doc.record
+                rel_path = Path(rec.path).relative_to(root).as_posix()
+                seen_rel.add(rel_path)
+                stats.files_total += 1
+
+                mtime = rec.mtime
+                # 差分判定: 既知 mtime と一致なら skip
+                prev = existing.get(rel_path)
+                if not full and prev and prev[0] is not None and abs(prev[0] - mtime) < 1e-6:
+                    stats.files_unchanged += 1
+                    continue
+
+                sha = _body_sha(doc.text)
+                if not full and prev and prev[1] == sha:
+                    # mtime 変わっても body 未変化（touch のみ等）→ mtime だけ更新
+                    conn.execute(
+                        "UPDATE files SET mtime=? WHERE project_id=? AND rel_path=?",
+                        (mtime, project_id, rel_path),
+                    )
+                    stats.files_unchanged += 1
+                    continue
+
+                file_id = db.upsert_file(
+                    conn,
+                    project_id=project_id,
+                    rel_path=rel_path,
+                    type_=rec.type,
+                    status=rec.state,
+                    review_status=rec.review_status,
+                    owner=rec.owner,
+                    last_reviewed=rec.last_reviewed,
+                    claimed_at=None,
+                    mtime=mtime,
+                    body_sha=sha,
+                    title=rec.title,
+                    summary=rec.summary,
+                    state_label=rec.state_label,
+                    state_source=rec.state_source,
+                    flags=_json.dumps(rec.flags, ensure_ascii=False),
+                    allowed_actions=_json.dumps(rec.allowed_actions, ensure_ascii=False),
+                    due=rec.due,
+                    due_parse_error=rec.due_parse_error,
+                    archivable=rec.archivable,
+                    auto_movable=rec.auto_movable,
+                    project_root=rec.project_root,
+                    abs_path=rec.path,
+                )
+                db.replace_tags(conn, file_id, list(rec.tags or []))
+                db.replace_related(conn, file_id, list(rec.related or []))
+
+                if prev is None:
+                    stats.files_added += 1
+                else:
+                    stats.files_updated += 1
+
+            # DB にあるが今回見つからなかったファイル = 削除済み
+            for stale_rel in set(existing.keys()) - seen_rel:
+                db.delete_file(conn, project_id, stale_rel)
+                stats.files_deleted += 1
+
+        conn.commit()
+
+    return stats

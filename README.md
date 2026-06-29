@@ -6,11 +6,32 @@ AI コーディングツール（Claude Code / Codex 等）が生成する `plan
 H1 ステータスラベル（`[完了]` / `[計画]` / `[廃止]` 等）を機械的に読み取り、完了を各プロジェクトの
 `archive/` へ自動移送し、陳腐化を「要判断」フラグで可視化し、複数プロジェクトを横断 INDEX で一望できます。
 
+## OKF（Open Knowledge Format）互換
+
+docsweep は [OKF（Open Knowledge Format）](https://zenn.dev/knowledgesense/articles/14a874a9f423bb)
+の **frontmatter による type / status / related の機械可読化** を採用しています。
+md 冒頭の YAML frontmatter で `type` / `status` / `tags` / `owner` / `review_status` /
+`related` / `last_reviewed` を機械可読化し、docsweep を入れていない別ツールから読んでも
+意味が通る形式に揃えています。
+
+docsweep 固有の追加規約は 2 点だけです:
+
+- **type 集合を `plan` / `bugfix` / `pending` に固定**（OKF より少し強い規約）。
+  archive 自動化のための制約で、自由な type 値は管理対象外として扱います。
+- **H1 ステータスラベル運用は廃止せず併用**。md を開いた瞬間に状態が見える人間向け価値を
+  残し、frontmatter が無いファイルは H1 ラベルへフォールバックします（後方互換 100%）。
+
+詳細な対応表は [docs/okf-mapping.md](docs/okf-mapping.md) を参照。
+「docsweep を抜けても md が腐らない」を実演する `docsweep export --okf` も提供しています
+（[docs/okf-export-format.md](docs/okf-export-format.md)）。
+
 ## インストール
 
 ```bash
-pip install docsweep         # コア + CLI
-pip install 'docsweep[all]'  # Web UI / 対話レビュー / MCP も含む
+pip install docsweep                  # コア + CLI（wings の主要コマンド・SQLite 索引込み）
+pip install 'docsweep[all]'           # Web UI / 対話レビュー / MCP / watch / resurrect も含む
+pip install 'docsweep[watch]'         # index-watch のみ追加（watchdog）
+pip install 'docsweep[resurrect]'     # resurrect の embedding 経路（sentence-transformers）
 ```
 
 docsweep は **PATH に `docsweep` コマンドを通さない運用を標準**にしています。
@@ -178,7 +199,46 @@ Remove-Item -Recurse ~/.docsweep  # Windows PowerShell
 
 ## 使い方
 
+> **朝の入口は `brief`**: 何も思い出せなくても `python -m docsweep brief` で「今日の 1 個」が断定的に出ます。
+> プロジェクト横断は `python -m docsweep cross`。詳細: [docs/ai-agent-integration.md](docs/ai-agent-integration.md)。
+
 ```bash
+# === wings（v0.2 系）の主要新コマンド ===
+
+# 朝の入口 — 今日 1 個だけやろうを断定する（cwd プロジェクト）
+python -m docsweep brief
+python -m docsweep brief --all              # 全プロジェクト横並び要約
+python -m docsweep brief --continue         # 末尾の対話を出さず context を即クリップボードへ
+
+# 全プロジェクト束ねた俯瞰 — top_pick + 凍結予備軍 + project_summaries
+python -m docsweep cross
+python -m docsweep cross --project alpha,beta
+python -m docsweep cross --explain plan_x.md   # スコア内訳
+
+# 会話履歴から plan/bugfix/pending の草案を抽出（heuristic / LLM mock）
+python -m docsweep capture --from clipboard
+python -m docsweep capture --from file ./conv.md --save-all
+
+# plan の「変更予定ファイル」と実装実態の整合チェック
+python -m docsweep linkcheck --json
+
+# 状態遷移を提案（ruleset / 将来 LLM 委譲）+ 一括適用
+python -m docsweep auto-triage --suggest > decisions.json
+python -m docsweep auto-triage --apply decisions.json --dry-run
+
+# 関係性ネットワーク（plan/bugfix/pending と frontmatter related のグラフ）
+python -m docsweep graph --json
+
+# archive と現役の類似ペアを抽出（embedding opt-in / 既定は Jaccard）
+python -m docsweep resurrect --threshold 0.5
+
+# SQLite 索引 ~/.docsweep/index.db
+python -m docsweep index-sync               # 差分のみ取り込み（高速）
+python -m docsweep index-rebuild            # 全件再構築
+python -m docsweep index-watch              # ファイル監視で自動同期（watchdog 必要）
+
+# === 従来コマンド（既存・後方互換） ===
+
 # スキャン（既定は要判断＋保留のみ表示）
 python -m docsweep --root ~/dev
 python -m docsweep ./thisproject            # config 不要の単発スキャン
@@ -203,6 +263,11 @@ python -m docsweep review
 # テンプレ即生成
 python -m docsweep new plan my-topic
 python -m docsweep new bugfix crash-on-start
+
+# OKF 互換 zip でエクスポート（docsweep を抜けても md が腐らないことを実演する材料）
+python -m docsweep export --okf                          # ./docsweep-okf-<date>.zip
+python -m docsweep export --okf --out /tmp/snapshot.zip  # 出力先を明示
+python -m docsweep export --okf --include-archive        # archive/ 配下も含める
 
 # 運用ルールを各プロジェクトへ注入／取り消し（CLAUDE.md=正本・AGENTS.md はそこを指すポインタ）
 python -m docsweep inject --project ./foo --preset claude-jp
@@ -284,6 +349,10 @@ python -m docsweep triage ~/dev/foo ~/projects/bar
 ```
 
 ## AI エージェント連携
+
+> **wings（v0.2 系）の方針**: 「全 AI 対応」を最優先し、自然言語起動の価値が高い **朝の入口 3 tool**
+> （`brief` / `cross` / `capture_extract`+`capture_save`）だけを MCP に露出、それ以外は **CLI 直叩き** で
+> 全 AI に対応します。詳細・自然言語マッピング表は [docs/ai-agent-integration.md](docs/ai-agent-integration.md)。
 
 ### 推奨運用: MCP 登録せず CLI 一本化
 

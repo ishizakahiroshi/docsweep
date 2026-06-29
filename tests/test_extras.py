@@ -33,7 +33,7 @@ def _cfg(root: Path):
 # ---- INDEX (C5) ----
 
 def test_build_index_counts(ws):
-    from docsweep.index import build_index
+    from docsweep.aggregate_index import build_index
 
     idx = build_index(_cfg(ws))
     assert idx.counts["projects"] == 2
@@ -43,7 +43,7 @@ def test_build_index_counts(ws):
 
 
 def test_write_index_files(ws):
-    from docsweep.index import write_index
+    from docsweep.aggregate_index import write_index
 
     cfg = _cfg(ws)
     json_path, md_path = write_index(cfg)
@@ -54,7 +54,7 @@ def test_write_index_files(ws):
 def test_index_output_not_rescanned(ws):
     """生成した .docsweep/INDEX.md を次のスキャンが拾わない（自己再帰の防止）。"""
     from docsweep.engine import run_scan
-    from docsweep.index import write_index
+    from docsweep.aggregate_index import write_index
 
     cfg = _cfg(ws)
     write_index(cfg)
@@ -551,7 +551,7 @@ def test_due_in_slim_record(tmp_path):
 def test_overdue_counts_in_index(tmp_path):
     """overdue_todo / overdue_graduate が build_index counts に反映される。"""
     from docsweep.config import load_config
-    from docsweep.index import build_index
+    from docsweep.aggregate_index import build_index
 
     (tmp_path / "a").mkdir(parents=True)
     (tmp_path / "a" / "plan_todo.md").write_text(

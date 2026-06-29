@@ -16,14 +16,19 @@ Codex / 汎用エージェント固有の差分だけを以下に補足します
 ### ステータス検出方式
 
 CLAUDE.md は H1 ラベル方式（`# [完了] タイトル`）を標準としますが、
-front matter のほうが扱いやすい環境では、H1 ラベルに加えて front matter を併記してよい:
+[OKF（Open Knowledge Format）](https://zenn.dev/knowledgesense/articles/14a874a9f423bb)
+互換の frontmatter を併用するのが推奨です（Codex / 汎用エージェントから扱いやすい）:
 
 ```markdown
 ---
-status: planned    # planned | in-progress | watching | done | discarded | pending
-type: plan         # plan | bugfix | pending
-updated: 2026-06-12
-due: 2026-06-29    # 任意・期日（YYYY-MM-DD 厳格マッチ）。看板ボードと先送り管理の対象になる
+type: plan                  # plan | bugfix | pending（docsweep 固定値）
+status: planned             # planned | in-progress | watching | done | discarded | pending
+tags: []
+owner:                      # claim コマンドで自動セット
+review_status: draft        # draft | review | published
+related: []                 # 関連 md のファイル名 list（fix-related で双方向化）
+last_reviewed: 2026-06-29
+due: 2026-06-29             # 任意・期日（YYYY-MM-DD 厳格マッチ）
 ---
 
 # [計画] タイトル
@@ -31,9 +36,11 @@ due: 2026-06-29    # 任意・期日（YYYY-MM-DD 厳格マッチ）。看板ボ
 
 docsweep は H1 ラベル方式・フロントマター方式・ファイル名プレフィックス方式の
 いずれでも検出できます（優先順位は **frontmatter > H1 > filename**。食い違いは「要修正」フラグで可視化）。
+OKF 語彙との対応表は `docs/okf-mapping.md` を参照。
 
 ### 参照の起点
 
 - ルール本体: `./CLAUDE.md`
 - 命名・ラベル仕様の解説: `./docs/conventions.md`
+- OKF 互換マッピング: `./docs/okf-mapping.md`
 - 設定サンプル: `./templates/.docsweep.yaml`

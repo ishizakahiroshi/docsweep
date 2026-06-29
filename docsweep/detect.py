@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 
@@ -55,10 +55,95 @@ class Detection:
     parse_error: bool
     due: str | None = None  # frontmatter due: YYYY-MM-DD（None = 未記入）
     due_parse_error: bool = False  # due フィールドがあるがパース不能
+    # OKF（Open Knowledge Format）併用フィールド。frontmatter にあれば取り込む。
+    # 旧来の H1 ラベル運用のみのファイルでは全て空値（後方互換）。
+    tags: list[str] = field(default_factory=list)
+    owner: str | None = None
+    review_status: str | None = None  # draft / review / published / archived 等の自由値
+    related: list[str] = field(default_factory=list)
+    last_reviewed: str | None = None  # YYYY-MM-DD（パース失敗時は素の文字列で保持）
+    frontmatter_type: str | None = None  # frontmatter の type 値（plan/bugfix/pending 等）
+    type_conflict: bool = False  # frontmatter type と filename 由来 type が食い違う
+    frontmatter_warnings: list[str] = field(default_factory=list)  # warn 文字列の生コピー
 
 
 def _read_head(text: str, limit: int = 8000) -> str:
     return text[:limit]
+
+
+def _parse_frontmatter_dict(text: str) -> dict | None:
+    """先頭の YAML frontmatter を dict として返す（無ければ None）。
+
+    既存の ``_detect_frontmatter`` / ``_extract_due`` は各々 yaml.safe_load を独立に呼ぶが、
+    OKF 拡張フィールド（type/tags/owner/review_status/related/last_reviewed）の取り込みは
+    1 回パースしたものを共有する方が素直なので、共有ヘルパとして導入する。
+    """
+    m = _FRONTMATTER_RE.match(text)
+    if not m:
+        return None
+    try:
+        data = yaml.safe_load(m.group(1)) or {}
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _coerce_str_list(raw: object) -> list[str]:
+    """frontmatter の ``tags:`` / ``related:`` を文字列リスト化する。
+
+    YAML では ``tags: [a, b]`` / ``tags:\\n  - a\\n  - b`` / ``tags: a`` の 3 形式が混じる。
+    単一文字列はスカラ → 1 要素リストへ昇格、None は空リスト、それ以外は str() 化して拾う。
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        s = raw.strip()
+        return [s] if s else []
+    if isinstance(raw, (list, tuple)):
+        out: list[str] = []
+        for v in raw:
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s:
+                out.append(s)
+        return out
+    s = str(raw).strip()
+    return [s] if s else []
+
+
+def _coerce_date_str(raw: object) -> str | None:
+    """``last_reviewed`` を ``YYYY-MM-DD`` 文字列化する。パース不能なら素の文字列を返す。"""
+    if raw is None:
+        return None
+    if hasattr(raw, "isoformat"):
+        try:
+            return raw.isoformat()
+        except (TypeError, ValueError):
+            return str(raw)
+    return str(raw).strip() or None
+
+
+def _extract_okf_fields(data: dict | None) -> dict:
+    """frontmatter dict から OKF 拡張フィールドを取り出す（無いキーは既定値）。"""
+    if not data:
+        return {
+            "tags": [], "owner": None, "review_status": None,
+            "related": [], "last_reviewed": None, "frontmatter_type": None,
+        }
+    owner_raw = data.get("owner")
+    review_raw = data.get("review_status")
+    type_raw = data.get("type")
+    return {
+        "tags": _coerce_str_list(data.get("tags")),
+        "owner": (str(owner_raw).strip() or None) if owner_raw is not None else None,
+        "review_status": (str(review_raw).strip() or None) if review_raw is not None else None,
+        "related": _coerce_str_list(data.get("related")),
+        "last_reviewed": _coerce_date_str(data.get("last_reviewed")),
+        "frontmatter_type": (str(type_raw).strip() or None) if type_raw is not None else None,
+    }
 
 
 def _detect_frontmatter(text: str, sm: StateModel) -> str | None:
@@ -150,6 +235,26 @@ def detect_status(
     fn = _detect_filename(filename, sm, _type.name if _type else None)
     due, due_parse_error = _extract_due(text)
 
+    fm_dict = _parse_frontmatter_dict(text)
+    okf = _extract_okf_fields(fm_dict)
+    warnings: list[str] = []
+
+    # frontmatter type と filename 由来 type の食い違いを warn 扱いで surface する。
+    # 自動上書きしない（plan_okf-adoption_2026-06-29.md C1 の方針）。
+    fm_type = okf["frontmatter_type"]
+    type_conflict = False
+    if fm_type and _type and fm_type != _type.name:
+        type_conflict = True
+        warnings.append(
+            f"frontmatter type='{fm_type}' と filename 由来 type='{_type.name}' が食い違います"
+        )
+    # status の frontmatter vs H1 ラベル食い違いも warn として明示する
+    # （既存の `conflict` フラグだけだと「どこが」分からないため）。
+    if fm is not None and h1_key is not None and fm != h1_key:
+        warnings.append(
+            f"frontmatter status='{fm}' と H1 ラベル由来 status='{h1_key}' が食い違います"
+        )
+
     # 検出された候補（None 以外）が複数あり食い違うか。
     candidates = [c for c in (fm, h1_key, fn) if c is not None]
     conflict = len(set(candidates)) > 1
@@ -183,6 +288,14 @@ def detect_status(
         parse_error=parse_error,
         due=due,
         due_parse_error=due_parse_error,
+        tags=okf["tags"],
+        owner=okf["owner"],
+        review_status=okf["review_status"],
+        related=okf["related"],
+        last_reviewed=okf["last_reviewed"],
+        frontmatter_type=okf["frontmatter_type"],
+        type_conflict=type_conflict,
+        frontmatter_warnings=warnings,
     )
 
 

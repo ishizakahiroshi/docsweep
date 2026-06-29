@@ -57,6 +57,13 @@ class FileRecord:
     due_parse_error: bool = field(default=False)  # due フィールドがあるがパース不能
     flags: list[str] = field(default_factory=list)
     allowed_actions: list[str] = field(default_factory=list)
+    # OKF（Open Knowledge Format）併用フィールド。frontmatter にあれば取り込む。
+    # H1 ラベルのみのファイルでは空値で、既存挙動を一切変えない。
+    tags: list[str] = field(default_factory=list)
+    owner: str | None = field(default=None)
+    review_status: str | None = field(default=None)
+    related: list[str] = field(default_factory=list)
+    last_reviewed: str | None = field(default=None)
 
     def to_dict(self) -> dict:
         return asdict(self)
