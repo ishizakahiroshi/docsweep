@@ -43,7 +43,7 @@ GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "1"
+GUIDANCE_VERSION = "2"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -194,19 +194,27 @@ def generate_label_block(sm: StateModel, lang: str = "ja", *, use_frontmatter: b
 
 
 def generate_guidance_block(lang: str = "ja") -> str:
-    """セッション開始時に triage を読む導線（プロジェクト非依存・グローバル注入可）。
+    """セッション開始時に brief を読む導線（プロジェクト非依存・グローバル注入可）。
 
     文言は常に同じなので、グローバル（~/.claude/CLAUDE.md 等）に一度入れれば全プロジェクトで効く。
     """
-    triage_cmd = docsweep_command("triage")
+    brief_cmd = docsweep_command("brief")
+    cross_cmd = docsweep_command("cross")
     return "\n".join([
         "## docsweep — セッション開始時の残作業確認（必須）",
         "",
-        f"作業を始める前に、まず `{triage_cmd}`（MCP 接続時は `triage` ツール）を実行し、",
+        f"作業を始める前に、まず `{brief_cmd}`（MCP 接続時は `brief` ツール）を実行して",
+        "今日の 1 個を確認すること。`brief` は cwd プロジェクトの最高スコア 1 件を断定して返す。",
         "PATH に `docsweep` コマンドが無くても、この `python -m docsweep` 形式を優先すること。",
-        "返ってきた残作業（要判断＋保留・古い順）を確認してから着手すること。",
-        "ファイル名や場所を思い出せなくても、これで「次にやるべき作業」が先頭に出る。",
-        "ユーザーが「続きやって」と言ったら、triage の先頭 item の `path` と残りを対象にする。",
+        "",
+        "ユーザーが「続きやって」「今日の続き」と言ったら、`brief` の `today_pick.path` を対象にする。",
+        f"複数プロジェクトを横断したい時は `{cross_cmd}` か MCP `cross()` を使う。",
+        "",
+        "### 経路選択（全 AI 対応）",
+        "",
+        "- 朝の入口（自然言語起動の価値が高い）: MCP `brief` / `cross` / `capture_extract` / `capture_save`",
+        "- それ以外（整合チェック・archive 蘇生・グラフ等）: Bash で `docsweep <command> --json`",
+        "- Claude Code では `/D` slash command でも 3 経路をまとめてディスパッチできる",
     ])
 
 

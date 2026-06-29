@@ -36,16 +36,41 @@ def _placement_dir(project_dir: Path) -> Path:
     return project_dir
 
 
-def _frontmatter(due: str | None) -> str:
-    """``due`` 入り frontmatter ブロックを返す。None なら空文字（frontmatter を付けない）。"""
-    if not due:
-        return ""
-    return f"---\ndue: {due}\n---\n\n"
+def _okf_frontmatter(
+    *, doc_type: str, status: str, due: str | None, today: str | None = None
+) -> str:
+    """OKF（plan_okf-adoption_2026-06-29.md）準拠の frontmatter ブロックを返す。
+
+    最低限のフィールド: ``type`` / ``status`` / ``tags: []`` / ``owner`` /
+    ``review_status: draft`` / ``related: []`` / ``last_reviewed: <today>``。
+    ``due:`` は呼び出し側が決める（plan/pending は付与、bugfix は新規時は付けない設計）。
+
+    旧来の "due だけの最小 frontmatter" と異なり常に frontmatter ブロックを出力する。
+    既存ファイル（frontmatter 無し）は触らないので後方互換は維持される（parser 側が
+    H1 ラベル + ファイル名にフォールバックする）。
+    """
+    today = today or _today()
+    lines = [
+        "---",
+        f"type: {doc_type}",
+        f"status: {status}",
+        "tags: []",
+        "owner: ",
+        "review_status: draft",
+        "related: []",
+        f"last_reviewed: {today}",
+    ]
+    if due:
+        lines.append(f"due: {due}")
+    lines.append("---")
+    lines.append("")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _plan_body(title: str, *, due: str | None = None) -> str:
     return (
-        _frontmatter(due)
+        _okf_frontmatter(doc_type="plan", status="planned", due=due)
         + f"# [計画] {title}\n\n"
         "## context配分\n\n"
         "| C | 内容 | 種別 |\n|---|---|---|\n| C1 | <TODO> | plan |\n\n"
@@ -58,8 +83,9 @@ def _bugfix_body(title: str, *, due: str | None = None) -> str:
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
     _ = due
     return (
+        _okf_frontmatter(doc_type="bugfix", status="in-progress", due=None)
         # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
-        f"# [実行中] {title}\n\n"
+        + f"# [実行中] {title}\n\n"
         "## 症状\n\n<TODO>\n\n## 根本原因\n\n<TODO>\n\n## 修正内容\n\n<TODO>\n\n"
         "## 変更ファイル\n\n<TODO>\n\n## 検証\n\n<TODO>\n\n## 備忘\n\n<TODO>\n"
     )
@@ -67,7 +93,7 @@ def _bugfix_body(title: str, *, due: str | None = None) -> str:
 
 def _pending_body(title: str, *, due: str | None = None) -> str:
     return (
-        _frontmatter(due)
+        _okf_frontmatter(doc_type="pending", status="pending", due=due)
         + f"# [保留] {title}\n\n"
         "## 概要\n\n<TODO: 何を止めたか>\n\n## 保留理由\n\n<TODO>\n\n## 着手条件\n\n- <TODO>\n"
     )

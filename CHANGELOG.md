@@ -5,6 +5,68 @@
 
 ## [Unreleased]
 
+### Added — OKF（Open Knowledge Format）採用 Phase 3（親 plan `okf-adoption_2026-06-29` C3）
+
+- README 冒頭に OKF 互換宣言を追加（[OKF 仕様](https://zenn.dev/knowledgesense/articles/14a874a9f423bb)
+  へのリンク + docsweep 固有の追加規約「固定 type 集合・H1 ラベル併用」の明示）
+- 配布物 `templates/CLAUDE.md` に OKF 準拠 frontmatter ブロック例・既存採用者向け移行ガイド
+  （`migrate-frontmatter` / `fix-related` / `export --okf` / pre-commit hook 案内）を追記
+- 配布物 `templates/AGENTS.md` の frontmatter 例を OKF 推奨フィールド込みに更新
+  （`type` / `tags` / `owner` / `review_status` / `related` / `last_reviewed`）
+- `docs/okf-mapping.md`（新規）— OKF type 語彙 / status 語彙 / review_status 値域と
+  docsweep 固定語彙との対応表
+- `docs/okf-export-format.md`（新規）— `export --okf` の zip 構造と `okf-manifest.json` 仕様
+- **`docsweep export --okf` サブコマンド**を追加（`docsweep/export.py` 新規）
+  - スキャン範囲内の plan / bugfix / pending を frontmatter ごとそのまま zip に取り出し、
+    OKF 互換語彙との対応表 `okf-manifest.json` を同梱
+  - `--out <path>` で出力先指定（既定 `./docsweep-okf-<date>.zip`）
+  - `--include-archive` で archive 配下も含める
+  - `--project` で特定プロジェクトに絞る
+  - `--json` で結果を機械可読出力
+  - 「docsweep を抜けても md が腐らない」を実演する材料
+- 配布物 pre-commit hook（opt-in）を追加
+  - `templates/.githooks/docsweep-check.py` — frontmatter 不整合検知（type/status の値域違反、
+    review_status が許容外、related に存在しない md 指定）。docsweep 未インストール環境でも
+    動くスタンドアロン実装（PyYAML 無しでも最小 parser でフォールバック）
+  - `templates/install-hooks.sh` / `install-hooks.ps1` — 配置スクリプト（POSIX / Windows）
+
+### Added — OKF 採用 Phase 1 / 2 / 4（親 plan `okf-adoption_2026-06-29` C1 / C2 / C4）
+
+- **Phase 1（C1）— frontmatter 併用パーサ + テンプレ + triage 拡張 + インタラクティブ triage**
+  - `docsweep/detect.py` を拡張: frontmatter > H1 > filename の優先順で type / status を検出。
+    frontmatter と H1 が矛盾する md は warn を出してユーザー判断に委ねる（自動上書きしない）
+  - `docsweep new <type> <topic>` のテンプレに OKF frontmatter ブロックを追加
+    （`type` / `status` / `tags: []` / `owner:` / `review_status: draft` / `related: []` /
+    `last_reviewed: <today>`）
+  - `docsweep triage --tag <name>` で frontmatter `tags:` 絞り込み、`--show owner/tags` で
+    表示列追加
+  - `docsweep triage --review` でインタラクティブ triage（c=完了 / w=様子見 / x=廃止 /
+    s=スキップ / l=後で / o=md を開く / q=終了 の 1 キー判定 → 終了時に一括処理）
+- **Phase 2（C2）— 一括変換 + related 双方向化 + 陳腐化検知 + 派生コマンド一式**
+  - `docsweep migrate-frontmatter --dry-run` / `--apply` — H1 ラベル + ファイル名プレフィックスから
+    frontmatter を生成し既存 md に非破壊挿入（H1 ラベルは温存）
+  - `docsweep fix-related` — 片側参照 `related: [B]` を B 側にも追記して対称化
+  - `docsweep show <file>` — 指定 md を参照している plan/bugfix/pending を逆参照表示
+  - `docsweep stale` — `review_status` 別の前倒し陳腐化候補を列挙
+    （draft 14 日 / review 7 日 / published `last_reviewed` 90 日経過）
+  - `docsweep context <file>` — 本文 + 親 plan + related の bugfix/pending を 1 つの
+    AI 用プロンプト文字列で stdout 出力（`--clipboard` で OS クリップボードへ）
+  - `docsweep claim <file>` / `--unclaim` — frontmatter の owner を現ユーザーで上書き
+    （解決順: `docsweep config user.name` → `git config user.name` → OS ログイン名）
+  - `docsweep config user.name <name>` / `user.email <email>` — `~/.docsweep/config.yaml` の
+    user 設定を CLI / Web UI 双方から読み書き
+  - `docsweep timeline <topic>` — topic を含む plan/bugfix/pending を時系列で列挙
+    （`--format markdown|plain|json`）
+  - `docsweep find --owner X --tag Y --status 実行中 --review-status draft` — 自由クエリ
+  - `docsweep completion bash|zsh|pwsh` — シェル補完スクリプト生成
+- **Phase 4（C4）— カンバン Web UI の OKF 対応**
+  - カード表示に `tags` バッジ / `owner` / `related` 件数アイコンを追加
+  - 詳細パネルに `review_status` / `last_reviewed` / `related` 一覧 / 逆参照を表示
+  - tags / owner / related をインライン編集・書き戻し（services/frontmatter.py 経由・
+    H1 ラベル温存）
+  - 検索バーに `--tag` / `--owner` / `--status` 相当の絞り込み UI を追加
+  - Web UI 上で claim / unclaim 可能（CLI の `claim` と同じファイルを更新）
+
 ### Added — 看板方式 Web UI と MCP 書き込み口（親 plan `kanban-board-write-ops`）
 
 - frontmatter `due:` の書き込み側基盤を実装

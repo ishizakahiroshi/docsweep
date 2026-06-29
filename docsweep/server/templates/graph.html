@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>docsweep — graph</title>
+<script src="https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 0; color: #1c1c1c; }
+  header { padding: .7rem 1rem; background: #2c2c2c; color: #fff; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 1.1rem; margin: 0; }
+  header .meta { color: #aaa; font-size: .82rem; }
+  #cy { width: 100%; height: calc(100vh - 50px); background: #fafafa; }
+  .legend { position: absolute; top: 60px; left: 12px; background: #fff; border: 1px solid #d0d0d0; border-radius: 4px; padding: .5rem .8rem; font-size: .82rem; }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: .3rem; vertical-align: middle; }
+</style>
+</head>
+<body>
+<header>
+  <h1>docsweep graph <span class="meta">— {{ graph.nodes|length }} nodes / {{ graph.edges|length }} edges</span></h1>
+  <span class="meta">クリックでノード詳細</span>
+</header>
+
+<div class="legend">
+  <div><span class="dot" style="background:#4a90e2"></span> plan</div>
+  <div><span class="dot" style="background:#e2724a"></span> bugfix</div>
+  <div><span class="dot" style="background:#888"></span> pending</div>
+  <div><span class="dot" style="background:#c9c9c9"></span> isolated</div>
+</div>
+
+<div id="cy"></div>
+
+<script>
+const GRAPH = {{ graph|tojson }};
+
+const elements = [];
+for (const n of GRAPH.nodes) {
+  elements.push({
+    data: { id: n.id, label: n.label, type: n.type, state: n.state,
+            stateLabel: n.state_label, project: n.project, isolated: n.isolated },
+  });
+}
+for (const e of GRAPH.edges) {
+  // 未解決エッジは破線。target が node に存在しない場合は飛ばす
+  if (!GRAPH.nodes.find(n => n.id === e.target)) continue;
+  elements.push({
+    data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target, resolved: e.resolved },
+  });
+}
+
+const colorByType = ele => {
+  if (ele.data('isolated')) return '#c9c9c9';
+  switch (ele.data('type')) {
+    case 'plan': return '#4a90e2';
+    case 'bugfix': return '#e2724a';
+    case 'pending': return '#888';
+    default: return '#aaa';
+  }
+};
+
+const cy = cytoscape({
+  container: document.getElementById('cy'),
+  elements,
+  style: [
+    {
+      selector: 'node',
+      style: {
+        'background-color': colorByType,
+        'label': 'data(label)',
+        'font-size': 10,
+        'text-valign': 'bottom',
+        'text-halign': 'center',
+        'width': 16, 'height': 16,
+      },
+    },
+    {
+      selector: 'edge',
+      style: {
+        'width': 1.5,
+        'line-color': '#bbb',
+        'target-arrow-color': '#bbb',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+      },
+    },
+    {
+      selector: 'edge[resolved = 0]',
+      style: { 'line-style': 'dashed', 'opacity': 0.5 },
+    },
+  ],
+  layout: { name: 'cose', animate: false, idealEdgeLength: 80, nodeRepulsion: 8000 },
+});
+
+cy.on('tap', 'node', evt => {
+  const d = evt.target.data();
+  alert(`${d.label}\n  state: ${d.stateLabel || d.state || '-'}\n  project: ${d.project}\n  type: ${d.type}`);
+});
+</script>
+</body>
+</html>

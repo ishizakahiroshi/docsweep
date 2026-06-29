@@ -12,13 +12,20 @@ from __future__ import annotations
 import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from ...atomic import ConflictError
 from ...services.archive import archive_done, undo_last_batch
 from ...services.content import ContentValidationError, update_content
 from ...services.due import DueParseError, update_due
+from ...services.frontmatter import (
+    ALLOWED_FIELDS,
+    LIST_FIELDS,
+    FrontmatterValidationError,
+    current_owner,
+    update_frontmatter_field,
+)
 from ...services.status import StatusValidationError, update_status
 from ..security import resolve_under_roots
 
@@ -301,6 +308,89 @@ def post_bulk_status(
         # archive_triggered のものをまとめて移送（単数 API と同じ閉じた口を通す）
         archive_result = archive_done(config=cfg, paths=archive_targets).to_dict()
     return JSONResponse({"ok": ok, "failed": failed, "archive": archive_result})
+
+
+@router.post("/api/cards/frontmatter")
+def post_frontmatter(
+    request: Request,
+    token: str = Form(default=""),
+    path: str = Form(...),
+    field: str = Form(...),
+    value: str = Form(default=""),
+    expected_mtime: str | None = Form(default=None),
+):
+    """OKF frontmatter フィールド（tags / owner / related / review_status / last_reviewed）の単体書き換え。
+
+    list 系（tags / related）は ``value`` をカンマ区切りで受ける（空文字 → 空 list）。
+    スカラ系は ``value`` をそのまま書き込む（空文字 → 値を空にして行は残す）。
+    本文・H1 ラベル・他フィールドは触らない（C4 plan の後方互換 100% を担保）。
+    """
+    _check_token(request, token)
+    resolved = _resolve(request, path)
+    expected = _parse_mtime(expected_mtime)
+    if field not in ALLOWED_FIELDS:
+        raise HTTPException(status_code=400, detail=f"unknown field: {field}")
+    if field in LIST_FIELDS:
+        # カンマ区切りで受ける。空白だけの要素は捨てる。
+        new_value: list[str] | str = [
+            s.strip() for s in (value or "").split(",") if s.strip()
+        ]
+    else:
+        new_value = value
+    try:
+        res = update_frontmatter_field(
+            resolved, field, new_value, expected_mtime=expected,
+        )
+    except FrontmatterValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return JSONResponse(res.to_dict())
+
+
+@router.get("/api/user/current")
+def get_current_user(request: Request, token: str = Query(default="")):
+    """claim/unclaim ボタン用に「現在ユーザー名」を返す。
+
+    解決順は ``services.frontmatter.current_owner`` 参照（git config → OS ログイン）。
+    C2 で ``docsweep config user.name`` が来たら本ハンドラもそちらを最優先にする。
+    """
+    _check_token(request, token)
+    cfg = request.app.state.docsweep.config
+    cwd = Path(cfg.roots[0]) if cfg.roots else None
+    return JSONResponse({"name": current_owner(cwd=cwd)})
+
+
+@router.post("/api/cards/claim")
+def post_claim(
+    request: Request,
+    token: str = Form(default=""),
+    path: str = Form(...),
+    unclaim: bool = Form(default=False),
+    expected_mtime: str | None = Form(default=None),
+):
+    """frontmatter の owner を現在ユーザーで書き換える。``unclaim=true`` で値を空にする。
+
+    C2 の `docsweep claim` と同じファイルを書き換える（Web UI と CLI で動作を揃える）。
+    git 未導入環境でも OS ログイン名でフォールバックして動く。
+    """
+    _check_token(request, token)
+    resolved = _resolve(request, path)
+    expected = _parse_mtime(expected_mtime)
+    cfg = request.app.state.docsweep.config
+    cwd = Path(cfg.roots[0]) if cfg.roots else None
+    owner = "" if unclaim else current_owner(cwd=cwd)
+    try:
+        res = update_frontmatter_field(
+            resolved, "owner", owner, expected_mtime=expected,
+        )
+    except FrontmatterValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    payload = res.to_dict()
+    payload["owner"] = owner
+    return JSONResponse(payload)
 
 
 @router.post("/api/cards/undo")

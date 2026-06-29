@@ -40,7 +40,11 @@ def test_new_pending_uses_pending_offset(tmp_path: Path):
 
 
 def test_new_bugfix_does_not_include_due(tmp_path: Path):
-    """bugfix は新規時に ``due:`` を付けない（[様子見] 遷移時に追記する設計）。"""
+    """bugfix は新規時に ``due:`` を付けない（[様子見] 遷移時に追記する設計）。
+
+    OKF 採用後（plan_okf-adoption_2026-06-29.md C1）も bugfix の due 付与方針は不変。
+    frontmatter ブロック自体は常時付くようになったが、その中に ``due:`` 行は出さない。
+    """
     proj = tmp_path / "proj"
     proj.mkdir()
     doc = new_doc(
@@ -49,10 +53,36 @@ def test_new_bugfix_does_not_include_due(tmp_path: Path):
         offset_days={"plan": 7, "pending": 14, "bugfix_watching": 7},
     )
     body = doc.path.read_text(encoding="utf-8")
-    assert "---" not in body.splitlines()[0]  # frontmatter なし
     assert "due:" not in body
+    # OKF 採用: frontmatter の必須フィールドが入る
+    assert body.startswith("---\n")
+    assert "type: bugfix" in body
+    assert "status: in-progress" in body
+    assert "review_status: draft" in body
     # 2026-06-23 改修: 新規 bugfix は [対応中] でなく [実行中] を書く（active 統合）
     assert "# [実行中] login-500" in body
+    assert doc.due is None
+
+
+def test_no_offset_no_due_still_emits_okf_frontmatter(tmp_path: Path):
+    """``offset_days={}`` でも OKF frontmatter は常に付く（due 行だけ落ちる）。
+
+    旧来は frontmatter 自体を省略していたが、OKF 採用後は type/status/tags/owner/
+    review_status/related/last_reviewed を常に出すよう仕様変更（後方互換は parser 側で吸収）。
+    """
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    doc = new_doc("plan", "no-due", project_dir=proj, offset_days={})
+    body = doc.path.read_text(encoding="utf-8")
+    assert body.startswith("---\n")
+    assert "type: plan" in body
+    assert "status: planned" in body
+    assert "tags: []" in body
+    assert "review_status: draft" in body
+    assert "related: []" in body
+    assert "last_reviewed:" in body
+    assert "due:" not in body
+    assert "# [計画] no-due" in body
     assert doc.due is None
 
 
@@ -68,13 +98,18 @@ def test_explicit_due_overrides_offset(tmp_path: Path):
     assert doc.due == "2030-01-01"
 
 
-def test_no_offset_no_due_does_not_add_frontmatter(tmp_path: Path):
-    """``offset_days={}`` かつ ``due=None`` のとき frontmatter は付けない（既存挙動の非回帰）。"""
+def test_no_offset_no_due_legacy_behavior_replaced_by_okf(tmp_path: Path):
+    """OKF 採用前は frontmatter を完全省略していたが、現仕様では常時付ける。
+
+    `test_no_offset_no_due_still_emits_okf_frontmatter` が新しい期待値を保証する。
+    旧アサート（``# [計画] y`` で始まる）は OKF 採用で意味を失ったので置き換え。
+    """
     proj = tmp_path / "proj"
     proj.mkdir()
     doc = new_doc("plan", "y", project_dir=proj, offset_days={})
     body = doc.path.read_text(encoding="utf-8")
-    assert body.startswith("# [計画] y")
+    assert "# [計画] y" in body
+    assert body.startswith("---\n")  # OKF frontmatter は必ず付く
     assert doc.due is None
 
 

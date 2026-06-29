@@ -73,7 +73,7 @@ def _column_key(rec, today: date) -> str:
     return "future"
 
 
-def _card_view(rec, config) -> dict:
+def _card_view(rec, config, backref_count: int = 0) -> dict:
     """テンプレートに渡すカード dict（path/state/期日/postpone を整形）。"""
     project_root = Path(rec.project_root)
     abs_path = Path(rec.path)
@@ -120,7 +120,28 @@ def _card_view(rec, config) -> dict:
         "postpone_count": postpone,
         "mtime": rec.mtime,
         "flags": list(rec.flags),
+        # OKF（plan_okf-adoption_2026-06-29.md C4）拡張: tags / owner / related と
+        # 「このファイルを参照している plan/bugfix/pending の件数（逆参照）」をカードに出す。
+        # frontmatter 無しファイルは空値で出る（後方互換）。
+        "tags": list(rec.tags),
+        "owner": rec.owner,
+        "review_status": rec.review_status,
+        "related": list(rec.related),
+        "related_count": len(rec.related),
+        "last_reviewed": rec.last_reviewed,
+        "backref_count": backref_count,
     }
+
+
+def _backref_map(records) -> dict[str, int]:
+    """C2 で ``docsweep.related.backref_counts`` に移管された逆参照集計の薄いラッパ。
+
+    CLI ``docsweep show`` / ``docsweep context`` と同じロジックを 1 箇所に集約することで、
+    Web UI とコマンドラインの逆参照件数が必ず一致するようにする。
+    """
+    from ...related import backref_counts
+
+    return backref_counts(list(records))
 
 
 def _columns(records, config) -> dict:
@@ -135,9 +156,10 @@ def _columns(records, config) -> dict:
         "no_due": [],
         "archivable": [],
     }
+    backrefs = _backref_map(records)
     for rec in records:
         col = _column_key(rec, today)
-        card = _card_view(rec, config)
+        card = _card_view(rec, config, backref_count=backrefs.get(rec.path, 0))
         if col == "active_future":
             # 「実行中で未来期日」は 🟢 実行中列に入れる。
             cols["active"].append(card)
@@ -284,6 +306,64 @@ def card_raw(
             "mtime": resolved.stat().st_mtime,
         }
     )
+
+
+@router.get("/api/cards/detail")
+def card_detail(
+    request: Request,
+    token: str = Query(default=""),
+    path: str = Query(...),
+):
+    """指定カードの OKF 拡張詳細 + 逆参照（このファイルを related に挙げているファイル群）を返す。
+
+    C4 の詳細パネルがカード選択時に呼ぶ。frontmatter 無しファイルでも 200 で空値を返す。
+    """
+    from ..security import resolve_under_roots
+
+    _check_token(request, token)
+    state = request.app.state.docsweep
+    cfg = state.config
+    resolved = resolve_under_roots(path, cfg.roots)
+    if resolved is None:
+        raise HTTPException(status_code=403, detail="path outside scan roots")
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    target_path = resolved.as_posix()
+
+    result = run_scan(cfg)
+    records = list(result.records)
+    me = next((r for r in records if r.path == target_path), None)
+
+    # 逆参照: 各 record の related[] にこのファイルを示す値が含まれていれば積む。
+    target_name = resolved.name
+    backrefs: list[dict] = []
+    for r in records:
+        if r.path == target_path:
+            continue
+        for ref in r.related:
+            if ref == target_path or Path(ref).name == target_name:
+                backrefs.append({
+                    "path": r.path,
+                    "name": Path(r.path).name,
+                    "project": r.project,
+                    "type": r.type,
+                    "state": r.state,
+                    "state_label": r.state_label,
+                    "title": r.title,
+                })
+                break
+
+    return JSONResponse({
+        "path": target_path,
+        "found": me is not None,
+        "tags": list(me.tags) if me else [],
+        "owner": (me.owner if me else None),
+        "review_status": (me.review_status if me else None),
+        "related": list(me.related) if me else [],
+        "last_reviewed": (me.last_reviewed if me else None),
+        "mtime": (me.mtime if me else resolved.stat().st_mtime),
+        "backrefs": sorted(backrefs, key=lambda b: b["name"]),
+    })
 
 
 @router.get("/board/_partial/label_picker", response_class=HTMLResponse)

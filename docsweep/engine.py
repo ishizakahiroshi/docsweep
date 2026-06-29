@@ -97,6 +97,32 @@ def run_scan(config: Config) -> ScanResult:
     return ScanResult(docs=docs)
 
 
+def scan_records(config: Config, *, project: str | None = None) -> list[FileRecord]:
+    """読み取り系コマンド用の高速版 ``run_scan``。``FileRecord`` のリストだけ返す。
+
+    優先順位:
+      1. SQLite 索引（``~/.docsweep/index.db``）に登録済みなら索引から復元（高速）
+      2. 索引が空 / 無い / 例外 → ``run_scan(config).records`` にフォールバック（既存挙動）
+
+    project: 指定すると索引クエリ時点で project_id で絞り込む（フォールバック時は呼び出し側
+    で絞る）。
+    """
+    try:
+        from .index import load_records_from_index
+
+        recs = load_records_from_index(config, project_filter=project)
+        if recs is not None:
+            return recs
+    except Exception:
+        # 索引が壊れていてもユーザー体験は止めない。run_scan へ落とす。
+        pass
+    result = run_scan(config)
+    records = list(result.records)
+    if project:
+        records = [r for r in records if r.project == project]
+    return records
+
+
 def _project_dir_for(doc: ScannedDoc, config: Config) -> tuple[Path, Path]:
     """(project_dir, scan_root) を返す。project_dir は archive を置く基準＝検出済みプロジェクト境界。"""
     project_dir = Path(doc.record.project_root)

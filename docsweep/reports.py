@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .config import Config
 from .engine import run_scan
-from .index import build_index
+from .aggregate_index import build_index
 from .models import Action
 from .state import load as load_state
 
@@ -180,6 +180,13 @@ def slim_record(d: dict) -> dict:
         "flags": d.get("flags") or [],
         "actions": _augment_actions(d),
         "path": d["path"],
+        # OKF（plan_okf-adoption_2026-06-29.md C1）併用フィールド。
+        # 旧クライアントは未知キーを無視するだけで非破壊拡張。
+        "tags": list(d.get("tags") or []),
+        "owner": d.get("owner"),
+        "review_status": d.get("review_status"),
+        "related": list(d.get("related") or []),
+        "last_reviewed": d.get("last_reviewed"),
     }
 
 

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>docsweep — capture</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 880px; margin: 1.5rem auto; padding: 0 1rem; color: #1c1c1c; }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  textarea { width: 100%; min-height: 240px; font-family: ui-monospace, "SF Mono", Menlo, monospace; padding: .6rem; border: 1px solid #c0c0c0; border-radius: 4px; }
+  .row { margin: .8rem 0; }
+  button { font: inherit; padding: .4rem .9rem; border: 1px solid #888; background: #fff; border-radius: 4px; cursor: pointer; }
+  button.primary { background: #2266cc; color: #fff; border-color: #2266cc; }
+  button:hover { filter: brightness(0.95); }
+  .draft { border: 1px solid #d0d0d0; border-radius: 4px; padding: .6rem .9rem; margin-bottom: .5rem; }
+  .draft.checked { background: #f4faff; border-color: #2266cc; }
+  .draft .kind { color: #888; font-size: .82rem; }
+  .draft .title { font-weight: 600; margin: .2rem 0; }
+  .draft .fname { color: #555; font-family: ui-monospace, monospace; font-size: .82rem; }
+  pre { background: #fafafa; padding: .5rem .7rem; border-left: 3px solid #d0d0d0; max-height: 200px; overflow: auto; font-size: .82rem; }
+</style>
+</head>
+<body>
+<h1>capture — 会話を貼って草案抽出</h1>
+
+<form id="capture-form">
+  <textarea id="text" placeholder="ここに会話履歴を貼り付け..."></textarea>
+  <div class="row">
+    <label><input type="checkbox" id="use-llm"> LLM 経路を使う (現状は mock のみ)</label>
+  </div>
+  <div class="row">
+    <button type="submit" class="primary">草案を生成</button>
+  </div>
+</form>
+
+<div id="drafts-area"></div>
+<div id="save-area" style="display:none">
+  <button id="save-btn" class="primary">採用したものを保存</button>
+</div>
+<div id="result-area"></div>
+
+<script>
+const TOKEN = {{ token|tojson }};
+let lastDrafts = [];
+
+document.getElementById('capture-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = document.getElementById('text').value;
+  const useLLM = document.getElementById('use-llm').checked;
+  const res = await fetch(`/api/capture/extract?token=${encodeURIComponent(TOKEN)}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text, use_llm: useLLM}),
+  });
+  if (!res.ok) {
+    alert('extract 失敗: ' + res.status);
+    return;
+  }
+  const data = await res.json();
+  lastDrafts = data.drafts || [];
+  renderDrafts(lastDrafts);
+});
+
+function renderDrafts(drafts) {
+  const area = document.getElementById('drafts-area');
+  area.innerHTML = '';
+  if (drafts.length === 0) {
+    area.innerHTML = '<p>草案候補なし</p>';
+    document.getElementById('save-area').style.display = 'none';
+    return;
+  }
+  drafts.forEach((d, idx) => {
+    const div = document.createElement('div');
+    div.className = 'draft';
+    div.innerHTML = `
+      <label>
+        <input type="checkbox" data-idx="${idx}" checked>
+        <span class="kind">${d.kind}</span>
+        <span class="fname">${d.suggested_filename}</span>
+      </label>
+      <div class="title">${escapeHtml(d.title)}</div>
+      <pre>${escapeHtml(d.body.substring(0, 400))}</pre>
+    `;
+    div.querySelector('input').addEventListener('change', (e) => {
+      div.classList.toggle('checked', e.target.checked);
+    });
+    div.classList.add('checked');
+    area.appendChild(div);
+  });
+  document.getElementById('save-area').style.display = 'block';
+}
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+  const selected = [];
+  document.querySelectorAll('#drafts-area input[type=checkbox]').forEach(cb => {
+    if (cb.checked) selected.push(lastDrafts[parseInt(cb.dataset.idx)]);
+  });
+  if (selected.length === 0) {
+    alert('採用候補を選択してください');
+    return;
+  }
+  const res = await fetch(`/api/capture/save?token=${encodeURIComponent(TOKEN)}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({drafts: selected}),
+  });
+  if (!res.ok) {
+    alert('save 失敗: ' + res.status);
+    return;
+  }
+  const data = await res.json();
+  const area = document.getElementById('result-area');
+  area.innerHTML = '<h3>保存しました:</h3><ul>' +
+    data.saved.map(p => `<li>${escapeHtml(p)}</li>`).join('') + '</ul>';
+});
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+</script>
+</body>
+</html>

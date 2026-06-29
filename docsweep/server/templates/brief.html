@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>docsweep — brief</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 880px; margin: 2rem auto; padding: 0 1rem; color: #1c1c1c; }
+  h1 { font-size: 1.4rem; margin: 0 0 1.2rem; }
+  h2 { font-size: 1.1rem; margin: 1.6rem 0 .4rem; border-bottom: 1px solid #e0e0e0; padding-bottom: .2rem; }
+  .today-pick { background: #fff8d6; border-left: 4px solid #d4a72c; padding: .8rem 1rem; border-radius: 4px; margin: .4rem 0 1rem; }
+  .today-pick .label { font-weight: 600; color: #765d12; font-size: .85rem; letter-spacing: .04em; }
+  .today-pick .title { font-size: 1.15rem; margin: .2rem 0; }
+  .today-pick .summary { color: #555; font-size: .92rem; }
+  ul.cards { list-style: none; padding: 0; margin: .4rem 0; }
+  ul.cards li { padding: .35rem .6rem; border-left: 3px solid #d0d0d0; margin-bottom: .25rem; background: #fafafa; }
+  .empty { color: #888; font-style: italic; }
+  .meta { color: #888; font-size: .82rem; }
+  .project-block { margin-bottom: 2rem; }
+  .actions { margin: .6rem 0 1.2rem; }
+  .actions button { font: inherit; padding: .35rem .8rem; border: 1px solid #b0b0b0; background: #fff; border-radius: 4px; cursor: pointer; }
+  .actions button:hover { background: #f0f0f0; }
+  .flags { color: #c43d3d; font-size: .82rem; margin-left: .4rem; }
+</style>
+</head>
+<body>
+<h1>docsweep brief <span class="meta">— {{ brief.mode }} / {{ brief.generated_at }}</span></h1>
+
+{% for proj in brief.projects %}
+<section class="project-block">
+  <h2>{{ proj.project }} <span class="meta">(open {{ proj.open_count }} / stale {{ proj.stale_count }})</span></h2>
+
+  {% if proj.today_pick %}
+  <div class="today-pick">
+    <div class="label">今日の 1 個</div>
+    <div class="title">{{ proj.today_pick.state_label or '[?]' }} {{ proj.today_pick.title or proj.today_pick.rel }}</div>
+    {% if proj.today_pick.summary %}<div class="summary">{{ proj.today_pick.summary }}</div>{% endif %}
+    <div class="meta">{{ proj.today_pick.rel }} · {{ proj.today_pick.age_days }}d</div>
+    <div class="actions">
+      <button onclick="copyContext('{{ proj.today_pick.path|e }}')">context を AI に渡す</button>
+    </div>
+  </div>
+  {% else %}
+  <p class="empty">今日着手すべきものは無し（全件終端済 or pending のみ）</p>
+  {% endif %}
+
+  {% if proj.co_running %}
+  <h3>併走</h3>
+  <ul class="cards">
+    {% for d in proj.co_running %}
+    <li>{{ d.state_label or '[?]' }} {{ d.rel }} <span class="meta">({{ d.age_days }}d)</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if proj.watchouts %}
+  <h3>要注意（陳腐化 / 期限切れ）</h3>
+  <ul class="cards">
+    {% for d in proj.watchouts %}
+    <li>{{ d.state_label or '[?]' }} {{ d.rel }}<span class="flags">[{{ d.flags|join(',') }}]</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if proj.yesterday_done %}
+  <h3>昨日終わったこと</h3>
+  <ul class="cards">
+    {% for d in proj.yesterday_done %}
+    <li>{{ d.state_label or '[?]' }} {{ d.rel }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endfor %}
+
+<script>
+const TOKEN = {{ token|tojson }};
+async function copyContext(path) {
+  // 簡易: クリップボード API で path を打ち込んで、後段で context CLI 実行を促す。
+  // 本格対応は別 endpoint (POST /api/brief/context) を作る予定。
+  try {
+    await navigator.clipboard.writeText(path);
+    alert('path をクリップボードへ:\n' + path + '\n\nターミナルで `docsweep context --clipboard <path>` を実行してください。');
+  } catch (e) {
+    alert('クリップボードコピー失敗: ' + e);
+  }
+}
+</script>
+</body>
+</html>

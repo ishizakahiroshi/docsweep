@@ -110,16 +110,71 @@
   }
 
   // ===== 検索ボックス（カードのタイトル / ファイル名 / 概要で絞り込み） ========
+  // C4: tag:foo / owner:me / status:planned のキー付きトークンを認識し、
+  // CLI 側 `docsweep triage --tag` 等の絞り込みを Web UI に持ち込む。
+  // 残りの空白区切りトークンは「カード全文への部分一致」（既存挙動）。
   let currentQuery = "";
+
+  function parseQuery(raw) {
+    const tokens = (raw || "").trim().split(/\s+/).filter(Boolean);
+    const out = { tags: [], owners: [], states: [], reviews: [], free: [] };
+    tokens.forEach((tok) => {
+      const m = tok.match(/^(tag|owner|status|review):(.+)$/i);
+      if (!m) { out.free.push(tok.toLowerCase()); return; }
+      const key = m[1].toLowerCase();
+      const val = m[2].toLowerCase();
+      if (key === "tag") out.tags.push(val);
+      else if (key === "owner") out.owners.push(val);
+      else if (key === "status") out.states.push(val);
+      else if (key === "review") out.reviews.push(val);
+    });
+    return out;
+  }
+
+  function cardMatchesParsed(card, parsed) {
+    // 自由語: 全文部分一致（複数なら AND）
+    if (parsed.free.length > 0) {
+      const text = ((card.dataset.path || "") + " " + (card.textContent || "")).toLowerCase();
+      for (const f of parsed.free) {
+        if (!text.includes(f)) return false;
+      }
+    }
+    // tag: カード上の .okf-tag[data-tag] を集めて部分一致 OR 集合（複数 tag は AND）
+    if (parsed.tags.length > 0) {
+      const tagEls = Array.from(card.querySelectorAll(".okf-tag[data-tag]"));
+      const tags = tagEls.map((el) => (el.dataset.tag || "").toLowerCase());
+      for (const t of parsed.tags) {
+        if (!tags.some((x) => x.includes(t))) return false;
+      }
+    }
+    // owner: .okf-owner のテキスト（"👤 name"）から「name」だけ拾って部分一致
+    if (parsed.owners.length > 0) {
+      const ownerEl = card.querySelector(".okf-owner");
+      const owner = ownerEl ? (ownerEl.textContent || "").replace(/^\W*/, "").toLowerCase() : "";
+      for (const o of parsed.owners) {
+        if (!owner.includes(o)) return false;
+      }
+    }
+    // status: data-state（内部 state key）と state-badge のテキスト（"[計画]" 等）
+    if (parsed.states.length > 0) {
+      const stateKey = (card.dataset.state || "").toLowerCase();
+      const stateBadge = card.querySelector(".state-badge");
+      const stateLabel = stateBadge ? (stateBadge.textContent || "").toLowerCase() : "";
+      for (const s of parsed.states) {
+        if (!stateKey.includes(s) && !stateLabel.includes(s)) return false;
+      }
+    }
+    return true;
+  }
+
   function applySearch() {
-    const q = currentQuery.trim().toLowerCase();
+    const q = currentQuery.trim();
+    const parsed = q ? parseQuery(q) : null;
     let visible = 0;
     const cards = Array.from(document.querySelectorAll(".card[data-path]"));
     cards.forEach((card) => {
       if (!q) { card.hidden = false; visible++; return; }
-      // 検索対象: data-path（ファイル名含む）+ card 内テキスト全体
-      const text = ((card.dataset.path || "") + " " + (card.textContent || "")).toLowerCase();
-      const hit = text.includes(q);
+      const hit = cardMatchesParsed(card, parsed);
       card.hidden = !hit;
       if (hit) visible++;
     });
