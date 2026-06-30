@@ -258,7 +258,7 @@ def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     I.inject_global(agent="codex", target=target)
     text = target.read_text(encoding="utf-8")
     assert "@" + I.GUIDANCE_IMPORT not in text  # import 行ではない
-    assert "-m docsweep triage" in text  # 本文がインライン（PATH 非依存）
+    assert "-m docsweep brief" in text  # 本文がインライン（PATH 非依存）
     assert "docsweep inject が自動追加・管理" in text
     # Codex はインライン展開で中央ファイルを参照しない → 孤児 guidance.md を作らない。
     assert not gpath.exists()

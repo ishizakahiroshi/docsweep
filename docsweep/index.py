@@ -147,6 +147,11 @@ def get_schema_version(conn: sqlite3.Connection) -> int | None:
     return int(row[0]) if row else None
 
 
+# C3 (bloat-mitigation): WAL の自動 checkpoint しきい値（ページ数）。SQLite の既定 1000 と
+# 同値だが、設計意図として明示する。長時間プロセスでこれを超えると自動 truncate される。
+WAL_AUTOCHECKPOINT_PAGES = 1000
+
+
 @contextmanager
 def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
     """WAL モードで接続を開く context manager。
@@ -160,11 +165,45 @@ def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute(f"PRAGMA wal_autocheckpoint={WAL_AUTOCHECKPOINT_PAGES}")
         conn.row_factory = sqlite3.Row
         init_schema(conn)
         yield conn
     finally:
         conn.close()
+
+
+# ===================================================================
+# C2 / C3 (bloat-mitigation): VACUUM と WAL checkpoint
+# ===================================================================
+
+
+def vacuum(conn: sqlite3.Connection) -> None:
+    """``VACUUM`` を実行して freelist を解放しファイルを縮める。
+
+    VACUUM はトランザクション内では実行できない。本コードベースの ``connect()`` は
+    ``isolation_level=None``（autocommit）で開くので、明示的な ``BEGIN`` が無ければ
+    ここからそのまま発行できる。他プロセスが書込中の場合は ``OperationalError`` で
+    失敗するので呼び出し側で案内すること。
+
+    WAL モードでは VACUUM の結果が -wal に蓄積され、main DB ファイルは checkpoint
+    まで縮まないため、直後に TRUNCATE checkpoint を打って物理サイズも回収する。
+    """
+    conn.execute("VACUUM")
+    checkpoint_truncate(conn)
+
+
+def checkpoint_truncate(conn: sqlite3.Connection) -> tuple[int, int, int]:
+    """``PRAGMA wal_checkpoint(TRUNCATE)`` を実行し ``-wal`` ファイルを切り詰める。
+
+    Returns:
+        ``(busy, log_pages, checkpointed_pages)`` — SQLite ドキュメント準拠。
+        busy=1 は他プロセスが読込中で TRUNCATE まで進めなかったことを示す（PASSIVE 分は完了）。
+    """
+    row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    if not row:
+        return (0, 0, 0)
+    return (int(row[0]), int(row[1]), int(row[2]))
 
 
 def upsert_project(
@@ -297,6 +336,76 @@ def known_files(conn: sqlite3.Connection, project_id: str) -> dict[str, tuple[fl
 
 def list_projects(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute("SELECT * FROM projects ORDER BY project_id").fetchall()
+
+
+# ===================================================================
+# C1 (bloat-mitigation): 索引 DB の物理サイズ・行数・freelist を観測する
+# ===================================================================
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def collect_stats(conn: sqlite3.Connection, *, path: Path | None = None) -> dict:
+    """索引 DB の容量・行数・embedding サイズを収集する。
+
+    Args:
+        conn: 接続済 sqlite3.Connection
+        path: DB ファイルパス（未指定なら ``db_path()`` の結果）。``-wal`` / ``-shm`` サイズの算出に使う
+
+    Returns:
+        観測値の dict。``index-stats`` コマンドと VACUUM 効果計測に共用する
+    """
+    target = db_path(path)
+    wal_path = target.with_name(target.name + "-wal")
+    shm_path = target.with_name(target.name + "-shm")
+
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+    freelist_count = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
+
+    def _count(sql: str) -> int:
+        row = conn.execute(sql).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    embedding_rows = _count(
+        "SELECT COUNT(*) FROM files WHERE embedding IS NOT NULL"
+    )
+    embedding_bytes = _count(
+        "SELECT COALESCE(SUM(LENGTH(embedding)), 0) FROM files WHERE embedding IS NOT NULL"
+    )
+
+    mtime_min = conn.execute(
+        "SELECT MIN(mtime) FROM files WHERE mtime IS NOT NULL"
+    ).fetchone()[0]
+    mtime_max = conn.execute(
+        "SELECT MAX(mtime) FROM files WHERE mtime IS NOT NULL"
+    ).fetchone()[0]
+
+    return {
+        "db_path": str(target),
+        "db_size_bytes": _file_size(target),
+        "wal_size_bytes": _file_size(wal_path),
+        "shm_size_bytes": _file_size(shm_path),
+        "page_size": page_size,
+        "page_count": page_count,
+        "used_bytes": page_size * (page_count - freelist_count),
+        "freelist_count": freelist_count,
+        "freelist_bytes": page_size * freelist_count,
+        "projects": _count("SELECT COUNT(*) FROM projects"),
+        "files": _count("SELECT COUNT(*) FROM files"),
+        "tags": _count("SELECT COUNT(*) FROM tags"),
+        "related": _count("SELECT COUNT(*) FROM related"),
+        "embedding_rows": embedding_rows,
+        "embedding_bytes": embedding_bytes,
+        "mtime_min": mtime_min,
+        "mtime_max": mtime_max,
+        "schema_version": get_schema_version(conn),
+    }
 
 
 # ===================================================================

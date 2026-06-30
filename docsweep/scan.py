@@ -226,6 +226,9 @@ class SyncStats:
     files_updated: int = 0
     files_unchanged: int = 0
     files_deleted: int = 0
+    # C4 (bloat-mitigation): --prune-projects で削除された孤児 projects の件数。
+    # フラグ無し時は常に 0（一時的な search_paths 変更で誤削除しない安全側のため）。
+    projects_removed: int = 0
 
 
 def _resolve_project_id(root: Path) -> tuple[str, str | None]:
@@ -305,6 +308,7 @@ def sync_index(
     *,
     full: bool = False,
     db_path_override: Path | None = None,
+    prune_projects: bool = False,
 ) -> SyncStats:
     """``search_paths`` 配下を走査し SQLite 索引へ差分同期する。
 
@@ -312,6 +316,8 @@ def sync_index(
         config: ロード済み Config
         full: True で全件再構築（DB の files を一旦 truncate してから挿入）
         db_path_override: テスト用に DB パスを上書き
+        prune_projects: True で「DB にあるが今回の search_paths 展開結果に無い projects」を
+            CASCADE 削除する。既定 False（一時的な search_paths 変更で誤削除しないよう保護）。
 
     Returns:
         SyncStats — 同期件数の集計
@@ -330,6 +336,21 @@ def sync_index(
             # 全再構築: files を空にする（projects と tags/related は ON DELETE CASCADE で連鎖）
             conn.execute("DELETE FROM files")
             conn.commit()
+
+        # C4: 孤児プロジェクト掃除 — DB にあるが今回 search_paths から外れた project を CASCADE 削除。
+        # files / tags / related は ON DELETE CASCADE で連鎖削除される。
+        if prune_projects:
+            current_ids = {_resolve_project_id(root)[0] for root in roots}
+            existing_ids = {
+                r["project_id"]
+                for r in conn.execute("SELECT project_id FROM projects").fetchall()
+            }
+            orphan_ids = existing_ids - current_ids
+            for orphan in orphan_ids:
+                conn.execute("DELETE FROM projects WHERE project_id=?", (orphan,))
+                stats.projects_removed += 1
+            if orphan_ids:
+                conn.commit()
 
         now_iso = datetime.now(timezone.utc).isoformat()
 

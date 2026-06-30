@@ -74,7 +74,26 @@ def _find_doc(result: ScanResult, path: str):
 def create_app(config: Config, token: str | None = None) -> FastAPI:
     token = token or secrets.token_urlsafe(16)
     state = ServerState(config, token)
-    app = FastAPI(title="docsweep", docs_url=None, redoc_url=None)
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        """C3 (bloat-mitigation): shutdown 時に WAL を TRUNCATE checkpoint して -wal を縮める。
+
+        Web UI を長時間起動した後の -wal 肥大を抑える。リクエスト毎の checkpoint は重いので
+        shutdown 時の 1 回だけに絞る（通常は autocheckpoint=1000 ページ で十分・最終回収のみ）。
+        """
+        yield
+        try:
+            from .. import index as db
+            with db.connect() as conn:
+                db.checkpoint_truncate(conn)
+        except Exception:
+            # shutdown 経路は失敗しても致命ではないので握り潰す（プロセス停止を妨げない）。
+            pass
+
+    app = FastAPI(title="docsweep", docs_url=None, redoc_url=None, lifespan=_lifespan)
     app.state.docsweep = state
 
     @app.middleware("http")
