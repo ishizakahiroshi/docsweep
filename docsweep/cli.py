@@ -357,6 +357,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_config.add_argument("--list", dest="list_all", action="store_true", help="全キーを表示")
     p_config.add_argument("--json", action="store_true")
 
+    p_activity = sub.add_parser(
+        "activity",
+        help="過去に触ったもの（mtime軸）/今後期限のもの（due軸）を日付でまとめる。既定は今日+昨日",
+    )
+    _add_scope_args(p_activity)
+    p_activity.add_argument("--project", help="対象プロジェクト名（既定は cwd プロジェクト）")
+    p_activity.add_argument(
+        "--all", action="store_true", dest="all_projects", help="全プロジェクト横断で束ねる"
+    )
+    p_activity.add_argument(
+        "--date", action="append", dest="dates",
+        metavar="{today,yesterday,tomorrow,YYYY-MM-DD}",
+        help="対象日を追加指定（複数指定で OR。既定は today+yesterday）",
+    )
+    p_activity.add_argument(
+        "--since", help="対象レンジ開始（YYYY-MM-DD または +Nd/-Nd/+Nw/-Nw 等）"
+    )
+    p_activity.add_argument(
+        "--until", help="対象レンジ終端（YYYY-MM-DD または +Nd/-Nd/+Nw/-Nw 等）"
+    )
+    p_activity.add_argument("--json", action="store_true", help="JSON 出力（既定は人間向け）")
+
     p_timeline = sub.add_parser(
         "timeline", help="topic を含む plan/bugfix/pending を時系列で列挙"
     )
@@ -896,6 +918,63 @@ def _render_brief_human(result, lang: str = "ja") -> str:
             for d in proj.yesterday_done:
                 lines.append(f"    {d.get('state_label') or '[?]'} {d.get('rel')}")
     return "\n".join(lines)
+
+
+def _render_activity_human(result, lang: str = "ja") -> str:
+    """activity の人間向け 1 画面出力。日付見出し＋軸ラベル（触った/期限）を明示する。"""
+    lines: list[str] = []
+    lines.append("docsweep activity")
+    lines.append("=" * 40)
+    hit = False
+    for iso in sorted(result.dates):
+        bucket = result.dates[iso]
+        if not bucket.touched and not bucket.due:
+            continue
+        hit = True
+        marker = "  (今日)" if iso == result.today else ""
+        lines.append("")
+        lines.append(f"# {iso}{marker}")
+        if bucket.touched:
+            lines.append("  触った:")
+            for d in bucket.touched:
+                lines.append(f"    {d.get('state_label') or '[?]'} {d.get('project')}/{d.get('rel')}")
+        if bucket.due:
+            lines.append("  期限:")
+            for d in bucket.due:
+                lines.append(f"    {d.get('state_label') or '[?]'} {d.get('project')}/{d.get('rel')}")
+    if not hit:
+        lines.append("")
+        lines.append("（該当ファイルなし）")
+    return "\n".join(lines)
+
+
+def cmd_activity(args: argparse.Namespace) -> int:
+    """過去に触ったもの/今後期限のものを日付でまとめる（brief/cross の日付版）。
+
+    plan_activity-summary.md C1 の主要 deliverable。新規永続化は一切せず、既存の
+    ``scan_records()`` が持つ mtime/due だけを日付でグルーピングする読み取り専用コマンド。
+    """
+    from .activity import ActivityDateError, build_activity
+
+    cfg = _build_config(args)
+    try:
+        result = build_activity(
+            cfg,
+            dates=getattr(args, "dates", None),
+            since=getattr(args, "since", None),
+            until=getattr(args, "until", None),
+            project=getattr(args, "project", None),
+            all_projects=bool(getattr(args, "all_projects", False)),
+        )
+    except ActivityDateError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+
+    if getattr(args, "json", False):
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+    print(_render_activity_human(result, lang=cfg.lang))
+    return 0
 
 
 def cmd_brief(args: argparse.Namespace) -> int:
@@ -1642,7 +1721,7 @@ _SUBCOMMANDS = {
     "linkcheck", "auto-triage", "graph", "resurrect",
     "report", "summary", "new", "review", "inject", "eject", "list", "mcp",
     "migrate-frontmatter", "fix-related", "show", "stale", "context", "claim",
-    "config", "timeline", "find", "completion", "export",
+    "config", "timeline", "find", "completion", "export", "activity",
 }
 
 _DISPATCH = {
@@ -1668,6 +1747,7 @@ _DISPATCH = {
     "find": cmd_find,
     "completion": cmd_completion,
     "export": cmd_export,
+    "activity": cmd_activity,
 }
 
 

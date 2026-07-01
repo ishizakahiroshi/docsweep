@@ -22,6 +22,8 @@ from ..state import increment_postpone
 _DUE_LINE_RE = re.compile(r"^(\s*due\s*:\s*)\S.*$", re.MULTILINE)
 _RELATIVE_RE = re.compile(r"^\s*\+\s*(\d+)\s*([dwmy])\s*$", re.IGNORECASE)
 _ABSOLUTE_RE = re.compile(r"^\s*(\d{4}-\d{2}-\d{2})\s*$")
+# plan_activity-summary.md C1: --since/--until は過去方向（-3d 等）も受けるため符号付き。
+_RELATIVE_SIGNED_RE = re.compile(r"^\s*([+-])\s*(\d+)\s*([dwmy])\s*$", re.IGNORECASE)
 
 
 class DueParseError(ValueError):
@@ -67,6 +69,31 @@ def resolve_due(spec: str, *, today: date | None = None) -> date:
         days = {"d": n, "w": n * 7, "m": n * 30, "y": n * 365}[unit]
         return today + timedelta(days=days)
     raise DueParseError(f"new_due を解釈できません: {spec!r}")
+
+
+def resolve_relative_offset(spec: str, *, today: date | None = None) -> date:
+    """``resolve_due`` の姉妹関数。符号付き相対オフセット（``+Nd``/``-Nd``/``+Nw``/``-Nw`` 等）と
+    ``today`` / 絶対指定（``YYYY-MM-DD``）を解釈する。
+
+    ``resolve_due`` は due 更新（未来日が基本）用に正のオフセットのみを受けるため、
+    ``activity --since``/``--until`` の過去方向レンジ指定用にこちらを新設する。
+    ``update_due`` からは呼ばれず、``resolve_due`` 自体の挙動には影響しない。
+    """
+    today = today or date.today()
+    s = spec.strip()
+    if s.lower() == "today":
+        return today
+    m_abs = _ABSOLUTE_RE.match(s)
+    if m_abs:
+        return date.fromisoformat(m_abs.group(1))
+    m_rel = _RELATIVE_SIGNED_RE.match(s)
+    if m_rel:
+        sign = -1 if m_rel.group(1) == "-" else 1
+        n = int(m_rel.group(2))
+        unit = m_rel.group(3).lower()
+        days = {"d": n, "w": n * 7, "m": n * 30, "y": n * 365}[unit]
+        return today + timedelta(days=sign * days)
+    raise DueParseError(f"日付指定を解釈できません: {spec!r}")
 
 
 def _read_current_due(text: str) -> str | None:
