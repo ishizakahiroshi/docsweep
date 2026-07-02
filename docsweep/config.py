@@ -134,6 +134,20 @@ def _load_yaml(path: Path) -> dict:
     return data
 
 
+def project_archive_dir(project_dir: Path) -> str | None:
+    """プロジェクト直下の .docsweep.yaml から archive_dir だけを読む（無ければ None）。
+
+    sweep / promote は複数プロジェクトを横断するため、起動時に読んだ単一 config では
+    各プロジェクトの archive 先の意図を反映できない。移送直前に対象プロジェクト自身の
+    設定を参照するための軽量フック（roots 等の他キーはここでは解決しない）。
+    壊れた YAML は黙って既定へフォールバックせず例外を伝播させる
+    （意図しない場所へのファイル移送を防ぐ）。
+    """
+    cfg = _load_yaml(project_dir / PROJECT_CONFIG_NAME)
+    v = cfg.get("archive_dir")
+    return str(v) if v else None
+
+
 def _parse_types(raw: list | None) -> list[TypeDef] | None:
     if not raw:
         return None

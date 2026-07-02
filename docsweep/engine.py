@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 
 from .archive import _now_iso, append_move_log, archive_file
-from .config import Config
+from .config import Config, project_archive_dir
 from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from .models import Action, Flag, FileRecord, MoveLogEntry
 from .scan import ScannedDoc, scan
@@ -221,6 +221,12 @@ def promote_state(
 def _archive_dir_for(doc: ScannedDoc, config: Config) -> str:
     if doc.type_def and doc.type_def.archive_dir:
         return doc.type_def.archive_dir
+    # sweep / promote は複数プロジェクト横断で動くため、起動時に読んだ単一 config ではなく
+    # 対象プロジェクト自身の .docsweep.yaml（あれば）を優先する。これにより cwd や
+    # --project-dir フラグに依存せず、どこから実行しても各プロジェクトの設定が効く。
+    from_project = project_archive_dir(Path(doc.record.project_root))
+    if from_project:
+        return from_project
     return config.archive_dir
 
 
