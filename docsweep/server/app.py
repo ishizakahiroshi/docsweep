@@ -5,7 +5,6 @@ from __future__ import annotations
 import secrets
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
@@ -16,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from .. import __version__
 from ..config import Config
 from ..engine import ScanResult, apply_action, auto_sweep, run_scan
-from ..aggregate_index import build_index, write_index
+from ..aggregate_index import write_index
 from ..inject import (
     eject,
     eject_global,
@@ -26,7 +25,6 @@ from ..inject import (
     preview_global,
     preview_inject,
 )
-from ..models import Flag
 from .routes import board as board_routes
 from .routes import brief as brief_routes
 from .routes import cards as cards_routes
@@ -123,15 +121,8 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         if not supplied or not secrets.compare_digest(supplied, state.token):
             raise HTTPException(status_code=403, detail="invalid or missing token")
 
-    def _scope(lang: str | None) -> str:
-        return lang if lang in ("ja", "en") else state.config.lang
-
-    # ------------------------------------------------------------------
-    # 旧 dashboard ルート（/, /list, /fragment）は plan_consolidate-to-board で
-    # 廃止。/ は /board へ 302 リダイレクト。テンプレと内部関数（_dashboard_data,
-    # _group, _inject_state, _health）は test_server.py 等の参照用に残置するが
-    # Web からは到達不能（注入・health は看板に統合済み）。
-    # ------------------------------------------------------------------
+    # 旧 dashboard（/, /list, /fragment）は plan_consolidate-to-board で廃止し、
+    # テンプレ・ヘルパも plan_legacy-stack-retirement で物理撤去済み（注入・health は看板に統合）。
 
     @app.get("/")
     def root_redirect(token: str = Query(default="")):
@@ -292,7 +283,7 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
         return JSONResponse({"project": r.project, "removed": r.removed,
                              "warnings": r.warnings, "purged_yaml": r.purged_yaml})
 
-    # v0.1.0 第 2 段階の主役 UI: 看板（カンバン）ボード。旧 dashboard はそのまま温存。
+    # v0.1.0 第 2 段階の主役 UI: 看板（カンバン）ボード。
     # ルータ側は ``request.app.state.docsweep`` 経由で同じ config/token を参照する。
     app.include_router(board_routes.router)
     app.include_router(brief_routes.router)
@@ -326,158 +317,3 @@ def _reveal_in_file_manager(path: Path) -> None:
     else:
         # Linux は標準の「ファイル選択」手段が無いため親フォルダを開く。
         subprocess.run(["xdg-open", str(path.parent)], check=False)
-
-
-def _counts(result: ScanResult) -> dict:
-    recs = result.records
-    return {
-        "total": len(recs),
-        "needs_decision": sum(1 for r in recs if Flag.NEEDS_DECISION.value in r.flags),
-        "needs_fix": sum(1 for r in recs if Flag.NEEDS_FIX.value in r.flags),
-        "auto_movable": sum(1 for r in recs if r.auto_movable and r.archivable),
-        "watching": sum(1 for r in recs if r.state == "watching"),
-    }
-
-
-def _by_project(items: list[dict]) -> list[dict]:
-    by: dict[str, list] = {}
-    for item in items:
-        by.setdefault(item["project"], []).append(item)
-    return [{"project": name, "records": recs} for name, recs in by.items()]
-
-
-def _dashboard_data(result: ScanResult, config: Config) -> dict:
-    """受信トレイ型ダッシュボードの表示データを組み立てる。"""
-    idx = build_index(config, result)
-    recs = result.records
-
-    roots = config.roots
-
-    def _loc(path: str) -> str:
-        p = Path(path)
-        for root in roots:
-            try:
-                return p.relative_to(Path(root)).parent.as_posix()
-            except ValueError:
-                continue
-        return p.parent.name
-
-    def slim(r) -> dict:
-        d = r.to_dict()
-        d["name"] = Path(r.path).name
-        d["loc"] = _loc(r.path)
-        d["arch_action"] = "promote" if r.state == "watching" else "discard"
-        # カードの「Nd 無更新」に hover で出す絶対更新日時（ローカルタイム）。
-        d["mtime_str"] = (
-            datetime.fromtimestamp(r.mtime).strftime("%Y-%m-%d %H:%M") if r.mtime else ""
-        )
-        d["overdue_todo"] = Flag.OVERDUE_TODO.value in r.flags
-        d["overdue_graduate"] = Flag.OVERDUE_GRADUATE.value in r.flags
-        return d
-
-    by_age = sorted(recs, key=lambda r: r.age_days, reverse=True)
-    # ① overdue レーン（due 超過 — due 昇順で古い締切を上に）。
-    by_due = sorted(
-        [r for r in recs if Flag.OVERDUE_TODO.value in r.flags or Flag.OVERDUE_GRADUATE.value in r.flags],
-        key=lambda r: r.due or "",
-    )
-    overdue = [slim(r) for r in by_due]
-    # ② 今すぐ判断（主役）＝陳腐化で要判断のもの。
-    queue = [slim(r) for r in by_age if Flag.NEEDS_DECISION.value in r.flags]
-    # ③ 落ち着いて確認＝保留・進行中（要判断に出ていないもの）。
-    fold = [
-        slim(r) for r in by_age
-        if r.state in ("pending", "in-progress") and Flag.NEEDS_DECISION.value not in r.flags
-    ]
-    # 要修正（ラベル欠落等）も拾えるようにキューの末尾へ。
-    queue += [slim(r) for r in by_age if Flag.NEEDS_FIX.value in r.flags and Flag.NEEDS_DECISION.value not in r.flags]
-    # archive 可能（完了・廃止）＝一括移送の対象。実行前に中身を確認できるよう一覧で持つ。
-    archivable = [slim(r) for r in by_age if r.auto_movable and r.archivable]
-
-    inprogress = sum(1 for r in recs if r.state == "in-progress")
-    done = sum(1 for r in recs if r.state == "done")
-
-    return {
-        "counts": idx.counts,
-        "inprogress": inprogress,
-        "done": done,
-        "queue": queue,
-        "fold": fold,
-        "archivable": archivable,
-        "overdue": overdue,
-        "queue_by_project": _by_project(queue),
-        "fold_by_project": _by_project(fold),
-        "health": _health(recs),
-        "root": str(config.roots[0]) if config.roots else "",
-        **_inject_state(recs),
-    }
-
-
-def _inject_state(recs) -> dict:
-    """各プロジェクトの注入状態（manifest 由来）と global 注入済み agent を組み立てる。"""
-    injected = {it["path"]: it for it in list_injected()}
-    projects: dict[str, dict] = {}
-    for r in recs:
-        root = r.project_root
-        if root not in projects:
-            info = injected.get(root)
-            projects[root] = {
-                "name": r.project, "root": root,
-                "injected": info is not None, "preset": (info or {}).get("preset"),
-            }
-    from ..presets import DEFAULT_PRESET, PRESETS
-    global_agents = {it.get("agent") for it in injected.values() if it.get("scope") == "global"}
-    return {
-        "projects": sorted(projects.values(), key=lambda x: x["name"]),
-        "global_claude": "claude" in global_agents,
-        "global_codex": "codex" in global_agents,
-        "presets": list(PRESETS),
-        "default_preset": DEFAULT_PRESET,
-    }
-
-
-def _health(recs) -> list[dict]:
-    by: dict[str, list[int]] = {}
-    for r in recs:
-        by.setdefault(r.project, []).append(r.age_days)
-    maxage = max((max(v) for v in by.values()), default=1) or 1
-    rows = []
-    for proj, ages in by.items():
-        oldest = max(ages)
-        level = "hi" if oldest >= 90 else ("mid" if oldest >= 30 else "lo")
-        rows.append({
-            "project": proj, "oldest": oldest,
-            "pct": max(6, int(oldest / maxage * 100)), "level": level,
-        })
-    rows.sort(key=lambda x: x["oldest"], reverse=True)
-    return rows
-
-
-def _group(result: ScanResult, sm, lang: str, filter: str = "all") -> list[dict]:
-    """state ごとにレコードを束ねた表示用グループを返す。"""
-    records = result.records
-    if filter == "needs":
-        records = [
-            r for r in records
-            if Flag.NEEDS_DECISION.value in r.flags or Flag.NEEDS_FIX.value in r.flags or r.state == "pending"
-        ]
-    elif filter == "watching":
-        records = [r for r in records if r.state == "watching"]
-    elif filter == "archivable":
-        records = [r for r in records if r.auto_movable and r.archivable]
-
-    by_state: dict[str, list] = {}
-    for r in records:
-        by_state.setdefault(r.state or "unknown", []).append(r)
-
-    groups: list[dict] = []
-    for key, recs in by_state.items():
-        st = sm.by_key(key) if sm else None
-        label = f"[{st.label(lang)}]" if st else "[?]"
-        groups.append({
-            "key": key,
-            "label": label,
-            "records": sorted(recs, key=lambda r: r.age_days, reverse=True),
-        })
-    groups.sort(key=lambda g: g["key"])
-    return groups

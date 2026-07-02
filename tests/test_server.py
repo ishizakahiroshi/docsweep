@@ -45,12 +45,6 @@ def test_index_redirects_to_board(client):
     assert r.headers["location"].startswith("/board")
 
 
-@pytest.mark.skip(reason="旧 dashboard 廃止（plan_consolidate-to-board）/list は削除済み")
-def test_index_lists_states(client):
-    c, root, _ = client
-    assert "plan_stale.md" in c.get(f"/list?token={TOKEN}&filter=all").text
-
-
 def test_preview_renders_markdown(client):
     c, root, _ = client
     p = (root / "proj_a" / "plan_done.md").resolve().as_posix()
@@ -87,13 +81,6 @@ def test_apply_disallowed_returns_400(client):
     p = (root / "proj_a" / "plan_done.md").resolve().as_posix()
     r = c.post("/api/apply", data={"token": TOKEN, "path": p, "action": "discard"})
     assert r.status_code == 400
-
-
-@pytest.mark.skip(reason="旧 dashboard 廃止（plan_consolidate-to-board）archive 候補は看板の▶archive 候補セクションで代替")
-def test_dashboard_shows_archivable_list(client):
-    c, root, _ = client
-    html = c.get(f"/?token={TOKEN}").text
-    assert 'id="archivable"' in html
 
 
 def test_reveal_opens_folder(client, monkeypatch):
