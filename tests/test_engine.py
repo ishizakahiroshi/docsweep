@@ -121,6 +121,37 @@ def test_auto_sweep_moves_to_archive(workspace: Path):
     assert (workspace / ".docsweep" / "moves.jsonl").exists()
 
 
+def test_auto_sweep_respects_project_docsweep_yaml(workspace: Path):
+    """対象プロジェクト自身の .docsweep.yaml の archive_dir が cwd / --project-dir 非依存で効く。
+
+    経緯: sweep は複数プロジェクト横断で動くのに、archive 先が起動時の単一 config
+    でしか解決されず、プロジェクトの .docsweep.yaml が --project-dir を明示しないと
+    無視されていた（2026-07-03 docsweep 自身の棚卸しで顕在化）。
+    """
+    (workspace / "proj_a" / ".docsweep.yaml").write_text(
+        "archive_dir: docs/local/archive\n", encoding="utf-8"
+    )
+    cfg = _cfg(workspace)  # project_dir を渡さない（--project-dir なし相当）
+    auto_sweep(cfg, dry_run=False)
+    assert not (workspace / "proj_a" / "docs" / "local" / "plan_done.md").exists()
+    assert (workspace / "proj_a" / "docs" / "local" / "archive" / "plan_done.md").exists()
+    # 設定を持たない従来プロジェクトの挙動（既定 archive/）は
+    # test_auto_sweep_moves_to_archive が担保する
+
+
+def test_auto_sweep_dry_run_previews_project_archive_dir(workspace: Path):
+    """dry-run の dst も per-project 設定を反映する（下見と本実行のズレ防止）。"""
+    (workspace / "proj_a" / ".docsweep.yaml").write_text(
+        "archive_dir: docs/local/archive\n", encoding="utf-8"
+    )
+    cfg = _cfg(workspace)
+    moved = auto_sweep(cfg, dry_run=True)
+    dsts = {Path(m.src).name: m.dst for m in moved}
+    assert dsts["plan_done.md"].endswith("proj_a/docs/local/archive/plan_done.md")
+    # dry-run なので実ファイルは動かない
+    assert (workspace / "proj_a" / "docs" / "local" / "plan_done.md").exists()
+
+
 def test_collision_dedupe(workspace: Path):
     cfg = _cfg(workspace)
     # 先に archive に同名を置く
