@@ -104,7 +104,7 @@
       const newMtime = r1.json && r1.json.new_mtime ? r1.json.new_mtime : mtime;
       await postForm("/api/cards/due", { path, new_due: "today", expected_mtime: newMtime });
     } else if (kind === "future") {
-      const v = window.prompt("いつまで先送りしますか？（YYYY-MM-DD または +1w / +1m）", "+1w");
+      const v = window.prompt(DS_T("dnd_future_prompt"), "+1w");
       if (!v) return;
       await postForm("/api/cards/due", { path, new_due: v, expected_mtime: mtime });
     }

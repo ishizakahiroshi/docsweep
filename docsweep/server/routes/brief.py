@@ -56,11 +56,16 @@ def page_brief(
     _check_token(request, token)
     state = request.app.state.docsweep
     result = build_brief(state.config, project=project, all_projects=all_projects)
+    from ..i18n import get_messages, resolve_lang
+
+    resolved_lang = resolve_lang(request)
     return TEMPLATES.TemplateResponse(
         request,
         "brief.html",
         {
             "brief": result.to_dict(),
             "token": state.token,
+            "lang": resolved_lang,
+            "T": get_messages(resolved_lang),
         },
     )

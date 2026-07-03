@@ -32,6 +32,7 @@ from .routes import capture as capture_routes
 from .routes import cross as cross_routes
 from .routes import graph as graph_routes
 from .routes import resurrect as resurrect_routes
+from .i18n import get_messages, resolve_lang
 from .sanitize import sanitize_html
 from .security import resolve_under_roots
 
@@ -151,6 +152,7 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
                 "html": _render_markdown(text),
                 "record": doc.record if doc else None,
                 "path": resolved.as_posix(),
+                "T": get_messages(resolve_lang(request)),
             },
         )
 

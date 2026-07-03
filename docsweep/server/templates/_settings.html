@@ -1,18 +1,29 @@
-{# ⚙ 設定モーダルの中身。プロジェクト一覧 + グローバル inject + プリセット選択。
+{# ⚙ 設定モーダルの中身。表示言語 + プロジェクト一覧 + グローバル inject + プリセット選択。
    keymap.js が fetch して dialog の中身として表示する。 #}
 <div class="settings-inner">
-  <h3 class="settings-title">⚙ 設定 / 注入</h3>
+  <h3 class="settings-title">{{ T.settings_heading }}</h3>
 
   <section class="settings-section">
-    <h4>グローバル運用ルール導線（全プロジェクトで効く）</h4>
-    <p class="settings-note">セッション開始時に docsweep triage を読む導線だけを AI ツールのグローバル設定へ注入する。</p>
+    <h4>{{ T.settings_lang_heading }}</h4>
+    <p class="settings-note">{{ T.settings_lang_note }}</p>
+    <div class="settings-row settings-lang" role="group" aria-label="{{ T.settings_lang_heading }}">
+      <button type="button" class="{{ 'primary' if lang == 'ja' else 'ghost' }}"
+              data-action="settings-set-lang" data-lang="ja" {% if lang == 'ja' %}disabled{% endif %}>日本語</button>
+      <button type="button" class="{{ 'primary' if lang == 'en' else 'ghost' }}"
+              data-action="settings-set-lang" data-lang="en" {% if lang == 'en' %}disabled{% endif %}>English</button>
+    </div>
+  </section>
+
+  <section class="settings-section">
+    <h4>{{ T.settings_global_heading }}</h4>
+    <p class="settings-note">{{ T.settings_global_note }}</p>
     <div class="settings-row">
       <span class="settings-label">Claude Code:</span>
       <span class="settings-state {{ 'on' if settings.global_claude else 'off' }}">
-        {{ '✓ 注入済' if settings.global_claude else '未注入' }}
+        {{ T.settings_injected if settings.global_claude else T.settings_not_injected }}
       </span>
       {% if settings.global_claude %}
-        <span class="settings-version" title="注入されている導線ブロックの版">v{{ settings.global_claude_version or '?' }}</span>
+        <span class="settings-version" title="{{ T.settings_version_title }}">v{{ settings.global_claude_version or '?' }}</span>
         <button type="button" class="ghost" data-action="settings-eject-global" data-agent="claude">eject</button>
       {% else %}
         <button type="button" class="primary" data-action="settings-inject-global" data-agent="claude">inject</button>
@@ -21,10 +32,10 @@
     <div class="settings-row">
       <span class="settings-label">Codex:</span>
       <span class="settings-state {{ 'on' if settings.global_codex else 'off' }}">
-        {{ '✓ 注入済' if settings.global_codex else '未注入' }}
+        {{ T.settings_injected if settings.global_codex else T.settings_not_injected }}
       </span>
       {% if settings.global_codex %}
-        <span class="settings-version" title="注入されている導線ブロックの版">v{{ settings.global_codex_version or '?' }}</span>
+        <span class="settings-version" title="{{ T.settings_version_title }}">v{{ settings.global_codex_version or '?' }}</span>
         <button type="button" class="ghost" data-action="settings-eject-global" data-agent="codex">eject</button>
       {% else %}
         <button type="button" class="primary" data-action="settings-inject-global" data-agent="codex">inject</button>
@@ -33,11 +44,11 @@
   </section>
 
   <section class="settings-section">
-    <h4>プロジェクト別運用ルール（プロジェクトの CLAUDE.md と .docsweep.yaml に注入）</h4>
-    <p class="settings-note">プリセット: 既定 <code>{{ settings.default_preset }}</code>（presets: {{ settings.presets|join(' / ') }}）</p>
+    <h4>{{ T.settings_project_heading }}</h4>
+    <p class="settings-note">{{ T.settings_preset_note }} <code>{{ settings.default_preset }}</code>（presets: {{ settings.presets|join(' / ') }}）</p>
     <table class="settings-projects">
       <thead>
-        <tr><th>プロジェクト</th><th>状態</th><th>preset</th><th>version</th><th>操作</th></tr>
+        <tr><th>{{ T.settings_col_project }}</th><th>{{ T.settings_col_state }}</th><th>preset</th><th>version</th><th>{{ T.settings_col_actions }}</th></tr>
       </thead>
       <tbody>
         {% for p in settings.projects %}
@@ -45,7 +56,7 @@
           <td class="sp-name" title="{{ p.root }}">{{ p.name }}</td>
           <td>
             <span class="settings-state {{ 'on' if p.injected else 'off' }}">
-              {{ '✓ 注入済' if p.injected else '未注入' }}
+              {{ T.settings_injected if p.injected else T.settings_not_injected }}
             </span>
           </td>
           <td class="sp-preset">{{ p.preset or '—' }}</td>
@@ -62,7 +73,7 @@
       </tbody>
     </table>
     {% if not settings.projects %}
-      <p class="settings-note">スキャン対象にプロジェクトがありません。</p>
+      <p class="settings-note">{{ T.settings_no_projects }}</p>
     {% endif %}
   </section>
 </div>

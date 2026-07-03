@@ -3,6 +3,34 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
+## [Unreleased]
+
+### Added
+
+- **Web UI の英語対応**（plan_v0.2.0-english-support）。看板・設定モーダル・ピッカー・
+  brief / capture / cross / graph / resurrect の全画面文言を ja / en 二言語化
+  （サーバー側 `docsweep/server/i18n.py`・JS 側 `static/i18n.js` の二層辞書）。
+  言語は設定モーダル（⚙）の「日本語 / English」トグルで切替でき、cookie
+  `docsweep_lang` に保存される（`~/.docsweep/config.yaml` の `lang:` は変更しない）。
+  解決順は `?lang=` クエリ > cookie > `config.lang` > ja。ピッカーの状態ラベルは
+  `.docsweep.yaml` の states 二言語辞書から lang 解決するようになった。
+- **README.en.md**（英語版 README）を追加し、README.md と相互リンク。
+
+- 注入文言（inject）の英語対応。guidance 導線・due ルール節・ラベル節・AGENTS.md ポインタ・
+  管理注記・`.docsweep.yaml` / `~/.docsweep/config.yaml` ひな型コメントを ja / en の二言語化し、
+  CLI `inject --lang {ja,en}`（プロジェクト注入では preset の言語を上書き、`--global` の既定は ja）と
+  MCP `inject` / `inject_global` の `lang` パラメータを追加。状態ラベルは従来から二言語辞書を
+  持っていたため、`lang: en` でラベルも `[Planned]` / `[Done]` 等の英語表記になる。
+
+### Changed
+
+- `inject --global` の guidance に対応期日（`due:`）ルール節を同梱（guidance_version 3）。
+  従来 due ルールはプロジェクト inject のラベル節にのみ含まれ、プロジェクト注入していない
+  リポジトリでは AI が frontmatter を付けられなかった。due 節をラベル節から導線（guidance）側へ
+  移設し、既定=グローバル 1 回で全プロジェクトに効く／グローバルに寄せたくない場合は
+  プロジェクト inject（既定）で同内容が入る、の切り分けを既存フラグ（`--global` / `--no-guidance`）
+  だけで完結させた。
+
 ## [0.1.0] - 2026-07-03
 
 初回リリース。AI コーディングツール（Claude Code / Codex 等）が生成する

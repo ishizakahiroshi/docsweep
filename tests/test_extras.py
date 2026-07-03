@@ -397,6 +397,71 @@ def test_inject_label_block_mentions_due(tmp_path, manifest):
     assert "[様子見]" in text and "bugfix" in text
 
 
+def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypatch):
+    """グローバル inject の guidance.md に due ルールが同梱される（既定=グローバル運用）。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "claude" / "CLAUDE.md"
+    target.parent.mkdir(parents=True)
+
+    I.inject_global(agent="claude", target=target)
+    body = gpath.read_text(encoding="utf-8")
+    assert "対応期日" in body
+    assert "default_offset_days" in body
+
+
+def test_inject_english_lang_generates_english_blocks(tmp_path, manifest):
+    """--lang en のプロジェクト inject は管理ブロック一式を英語で生成する。"""
+    from docsweep.inject import inject
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "AGENTS.md").write_text("# agents\n", encoding="utf-8")
+    inject(proj, preset="claude-jp", lang="en")
+    text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Status labels for AI work documents" in text
+    assert "Assigning a due date" in text
+    assert "`[Watching]`" in text  # states の en ラベルが使われる
+    assert "ステータスラベル" not in text
+    # ポインタ（AGENTS.md）も英語
+    agents = (proj / "AGENTS.md").read_text(encoding="utf-8")
+    assert "see the docsweep managed block in CLAUDE.md" in agents
+    # .docsweep.yaml のひな型コメントも英語
+    body = (proj / ".docsweep.yaml").read_text(encoding="utf-8")
+    assert "Due dates" in body
+
+
+def test_inject_global_english_guidance(tmp_path, manifest, monkeypatch):
+    """lang=en のグローバル inject は guidance.md を英語で生成する（due ルール込み）。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "claude" / "CLAUDE.md"
+    target.parent.mkdir(parents=True)
+
+    I.inject_global(agent="claude", target=target, lang="en")
+    body = gpath.read_text(encoding="utf-8")
+    assert "check remaining work at session start" in body
+    assert "Assigning a due date" in body
+    assert "セッション開始時" not in body
+
+
+def test_inject_no_guidance_omits_due_rules(tmp_path, manifest):
+    """--no-guidance のプロジェクト inject は due ルールも省く（グローバルに寄せた二重化回避）。"""
+    from docsweep.inject import inject
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    inject(proj, preset="claude-jp", include_guidance=False)
+    text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "ステータスラベル" in text  # ラベル節は入る
+    assert "対応期日" not in text
+    assert "brief" not in text
+
+
 def test_eject_global_keeps_central_while_claude_present(tmp_path, manifest, monkeypatch):
     """Codex のみ eject しても、@import 参照する Claude が残る限り guidance.md は保持する。"""
     from docsweep import inject as I

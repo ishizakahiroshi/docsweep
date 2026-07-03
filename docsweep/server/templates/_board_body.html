@@ -1,13 +1,14 @@
 {# 看板ボードの本体（htmx で部分差し替えされる単位）。
    3 列（やり忘れ / 今日 / 実行中）+ 4 セクション（卒業判定 / 未来期日 / 期日未設定 / archive 候補）。
-   各セクションヘッダに「全選択 + 一括ボタン」を出す（plan_kanban-bulk-edit §C2）。 #}
+   各セクションヘッダに「全選択 + 一括ボタン」を出す（plan_kanban-bulk-edit §C2）。
+   文言は route から渡る T（server/i18n.py）で解決する（plan_v0.2.0-english-support §C2）。 #}
 
 {# 共通の一括操作ボタンセット（マクロ化）。section=セクション名、ops=ボタン定義リスト
    op.kind="label-picker" は section-bulk ではなく section-open-label-picker を出す
    （クリックで既存 _label_picker.html を開き、選んだ state で列内全カードを一括 status 変更）。 #}
 {% macro section_actions(section, ops) %}
   <span class="sec-actions" data-section="{{ section }}">
-    <button type="button" class="sec-btn sec-select" data-action="section-select-all" data-section="{{ section }}" title="このセクションを全選択">✓ 全選択</button>
+    <button type="button" class="sec-btn sec-select" data-action="section-select-all" data-section="{{ section }}" title="{{ T.sec_select_all_title }}">{{ T.sec_select_all }}</button>
     {% for op in ops %}
       {% if op.kind == "label-picker" %}
         <button type="button" class="sec-btn sec-label-picker"
@@ -29,34 +30,34 @@
 {# 2026-06-23 改修: 独立ボタン「着手」「廃止」「完了」を全廃。状態変更はすべて
    「ラベル変更▾」ピッカー（_label_picker.html）に集約。[廃止] [完了] も同ピッカーから選ぶ。 #}
 {% set OPS_DEFAULT = [
-  {"kind": "due",          "op": "due",    "spec": "+1d", "label": "+1d", "title": "全て +1 日先送り"},
-  {"kind": "due",          "op": "due",    "spec": "+1w", "label": "+1w", "title": "全て +1 週先送り"},
-  {"kind": "label-picker", "label": "ラベル変更▾", "title": "全カードを別のラベル ([計画]/[実行中]/[様子見]/[保留]/[完了]/[廃止]) に一括変更"},
+  {"kind": "due",          "op": "due",    "spec": "+1d", "label": "+1d", "title": T.sec_plus1d_title},
+  {"kind": "due",          "op": "due",    "spec": "+1w", "label": "+1w", "title": T.sec_plus1w_title},
+  {"kind": "label-picker", "label": T.change_label, "title": T.sec_label_title},
 ] %}
 {% set OPS_GRADUATE = OPS_DEFAULT %}
 {% set OPS_ARCHIVE = [
-  {"kind": "archive",   "op": "archive", "label": "archive へ", "title": "全て archive 配下へ移送"},
+  {"kind": "archive",   "op": "archive", "label": T.to_archive, "title": T.to_archive_title},
 ] %}
 
 <div class="board-cols">
-  <div class="col col-overdue" data-column="overdue" aria-label="やり忘れ列">
-    <h2 class="col-head"><span class="col-emoji">🔴</span> やり忘れ <span class="col-count">{{ data.counts.overdue }}</span>
+  <div class="col col-overdue" data-column="overdue" aria-label="{{ T.col_overdue_aria }}">
+    <h2 class="col-head"><span class="col-emoji">🔴</span> {{ T.col_overdue }} <span class="col-count">{{ data.counts.overdue }}</span>
       {{ section_actions("overdue", OPS_DEFAULT) }}
     </h2>
     <ol class="col-cards">
       {% for card in data.cols.overdue %}{% include "_card.html" %}{% endfor %}
     </ol>
   </div>
-  <div class="col col-today" data-column="today" aria-label="今日列">
-    <h2 class="col-head"><span class="col-emoji">🟡</span> 今日 <span class="col-count">{{ data.counts.today }}</span>
+  <div class="col col-today" data-column="today" aria-label="{{ T.col_today_aria }}">
+    <h2 class="col-head"><span class="col-emoji">🟡</span> {{ T.col_today }} <span class="col-count">{{ data.counts.today }}</span>
       {{ section_actions("today", OPS_DEFAULT) }}
     </h2>
     <ol class="col-cards">
       {% for card in data.cols.today %}{% include "_card.html" %}{% endfor %}
     </ol>
   </div>
-  <div class="col col-active" data-column="active" aria-label="実行中列">
-    <h2 class="col-head"><span class="col-emoji">🟢</span> 実行中 <span class="col-count">{{ data.counts.active }}</span>
+  <div class="col col-active" data-column="active" aria-label="{{ T.col_active_aria }}">
+    <h2 class="col-head"><span class="col-emoji">🟢</span> {{ T.col_active }} <span class="col-count">{{ data.counts.active }}</span>
       {{ section_actions("active", OPS_DEFAULT) }}
     </h2>
     <ol class="col-cards">
@@ -66,7 +67,7 @@
 </div>
 
 <details class="fold fold-graduate" data-section="graduate" open>
-  <summary>▼ 卒業判定（[様子見] かつ overdue_graduate） <span class="fold-count">{{ data.counts.graduate }}</span>
+  <summary>▼ {{ T.sec_graduate }} <span class="fold-count">{{ data.counts.graduate }}</span>
     {{ section_actions("graduate", OPS_GRADUATE) }}
   </summary>
   <ol class="col-cards">
@@ -75,7 +76,7 @@
 </details>
 
 <details class="fold fold-future" data-section="future">
-  <summary>▶ 未来期日 <span class="fold-count">{{ data.counts.future }}</span>
+  <summary>▶ {{ T.sec_future }} <span class="fold-count">{{ data.counts.future }}</span>
     {{ section_actions("future", OPS_DEFAULT) }}
   </summary>
   <ol class="col-cards">
@@ -84,7 +85,7 @@
 </details>
 
 <details class="fold fold-no-due" data-section="no_due">
-  <summary>▶ 期日未設定 <span class="fold-count">{{ data.counts.no_due }}</span>
+  <summary>▶ {{ T.sec_no_due }} <span class="fold-count">{{ data.counts.no_due }}</span>
     {{ section_actions("no_due", OPS_DEFAULT) }}
   </summary>
   <ol class="col-cards">
@@ -93,7 +94,7 @@
 </details>
 
 <details class="fold fold-archivable" data-section="archivable">
-  <summary>▶ archive 候補（[完了]/[廃止]） <span class="fold-count">{{ data.counts.archivable }}</span>
+  <summary>▶ {{ T.sec_archivable }} <span class="fold-count">{{ data.counts.archivable }}</span>
     {{ section_actions("archivable", OPS_ARCHIVE) }}
   </summary>
   <ol class="col-cards">

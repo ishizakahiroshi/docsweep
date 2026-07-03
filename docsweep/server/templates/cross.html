@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
 <title>docsweep — cross</title>
@@ -26,7 +26,7 @@
 </head>
 <body>
 <aside>
-  <h3>プロジェクト ({{ cross.total_projects }})</h3>
+  <h3>{{ T.cross_projects }} ({{ cross.total_projects }})</h3>
   <ul>
     {% for p in cross.project_summaries %}
     <li>
@@ -44,16 +44,16 @@
 
   {% if cross.top_pick %}
   <div class="top-pick">
-    <div class="label">全プロジェクト束ねた『今日の 1 個』</div>
+    <div class="label">{{ T.cross_top_pick }}</div>
     <div class="title">{{ cross.top_pick.state_label or '[?]' }} {{ cross.top_pick.title or cross.top_pick.rel }}</div>
     <div class="meta">{{ cross.top_pick.project }}/{{ cross.top_pick.rel }} · {{ cross.top_pick.age_days }}d · score {{ cross.top_pick.score }}</div>
   </div>
   {% else %}
-  <p class="empty">対象 open ファイル無し</p>
+  <p class="empty">{{ T.cross_empty }}</p>
   {% endif %}
 
   {% if cross.runners_up %}
-  <h2>次点</h2>
+  <h2>{{ T.cross_runners_up }}</h2>
   <ul class="cards">
     {% for d in cross.runners_up %}
     <li>{{ d.state_label or '[?]' }} {{ d.project }}/{{ d.rel }} <span class="score">score {{ d.score }}</span></li>
@@ -62,7 +62,7 @@
   {% endif %}
 
   {% if cross.frozen_candidates %}
-  <h2>凍結予備軍 — archive 候補 ({{ cross.frozen_candidates|length }})</h2>
+  <h2>{{ T.cross_frozen }} ({{ cross.frozen_candidates|length }})</h2>
   <ul class="cards">
     {% for d in cross.frozen_candidates %}
     <li>{{ d.state_label or '[?]' }} {{ d.project }}/{{ d.rel }} <span class="score">{{ d.age_days }}d</span></li>

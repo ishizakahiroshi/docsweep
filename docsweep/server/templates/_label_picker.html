@@ -3,12 +3,13 @@
    - 2026-06-23 改修: 独立ボタン（着手・廃止）を列ヘッダーから撤去し、[廃止] もここに含める
      ([廃止] は archive 連動の破壊的アクションなので runBulk 側で確認ダイアログ・トーストを出す)
    - 個別カードの状態違反は services 層が StatusValidationError → failed[] に振り分け
+   - ラベル表示は route から渡る labels（states の二言語辞書を lang 解決したもの）を使う
    経緯: 2026-06-23 改修。docs/local/kanban-card-ux-options/index.html・全独立ボタン廃止 #}
-<div class="label-picker bulk-label-picker" role="listbox" aria-label="ラベルを選択">
-  <button type="button" role="option" class="lp-opt" data-new-state="planned">[計画]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="in-progress">[実行中]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="watching">[様子見]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="pending">[保留]</button>
-  <button type="button" role="option" class="lp-opt" data-new-state="done">[完了]</button>
-  <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded">[廃止]</button>
+<div class="label-picker bulk-label-picker" role="listbox" aria-label="{{ T.label_picker_aria }}">
+  <button type="button" role="option" class="lp-opt" data-new-state="planned">{{ labels.planned }}</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="in-progress">{{ labels['in-progress'] }}</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="watching">{{ labels.watching }}</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="pending">{{ labels.pending }}</button>
+  <button type="button" role="option" class="lp-opt" data-new-state="done">{{ labels.done }}</button>
+  <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded">{{ labels.discarded }}</button>
 </div>

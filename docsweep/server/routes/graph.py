@@ -49,6 +49,11 @@ def page_graph(
     _check_token(request, token)
     state = request.app.state.docsweep
     g = build_graph(state.config, project=project)
+    from ..i18n import get_messages, resolve_lang
+
+    resolved_lang = resolve_lang(request)
     return TEMPLATES.TemplateResponse(
-        request, "graph.html", {"graph": g.to_dict(), "token": state.token},
+        request, "graph.html",
+        {"graph": g.to_dict(), "token": state.token,
+         "lang": resolved_lang, "T": get_messages(resolved_lang)},
     )

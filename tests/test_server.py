@@ -187,3 +187,73 @@ def test_eject_project_purge_removes_yaml(client, iso_inject):
     assert r.status_code == 200
     assert r.json()["purged_yaml"] is True
     assert not (root / "proj_a" / ".docsweep.yaml").exists()
+
+
+# ---- Web UI i18n（plan_v0.2.0-english-support） ----
+
+def test_board_lang_query_switches_to_english(client):
+    """?lang=en で看板の UI 文言が英語になる。"""
+    c, root, _ = client
+    r = c.get("/board", params={"token": TOKEN, "lang": "en"})
+    assert r.status_code == 200
+    assert 'lang="en"' in r.text
+    assert "Overdue" in r.text          # 列名
+    assert "Rescan" in r.text           # トップバー
+    assert "やり忘れ" not in r.text
+    assert "再スキャン" not in r.text
+
+
+def test_board_default_lang_is_japanese(client):
+    """既定（config.lang=ja・cookie 無し）は従来どおり日本語。"""
+    c, root, _ = client
+    r = c.get("/board", params={"token": TOKEN})
+    assert r.status_code == 200
+    assert 'lang="ja"' in r.text
+    assert "やり忘れ" in r.text
+
+
+def test_board_lang_cookie_persists_english(client):
+    """cookie docsweep_lang=en が ?lang= 無しでも効く（設定モーダルのトグル永続化）。"""
+    c, root, _ = client
+    c.cookies.set("docsweep_lang", "en")
+    r = c.get("/board", params={"token": TOKEN})
+    assert r.status_code == 200
+    assert 'lang="en"' in r.text
+    assert "Overdue" in r.text
+
+
+def test_change_picker_labels_follow_lang(client):
+    """ピッカーの状態ラベルが states の二言語辞書から lang 解決される。"""
+    c, root, _ = client
+    c.cookies.set("docsweep_lang", "en")
+    r = c.get("/board/_partial/change_picker", params={"token": TOKEN})
+    assert r.status_code == 200
+    assert "[Planned]" in r.text
+    assert "[計画]" not in r.text
+    c.cookies.set("docsweep_lang", "ja")
+    r = c.get("/board/_partial/change_picker", params={"token": TOKEN})
+    assert "[計画]" in r.text
+
+
+def test_settings_partial_has_lang_toggle(client):
+    """設定モーダルに言語トグル（日本語 / English）が出る。"""
+    c, root, _ = client
+    r = c.get("/board/_partial/settings", params={"token": TOKEN})
+    assert r.status_code == 200
+    assert 'data-action="settings-set-lang"' in r.text
+    assert "English" in r.text
+
+
+def test_subpages_render_in_english(client):
+    """サブページ（brief / cross / resurrect）も cookie で英語表示になる。"""
+    c, root, _ = client
+    c.cookies.set("docsweep_lang", "en")
+    r = c.get("/brief", params={"token": TOKEN})
+    assert r.status_code == 200
+    assert 'lang="en"' in r.text
+    r = c.get("/cross", params={"token": TOKEN})
+    assert r.status_code == 200
+    assert 'lang="en"' in r.text
+    r = c.get("/resurrect", params={"token": TOKEN})
+    assert r.status_code == 200
+    assert "Recompute" in r.text

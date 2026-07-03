@@ -1,13 +1,13 @@
 {# 期日変更ポップオーバー（クイック +1d/+3d/+1w/+1m + 任意日付）。
    キーボード: d=+1d / w=+1w / m=+1m / D=-1d。 #}
-<div class="due-picker" role="dialog" aria-label="期日を変更">
-  <button type="button" class="dp-quick" data-spec="+1d">+1 日 (d)</button>
-  <button type="button" class="dp-quick" data-spec="+3d">+3 日</button>
-  <button type="button" class="dp-quick" data-spec="+1w">+1 週 (w)</button>
-  <button type="button" class="dp-quick" data-spec="+1m">+1 ヶ月 (m)</button>
-  <button type="button" class="dp-quick" data-spec="today">今日</button>
+<div class="due-picker" role="dialog" aria-label="{{ T.due_picker_aria }}">
+  <button type="button" class="dp-quick" data-spec="+1d">{{ T.dp_plus1d }}</button>
+  <button type="button" class="dp-quick" data-spec="+3d">{{ T.dp_plus3d }}</button>
+  <button type="button" class="dp-quick" data-spec="+1w">{{ T.dp_plus1w }}</button>
+  <button type="button" class="dp-quick" data-spec="+1m">{{ T.dp_plus1m }}</button>
+  <button type="button" class="dp-quick" data-spec="today">{{ T.dp_today }}</button>
   <label class="dp-custom">
-    任意日付
+    {{ T.dp_custom }}
     <input type="date" class="dp-date" name="dp-date">
   </label>
 </div>

@@ -55,8 +55,12 @@ def page_cross(
     _check_token(request, token)
     state = request.app.state.docsweep
     result = build_cross(state.config, projects=_parse_projects(project))
+    from ..i18n import get_messages, resolve_lang
+
+    resolved_lang = resolve_lang(request)
     return TEMPLATES.TemplateResponse(
         request,
         "cross.html",
-        {"cross": result.to_dict(), "token": state.token},
+        {"cross": result.to_dict(), "token": state.token,
+         "lang": resolved_lang, "T": get_messages(resolved_lang)},
     )
