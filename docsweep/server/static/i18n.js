@@ -74,6 +74,11 @@
       okf_aborted: "保存中断（{0}）",
       okf_saved: "✓ 保存しました (mtime={0})",
       claim_failed: "claim 失敗: {0}",
+      roots_failed: "ルート変更に失敗: {0}",
+      roots_added: "✓ スキャンルートを追加しました",
+      roots_removed: "✓ スキャンルートを削除しました",
+      roots_runtime_only: "画面には反映しましたが config.yaml への保存に失敗: {0}",
+      roots_remove_confirm: "スキャンルート {0} を外します（ファイルは削除されません）。よろしいですか？",
     },
     en: {
       loading: "Loading…",
@@ -142,6 +147,11 @@
       okf_aborted: "Save aborted ({0})",
       okf_saved: "✓ Saved (mtime={0})",
       claim_failed: "claim failed: {0}",
+      roots_failed: "Failed to change roots: {0}",
+      roots_added: "✓ Scan root added",
+      roots_removed: "✓ Scan root removed",
+      roots_runtime_only: "Applied to this session, but saving to config.yaml failed: {0}",
+      roots_remove_confirm: "Remove the scan root {0}? (No files are deleted.)",
     },
   };
 

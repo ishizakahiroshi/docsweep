@@ -56,6 +56,24 @@
     }
     body.innerHTML = await res.text();
   }
+  async function configRoots(op, path) {
+    // スキャンルートの追加・削除。runtime 反映 + config.yaml 永続化はサーバー側で行う。
+    const res = await fetch("/api/config/roots", {
+      method: "POST", headers: headers(), body: fd({ op: op, path: path }),
+    });
+    const json = await safeJson(res);
+    if (!res.ok) {
+      showToast(DS_T("roots_failed", (json && json.detail) || res.status), { undoable: false });
+      return;
+    }
+    if (json && json.persisted === false) {
+      showToast(DS_T("roots_runtime_only", (json && json.warning) || ""), { undoable: false, duration: 8000 });
+    } else {
+      showToast(DS_T(op === "add" ? "roots_added" : "roots_removed"), { undoable: false, duration: 5000 });
+    }
+    await refreshSettings();
+    reloadBoard();
+  }
   function setUiLang(lang) {
     // 言語は cookie（1 年）に保存してリロード。config.yaml は書き換えない（ユーザー設定温存）。
     document.cookie = "docsweep_lang=" + lang + "; path=/; max-age=31536000; samesite=lax";
@@ -775,6 +793,24 @@
     if (e.target.closest && e.target.closest("[data-action='shutdown-server']")) {
       e.preventDefault();
       shutdownServer();
+      return;
+    }
+    // 設定モーダル: スキャンルートの追加・削除
+    const addRoot = e.target.closest && e.target.closest("[data-action='settings-add-root']");
+    if (addRoot) {
+      e.preventDefault();
+      const input = document.getElementById("settings-root-input");
+      const v = input ? input.value.trim() : "";
+      if (!v) return;
+      configRoots("add", v);
+      return;
+    }
+    const rmRoot = e.target.closest && e.target.closest("[data-action='settings-remove-root']");
+    if (rmRoot) {
+      e.preventDefault();
+      confirmDialog(DS_T("roots_remove_confirm", rmRoot.dataset.path)).then((ok) => {
+        if (ok) configRoots("remove", rmRoot.dataset.path);
+      });
       return;
     }
     // 設定モーダル: 表示言語トグル（cookie に保存してリロード）

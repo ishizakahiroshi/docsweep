@@ -3,7 +3,7 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
-## [Unreleased]
+## [0.2.0] - 2026-07-03
 
 ### Added
 
@@ -15,6 +15,14 @@
   解決順は `?lang=` クエリ > cookie > `config.lang` > ja。ピッカーの状態ラベルは
   `.docsweep.yaml` の states 二言語辞書から lang 解決するようになった。
 - **README.en.md**（英語版 README）を追加し、README.md と相互リンク。
+- **About & Licenses 表記**を設定モーダル末尾に追加（アプリ情報・MIT ライセンス表記・
+  同梱 OSS: htmx / CDN 参照: cytoscape.js / pip 依存の三層を UI から確認できる。
+  正本は NOTICES.md — CDN 節を追記）。
+- **Web UI からのスキャンルート管理**（plan_web-roots-management）。設定モーダルに
+  Scan roots セクションを追加し、親ディレクトリ・個別プロジェクトフォルダのどちらも
+  追加・削除できる（`POST /api/config/roots`）。runtime に即反映しつつ
+  `~/.docsweep/config.yaml` の `roots:` キーだけを surgical に書き換えて永続化する
+  （他キー・コメントは温存）。最後の 1 個の root は削除不可。
 
 - 注入文言（inject）の英語対応。guidance 導線・due ルール節・ラベル節・AGENTS.md ポインタ・
   管理注記・`.docsweep.yaml` / `~/.docsweep/config.yaml` ひな型コメントを ja / en の二言語化し、
@@ -24,6 +32,7 @@
 
 ### Changed
 
+- トップバーの「看板（カンバン）/ Kanban」サブタイトル表記を撤去（バージョン表示のみ残す）。
 - `inject --global` の guidance に対応期日（`due:`）ルール節を同梱（guidance_version 3）。
   従来 due ルールはプロジェクト inject のラベル節にのみ含まれ、プロジェクト注入していない
   リポジトリでは AI が frontmatter を付けられなかった。due 節をラベル節から導線（guidance）側へ

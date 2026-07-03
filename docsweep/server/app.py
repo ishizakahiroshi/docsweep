@@ -208,6 +208,64 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
             write_index(state.config)
         return JSONResponse([m.to_dict() for m in moved])
 
+    @app.post("/api/config/roots")
+    def api_config_roots(
+        request: Request,
+        token: str = Form(default=""),
+        op: str = Form(default=""),
+        path: str = Form(default=""),
+    ):
+        """スキャンルートの追加・削除（設定モーダルの Scan roots セクション用）。
+
+        runtime の ``state.config.roots`` を即時更新し（scan は毎回ここを読むので看板に
+        即反映）、``~/.docsweep/config.yaml`` の ``roots:`` キーへ surgical に永続化する
+        （他キー・コメント温存 — server/config_write.py）。``--root`` 起動中でも runtime
+        反映は効く。永続化分は次回 yaml ベース起動から効く。
+        """
+        from .config_write import update_global_roots
+
+        _check_token(request, token)
+        if op not in ("add", "remove"):
+            raise HTTPException(status_code=400, detail="op must be add or remove")
+        if not path.strip():
+            raise HTTPException(status_code=400, detail="path is required")
+        target = Path(path.strip()).expanduser()
+        try:
+            target = target.resolve()
+        except OSError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        current = [Path(r) for r in state.config.roots]
+        if op == "add":
+            if not target.is_dir():
+                raise HTTPException(status_code=400, detail="not a directory")
+            if any(target == Path(r).resolve() for r in current):
+                raise HTTPException(status_code=409, detail="already registered")
+            new_roots = current + [target]
+        else:
+            new_roots = [r for r in current if Path(r).resolve() != target]
+            if len(new_roots) == len(current):
+                raise HTTPException(status_code=404, detail="root not found")
+            if not new_roots:
+                # 空にすると看板が操作不能になるため、最後の 1 個は削除させない。
+                raise HTTPException(status_code=400, detail="cannot remove the last root")
+
+        state.config.roots = new_roots
+        try:
+            written = update_global_roots(new_roots)
+        except (OSError, ValueError) as e:
+            # 永続化に失敗しても runtime 反映は生かす（UI には警告として返す）。
+            return JSONResponse({
+                "roots": [r.as_posix() for r in new_roots],
+                "persisted": False,
+                "warning": str(e),
+            })
+        return JSONResponse({
+            "roots": [r.as_posix() for r in new_roots],
+            "persisted": True,
+            "config_path": written.as_posix(),
+        })
+
     @app.post("/api/shutdown")
     def api_shutdown(request: Request, token: str = Form(default="")):
         """画面右上 ⏻ ボタン用。uvicorn を graceful 停止する。

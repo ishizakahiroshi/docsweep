@@ -244,6 +244,22 @@ def test_settings_partial_has_lang_toggle(client):
     assert "English" in r.text
 
 
+def test_settings_partial_has_about_section(client):
+    """設定モーダルに About & Licenses（自ライセンス + 同梱/CDN OSS 表記）が出る。"""
+    c, root, _ = client
+    r = c.get("/board/_partial/settings", params={"token": TOKEN})
+    assert r.status_code == 200
+    assert "htmx 1.9.12" in r.text
+    assert "cytoscape.js 3.30.0" in r.text
+    assert "Hiroshi Ishizaka" in r.text
+    from docsweep import __version__
+    assert f"v{__version__}" in r.text
+    # 英語でも同じ節が出る
+    c.cookies.set("docsweep_lang", "en")
+    r = c.get("/board/_partial/settings", params={"token": TOKEN})
+    assert "Included Open Source Software" in r.text
+
+
 def test_subpages_render_in_english(client):
     """サブページ（brief / cross / resurrect）も cookie で英語表示になる。"""
     c, root, _ = client
@@ -257,3 +273,84 @@ def test_subpages_render_in_english(client):
     r = c.get("/resurrect", params={"token": TOKEN})
     assert r.status_code == 200
     assert "Recompute" in r.text
+
+
+# ---- スキャンルート管理 API（plan_web-roots-management） ----
+
+@pytest.fixture
+def iso_roots(tmp_path, monkeypatch):
+    """config.yaml 書き込み先を tmp に隔離（実ユーザー設定を守る）。"""
+    from docsweep.server import config_write as CW
+    gpath = tmp_path / "docsweep-config.yaml"
+    monkeypatch.setattr(CW, "GLOBAL_CONFIG_PATH", gpath)
+    return gpath
+
+
+def test_roots_add_reflects_and_persists(client, iso_roots, tmp_path):
+    c, root, _ = client
+    extra = tmp_path / "extra-project"
+    (extra / "docs").mkdir(parents=True)
+    r = c.post("/api/config/roots", data={"token": TOKEN, "op": "add", "path": str(extra)})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["persisted"] is True
+    assert any(p.endswith("extra-project") for p in body["roots"])
+    # 永続化: roots: ブロックが config.yaml に書かれる
+    text = iso_roots.read_text(encoding="utf-8")
+    assert "roots:" in text and "extra-project" in text
+    # 設定モーダルにも出る
+    r2 = c.get("/board/_partial/settings", params={"token": TOKEN})
+    assert "extra-project" in r2.text
+
+
+def test_roots_add_rejects_missing_dir(client, iso_roots, tmp_path):
+    c, root, _ = client
+    r = c.post("/api/config/roots", data={"token": TOKEN, "op": "add",
+                                          "path": str(tmp_path / "no-such-dir")})
+    assert r.status_code == 400
+
+
+def test_roots_remove_and_last_root_guard(client, iso_roots, tmp_path):
+    c, root, _ = client
+    extra = tmp_path / "extra2"
+    extra.mkdir()
+    c.post("/api/config/roots", data={"token": TOKEN, "op": "add", "path": str(extra)})
+    # 追加分を削除できる
+    r = c.post("/api/config/roots", data={"token": TOKEN, "op": "remove", "path": str(extra)})
+    assert r.status_code == 200
+    # 最後の 1 個（元の root）は削除拒否
+    r = c.post("/api/config/roots", data={"token": TOKEN, "op": "remove", "path": str(root)})
+    assert r.status_code == 400
+
+
+def test_update_global_roots_preserves_other_keys(tmp_path):
+    """roots: だけ差し替え、他キーとコメントを温存する（surgical 置換）。"""
+    from docsweep.server.config_write import update_global_roots
+    gpath = tmp_path / "config.yaml"
+    gpath.write_text(
+        "# 手書きコメント\n"
+        "lang: en\n"
+        "roots:\n"
+        "  - C:/old/root\n"
+        "# due の説明コメント\n"
+        "due:\n"
+        "  postpone_warn_threshold: 2\n",
+        encoding="utf-8",
+    )
+    update_global_roots([tmp_path / "new-root"], config_path=gpath)
+    text = gpath.read_text(encoding="utf-8")
+    assert "# 手書きコメント" in text
+    assert "lang: en" in text
+    assert "postpone_warn_threshold: 2" in text
+    assert "new-root" in text
+    assert "C:/old/root" not in text
+
+
+def test_board_subtitle_has_no_kanban(client):
+    """トップバーから「看板（カンバン）/ Kanban」表記を撤去した。"""
+    c, root, _ = client
+    for lang in ("ja", "en"):
+        r = c.get("/board", params={"token": TOKEN, "lang": lang})
+        assert r.status_code == 200
+        assert "Kanban" not in r.text
+        assert "カンバン" not in r.text
