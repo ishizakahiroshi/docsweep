@@ -4,11 +4,11 @@
 <div class="edit-pane-inner">
   <div class="ep-head">
     <div class="ep-tabs" role="tablist">
-      <button type="button" class="ep-tab on" data-tab="preview" role="tab" aria-selected="true">プレビュー</button>
-      <button type="button" class="ep-tab" data-tab="edit" role="tab" aria-selected="false">編集</button>
+      <button type="button" class="ep-tab on" data-tab="preview" role="tab" aria-selected="true">{{ T.tab_preview }}</button>
+      <button type="button" class="ep-tab" data-tab="edit" role="tab" aria-selected="false">{{ T.tab_edit }}</button>
     </div>
     <div class="ep-info">
-      <span class="ep-path" data-bind="path">（カードを選択してください）</span>
+      <span class="ep-path" data-bind="path">{{ T.select_card_hint }}</span>
     </div>
   </div>
 
@@ -20,25 +20,25 @@
       <label class="ep-okf-row">
         <span class="ep-okf-label">owner</span>
         <span class="ep-okf-inputwrap">
-          <input type="text" data-bind="owner" class="ep-okf-input" placeholder="（未設定）" />
-          <button type="button" class="ep-okf-btn" data-action="claim" title="自分を owner にセット">claim</button>
-          <button type="button" class="ep-okf-btn" data-action="unclaim" title="owner を空にする">unclaim</button>
+          <input type="text" data-bind="owner" class="ep-okf-input" placeholder="{{ T.not_set }}" />
+          <button type="button" class="ep-okf-btn" data-action="claim" title="{{ T.claim_title }}">claim</button>
+          <button type="button" class="ep-okf-btn" data-action="unclaim" title="{{ T.unclaim_title }}">unclaim</button>
         </span>
       </label>
       <label class="ep-okf-row">
         <span class="ep-okf-label">tags</span>
         <input type="text" data-bind="tags" class="ep-okf-input"
-               placeholder="カンマ区切り（例: ui, backend）" />
+               placeholder="{{ T.tags_placeholder }}" />
       </label>
       <label class="ep-okf-row">
         <span class="ep-okf-label">related</span>
         <input type="text" data-bind="related" class="ep-okf-input"
-               placeholder="カンマ区切り（例: plan_x.md, bugfix_y.md）" />
+               placeholder="{{ T.related_placeholder }}" />
       </label>
       <label class="ep-okf-row">
         <span class="ep-okf-label">review_status</span>
         <select data-bind="review_status" class="ep-okf-input">
-          <option value="">（未設定）</option>
+          <option value="">{{ T.not_set }}</option>
           <option value="draft">draft</option>
           <option value="review">review</option>
           <option value="published">published</option>
@@ -51,11 +51,11 @@
       </div>
     </div>
     <div class="ep-okf-actions">
-      <button type="button" class="primary" data-action="save-okf">変更を保存</button>
+      <button type="button" class="primary" data-action="save-okf">{{ T.save_changes }}</button>
       <span class="ep-okf-status" data-bind="okf-status"></span>
     </div>
     <div class="ep-okf-backrefs" data-bind="backrefs" hidden>
-      <h4 class="ep-okf-title">↩ このファイルを参照しているファイル</h4>
+      <h4 class="ep-okf-title">{{ T.backrefs_heading }}</h4>
       <ul class="ep-okf-backref-list" data-bind="backref-list"></ul>
     </div>
   </section>
@@ -63,10 +63,10 @@
   <div class="ep-body">
     <article class="ep-preview md" data-tabpanel="preview"></article>
     <form class="ep-editor" data-tabpanel="edit" hidden>
-      <textarea name="content" class="ep-textarea" rows="24" spellcheck="false" aria-label="本文編集"></textarea>
+      <textarea name="content" class="ep-textarea" rows="24" spellcheck="false" aria-label="{{ T.edit_body_aria }}"></textarea>
       <div class="ep-actions">
         <span class="ep-mtime" data-bind="mtime"></span>
-        <button type="button" class="primary" data-action="save-content">保存 (Ctrl+S)</button>
+        <button type="button" class="primary" data-action="save-content">{{ T.save_ctrl_s }}</button>
       </div>
     </form>
   </div>

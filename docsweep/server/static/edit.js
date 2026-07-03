@@ -104,7 +104,7 @@
     ]);
     fillOkfPane(detail);
     const previewEl = $(".ep-preview");
-    if (previewEl) previewEl.innerHTML = html || "<p>プレビューを取得できませんでした。</p>";
+    if (previewEl) previewEl.innerHTML = html || ("<p>" + DS_T("preview_failed") + "</p>");
 
     const ta = $(".ep-textarea");
     if (ta) {
@@ -139,19 +139,16 @@
     });
     const body = await res.json().catch(() => null);
     if (res.status === 409) {
-      window.alert(
-        "保存に失敗しました: 他のエディタが同じファイルを変更しています（mtime conflict）。\n" +
-        "カードを再選択して最新版を読み込み直してください。"
-      );
+      window.alert(DS_T("save_conflict"));
       return;
     }
     if (!res.ok) {
-      window.alert("保存に失敗しました: " + (body && body.detail ? body.detail : ("status " + res.status)));
+      window.alert(DS_T("save_failed", body && body.detail ? body.detail : ("status " + res.status)));
       return;
     }
     currentMtime = body && body.new_mtime ? body.new_mtime : currentMtime;
     const mtimeLabel = $(".ep-mtime");
-    if (mtimeLabel) mtimeLabel.textContent = "保存しました (mtime=" + currentMtime + ")";
+    if (mtimeLabel) mtimeLabel.textContent = DS_T("saved_mtime", currentMtime);
     if (typeof window.__docsweepReloadBoard === "function") {
       window.__docsweepReloadBoard();
     }
@@ -172,14 +169,11 @@
     });
     const body = await res.json().catch(() => null);
     if (res.status === 409) {
-      window.alert(
-        "frontmatter 保存に失敗しました: 他のエディタが同じファイルを変更しています（mtime conflict）。\n" +
-        "カードを再選択して最新版を読み込み直してください。"
-      );
+      window.alert(DS_T("fm_save_conflict"));
       return null;
     }
     if (!res.ok) {
-      window.alert("frontmatter 保存に失敗しました: " + (body && body.detail ? body.detail : ("status " + res.status)));
+      window.alert(DS_T("fm_save_failed", body && body.detail ? body.detail : ("status " + res.status)));
       return null;
     }
     if (body && body.new_mtime) currentMtime = String(body.new_mtime);
@@ -198,10 +192,10 @@
     let lastOk = null;
     for (const [field, value] of [["owner", owner], ["tags", tags], ["related", related], ["review_status", reviewStatus]]) {
       const r = await postOkfField(field, value);
-      if (r === null) { if (status) status.textContent = "保存中断（" + field + "）"; return; }
+      if (r === null) { if (status) status.textContent = DS_T("okf_aborted", field); return; }
       lastOk = r;
     }
-    if (status) status.textContent = "✓ 保存しました (mtime=" + currentMtime + ")";
+    if (status) status.textContent = DS_T("okf_saved", currentMtime);
     if (typeof window.__docsweepReloadBoard === "function") {
       window.__docsweepReloadBoard();
     }
@@ -221,7 +215,7 @@
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
-      window.alert("claim 失敗: " + (body && body.detail ? body.detail : ("status " + res.status)));
+      window.alert(DS_T("claim_failed", body && body.detail ? body.detail : ("status " + res.status)));
       return;
     }
     if (body && body.new_mtime) currentMtime = String(body.new_mtime);

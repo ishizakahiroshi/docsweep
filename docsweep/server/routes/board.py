@@ -42,8 +42,26 @@ def _check_token(request: Request, token_q: str | None) -> None:
 
 
 def _scope_lang(request: Request, lang: str | None) -> str:
-    cfg = request.app.state.docsweep.config
-    return lang if lang in ("ja", "en") else cfg.lang
+    from ..i18n import resolve_lang
+
+    return resolve_lang(request, lang)
+
+
+def _t(request: Request, lang: str | None = None) -> dict:
+    """lang 解決済みの文言 dict（テンプレの ``T``）。"""
+    from ..i18n import get_messages
+
+    return get_messages(_scope_lang(request, lang))
+
+
+def _state_labels(request: Request, lang: str) -> dict[str, str]:
+    """ピッカー用に state key → ブラケット付きラベル（lang 解決済み）を返す。
+
+    ラベル語彙は ``.docsweep.yaml`` の states が正本（内蔵デフォルトを含め二言語辞書を持つ）。
+    テンプレにハードコードせずここから出すことで、設定と表示が常に同期する。
+    """
+    sm = request.app.state.docsweep.config.state_model
+    return {s.key: f"[{s.label(lang)}]" for s in sm.states}
 
 
 def _column_key(rec, today: date) -> str:
@@ -73,8 +91,11 @@ def _column_key(rec, today: date) -> str:
     return "future"
 
 
-def _card_view(rec, config, backref_count: int = 0) -> dict:
+def _card_view(rec, config, backref_count: int = 0, t: dict | None = None) -> dict:
     """テンプレートに渡すカード dict（path/state/期日/postpone を整形）。"""
+    from ..i18n import get_messages
+
+    t = t or get_messages("ja")
     project_root = Path(rec.project_root)
     abs_path = Path(rec.path)
     try:
@@ -89,16 +110,16 @@ def _card_view(rec, config, backref_count: int = 0) -> dict:
             d = date.fromisoformat(rec.due)
             delta = (d - date.today()).days
             if delta < 0:
-                due_label = f"{-delta} 日超過"
+                due_label = t["due_overdue_by"].format(n=-delta)
                 due_kind = "overdue"
             elif delta == 0:
-                due_label = "今日"
+                due_label = t["due_today"]
                 due_kind = "today"
             else:
-                due_label = f"あと {delta} 日"
+                due_label = t["due_in"].format(n=delta)
                 due_kind = "future"
         except ValueError:
-            due_label = "期日不正"
+            due_label = t["due_invalid"]
             due_kind = "parse_error"
 
     name = abs_path.name
@@ -144,7 +165,7 @@ def _backref_map(records) -> dict[str, int]:
     return backref_counts(list(records))
 
 
-def _columns(records, config) -> dict:
+def _columns(records, config, t: dict | None = None) -> dict:
     """全カードを 3 列 + 4 セクションに分配する。"""
     today = date.today()
     cols: dict[str, list[dict]] = {
@@ -159,7 +180,7 @@ def _columns(records, config) -> dict:
     backrefs = _backref_map(records)
     for rec in records:
         col = _column_key(rec, today)
-        card = _card_view(rec, config, backref_count=backrefs.get(rec.path, 0))
+        card = _card_view(rec, config, backref_count=backrefs.get(rec.path, 0), t=t)
         if col == "active_future":
             # 「実行中で未来期日」は 🟢 実行中列に入れる。
             cols["active"].append(card)
@@ -202,10 +223,10 @@ def _health(records, top_n: int = 5) -> list[dict]:
     return rows[:top_n]
 
 
-def _board_data(request: Request) -> dict:
+def _board_data(request: Request, t: dict | None = None) -> dict:
     state = request.app.state.docsweep
     result = run_scan(state.config)
-    cols = _columns(result.records, state.config)
+    cols = _columns(result.records, state.config, t=t)
     return {
         "version": __version__,
         "cols": cols,
@@ -225,13 +246,18 @@ def board(
     lang: str | None = None,
 ):
     _check_token(request, token)
-    data = _board_data(request)
+    from ..i18n import get_messages
+
+    resolved_lang = _scope_lang(request, lang)
+    t = get_messages(resolved_lang)
+    data = _board_data(request, t=t)
     return TEMPLATES.TemplateResponse(
         request,
         "board.html",
         {
             "token": request.app.state.docsweep.token,
-            "lang": _scope_lang(request, lang),
+            "lang": resolved_lang,
+            "T": t,
             "data": data,
         },
     )
@@ -245,13 +271,18 @@ def board_fragment(
 ):
     """htmx 用パーシャル（カラム本体だけを差し替える）。"""
     _check_token(request, token)
-    data = _board_data(request)
+    from ..i18n import get_messages
+
+    resolved_lang = _scope_lang(request, lang)
+    t = get_messages(resolved_lang)
+    data = _board_data(request, t=t)
     return TEMPLATES.TemplateResponse(
         request,
         "_board_body.html",
         {
             "token": request.app.state.docsweep.token,
-            "lang": _scope_lang(request, lang),
+            "lang": resolved_lang,
+            "T": t,
             "data": data,
         },
     )
@@ -373,7 +404,11 @@ def label_picker_partial(
 ):
     """ラベル選択セグメント partial（keymap.js が fetch して body に貼る）。"""
     _check_token(request, token)
-    return TEMPLATES.TemplateResponse(request, "_label_picker.html", {})
+    resolved_lang = _scope_lang(request, None)
+    return TEMPLATES.TemplateResponse(
+        request, "_label_picker.html",
+        {"T": _t(request), "labels": _state_labels(request, resolved_lang)},
+    )
 
 
 @router.get("/board/_partial/change_picker", response_class=HTMLResponse)
@@ -397,8 +432,10 @@ def change_picker_partial(
     下段 3 ボタン（変更▾ / 期日更新▾ / 廃止）に全操作を集約する方針。
     """
     _check_token(request, token)
+    resolved_lang = _scope_lang(request, None)
     return TEMPLATES.TemplateResponse(
-        request, "_change_picker.html", {"file_type": type}
+        request, "_change_picker.html",
+        {"file_type": type, "T": _t(request), "labels": _state_labels(request, resolved_lang)},
     )
 
 
@@ -442,6 +479,8 @@ def settings_partial(
         {
             "token": state.token,
             "settings": _settings_state(result.records),
+            "T": _t(request),
+            "lang": _scope_lang(request, None),
         },
     )
 
@@ -453,4 +492,4 @@ def due_picker_partial(
 ):
     """期日変更ポップオーバー partial（keymap.js が fetch して body に貼る）。"""
     _check_token(request, token)
-    return TEMPLATES.TemplateResponse(request, "_due_picker.html", {})
+    return TEMPLATES.TemplateResponse(request, "_due_picker.html", {"T": _t(request)})

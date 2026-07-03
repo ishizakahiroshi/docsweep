@@ -275,14 +275,15 @@ def build_server(config: Config):
 
     @mcp.tool()
     def inject(project: str, preset: str | None = None, include_guidance: bool = True,
-               write_yaml: bool = True, dry_run: bool = False) -> dict:
+               write_yaml: bool = True, lang: str | None = None, dry_run: bool = False) -> dict:
         """指定プロジェクトへ docsweep の運用ルール（管理ブロック＋.docsweep.yaml）を注入する。
 
         導線をグローバルに寄せている場合は include_guidance=False でラベル節だけにできる
         （CLI の --no-guidance 相当）。write_yaml=False で .docsweep.yaml を書かない（--no-yaml 相当）。
+        lang（ja / en）で注入文言の言語を preset の既定から上書きできる。
         """
         r = do_inject(Path(project), preset=preset, include_guidance=include_guidance,
-                      write_yaml=write_yaml, dry_run=dry_run)
+                      write_yaml=write_yaml, lang=lang, dry_run=dry_run)
         return {"project": r.project, "written": r.written, "skipped": r.skipped,
                 "warnings": r.warnings, "yaml": r.yaml_path}
 
@@ -294,10 +295,11 @@ def build_server(config: Config):
                 "purged_yaml": r.purged_yaml}
 
     @mcp.tool()
-    def inject_global(agent: str = "claude", target: str | None = None, dry_run: bool = False) -> dict:
-        """セッション開始時に triage を読む導線だけを AI ツールのグローバル設定へ注入する（全プロジェクトで効く）。"""
+    def inject_global(agent: str = "claude", target: str | None = None,
+                      lang: str = "ja", dry_run: bool = False) -> dict:
+        """セッション開始時に triage を読む導線＋due ルールを AI ツールのグローバル設定へ注入する（全プロジェクトで効く）。"""
         try:
-            r = do_inject_global(agent=agent, target=target, dry_run=dry_run)
+            r = do_inject_global(agent=agent, target=target, lang=lang, dry_run=dry_run)
         except ValueError as e:
             return {"error": str(e)}
         return {"project": r.project, "written": r.written, "skipped": r.skipped, "warnings": r.warnings}

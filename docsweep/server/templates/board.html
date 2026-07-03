@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>docsweep — 看板（カンバン）</title>
+  <title>{{ T.board_page_title }}</title>
   <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/board.css">
 </head>
@@ -13,49 +13,49 @@
   <div class="brand">
     <span class="logo">DS</span>
     <span class="title">docsweep</span>
-    <span class="subtitle">看板（カンバン） v{{ data.version }}</span>
+    <span class="subtitle">{{ T.board_subtitle }} v{{ data.version }}</span>
   </div>
   <div class="topbar-search">
     <input type="search" id="card-search" class="search-input"
-           placeholder="🔍 絞り込み: 自由語 / tag:foo / owner:me / status:計画 （/ でフォーカス）"
+           placeholder="{{ T.search_placeholder }}"
            autocomplete="off" spellcheck="false" />
     <span class="search-count" id="search-count" hidden></span>
-    <button type="button" class="ghost search-clear" id="search-clear" hidden data-action="search-clear" title="検索をクリア (Esc)">×</button>
+    <button type="button" class="ghost search-clear" id="search-clear" hidden data-action="search-clear" title="{{ T.search_clear_title }}">×</button>
   </div>
-  <div class="topbar-health" title="プロジェクトごとの最古経過日数（上位 {{ data.health|length }} 件）">
+  <div class="topbar-health" title="{{ T.health_title.format(n=data.health|length) }}">
     {% for h in data.health %}
       <span class="health-chip">📊 {{ h.project }} <b>{{ h.oldest }}d</b></span>
     {% endfor %}
   </div>
   <div class="topbar-actions">
-    <button type="button" class="ghost" data-action="reload-board">再スキャン</button>
-    <button type="button" id="shutdown-btn" data-action="shutdown-server" title="サーバーを停止">⏻</button>
-    <button type="button" id="settings-btn" data-action="open-settings" title="設定 / 注入">
+    <button type="button" class="ghost" data-action="reload-board">{{ T.reload_board }}</button>
+    <button type="button" id="shutdown-btn" data-action="shutdown-server" title="{{ T.shutdown_title }}">⏻</button>
+    <button type="button" id="settings-btn" data-action="open-settings" title="{{ T.settings_btn_title }}">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      <span>設定</span>
+      <span>{{ T.settings_btn }}</span>
     </button>
   </div>
 </header>
 
-<div id="bulk-bar" class="bulk-bar" hidden role="region" aria-label="選択中の一括操作">
-  <span class="bulk-count"><b id="bulk-count-n">0</b> 件選択中</span>
-  <span class="bulk-breakdown" id="bulk-breakdown" title="選択カードのセクション内訳"></span>
+<div id="bulk-bar" class="bulk-bar" hidden role="region" aria-label="{{ T.bulk_aria }}">
+  <span class="bulk-count"><b id="bulk-count-n">0</b> {{ T.bulk_selected_suffix }}</span>
+  <span class="bulk-breakdown" id="bulk-breakdown" title="{{ T.bulk_breakdown_title }}"></span>
   <div class="bulk-projects-wrap">
     <button type="button" class="bulk-proj-toggle" data-action="open-projects-dropdown" id="bulk-proj-toggle"
-            title="プロジェクトで絞り込み（チェックで ON/OFF）">
-      📂 プロジェクト <span id="bulk-proj-summary">—</span> ▾
+            title="{{ T.bulk_projects_title }}">
+      {{ T.bulk_projects }} <span id="bulk-proj-summary">—</span> ▾
     </button>
     <div class="bulk-projects-dropdown" id="bulk-projects-dropdown" hidden></div>
   </div>
-  <button type="button" class="bulk-btn" data-action="bulk" data-op="due" data-spec="+1d">+1日</button>
-  <button type="button" class="bulk-btn" data-action="bulk" data-op="due" data-spec="+1w">+1週</button>
-  <button type="button" class="bulk-btn" data-action="bulk-due-date" title="絶対日付で期日を一括設定">📅 日付</button>
+  <button type="button" class="bulk-btn" data-action="bulk" data-op="due" data-spec="+1d">{{ T.plus_1d }}</button>
+  <button type="button" class="bulk-btn" data-action="bulk" data-op="due" data-spec="+1w">{{ T.plus_1w }}</button>
+  <button type="button" class="bulk-btn" data-action="bulk-due-date" title="{{ T.bulk_date_title }}">{{ T.bulk_date }}</button>
   {# 2026-06-23 改修: 独立「着手」「廃止」ボタンを撤去し「ラベル変更▾」に集約 #}
-  <button type="button" class="bulk-btn" data-action="bulk-open-label-picker" title="選択カードを別のラベル ([計画]/[実行中]/[様子見]/[保留]/[完了]/[廃止]) に一括変更">ラベル変更▾</button>
+  <button type="button" class="bulk-btn" data-action="bulk-open-label-picker" title="{{ T.bulk_label_title }}">{{ T.change_label }}</button>
   <button type="button" class="bulk-btn" data-action="bulk" data-op="archive">archive</button>
-  <button type="button" class="bulk-btn bulk-ghost" data-action="bulk-clear" title="選択を解除（Esc）">解除</button>
-  <a href="#" class="bulk-all" data-action="bulk-select-all" title="画面の全カードを選択 (a キー)">↳ 全選択 <span id="bulk-total-n">0</span></a>
-  <button type="button" class="bulk-close" data-action="bulk-clear" title="閉じる (Esc)" aria-label="閉じる">×</button>
+  <button type="button" class="bulk-btn bulk-ghost" data-action="bulk-clear" title="{{ T.bulk_clear_title }}">{{ T.bulk_clear }}</button>
+  <a href="#" class="bulk-all" data-action="bulk-select-all" title="{{ T.select_all_title }}">{{ T.select_all_link }} <span id="bulk-total-n">0</span></a>
+  <button type="button" class="bulk-close" data-action="bulk-clear" title="{{ T.close_esc }}" aria-label="{{ T.close }}">×</button>
 </div>
 
 <main id="board-main">
@@ -69,30 +69,30 @@
 
 <dialog id="settings-dialog" class="settings-dialog">
   <form method="dialog" class="settings-form">
-    <button value="close" class="settings-close" title="閉じる (Esc)" aria-label="閉じる">×</button>
+    <button value="close" class="settings-close" title="{{ T.close_esc }}" aria-label="{{ T.close }}">×</button>
     <div id="settings-body" class="settings-body">
-      <p class="settings-note">読み込み中…</p>
+      <p class="settings-note">{{ T.loading }}</p>
     </div>
   </form>
 </dialog>
 
 <dialog id="bulk-due-dialog" class="confirm">
   <form method="dialog" class="confirm-inner">
-    <p>選択中の <b id="bulk-due-count">0</b> 件の期日を変更します</p>
-    <label class="bd-row">日付: <input type="date" id="bulk-due-date" required /></label>
+    <p>{{ T.bulk_due_before }} <b id="bulk-due-count">0</b> {{ T.bulk_due_after }}</p>
+    <label class="bd-row">{{ T.date_label }} <input type="date" id="bulk-due-date" required /></label>
     <menu>
-      <button value="cancel" class="ghost">キャンセル</button>
-      <button value="ok" class="primary">設定</button>
+      <button value="cancel" class="ghost">{{ T.cancel }}</button>
+      <button value="ok" class="primary">{{ T.set_btn }}</button>
     </menu>
   </form>
 </dialog>
 
 <dialog id="confirm-dialog" class="confirm">
   <form method="dialog" class="confirm-inner">
-    <p id="confirm-message">本当に実行しますか？</p>
+    <p id="confirm-message">{{ T.confirm_default }}</p>
     <menu>
-      <button value="cancel" class="ghost">キャンセル</button>
-      <button value="ok" class="primary">実行</button>
+      <button value="cancel" class="ghost">{{ T.cancel }}</button>
+      <button value="ok" class="primary">{{ T.execute }}</button>
     </menu>
   </form>
 </dialog>
@@ -100,10 +100,11 @@
 <div id="toast" class="toast" hidden role="status" aria-live="polite">
   <span class="toast-msg" id="toast-msg"></span>
   <button type="button" class="toast-undo" id="toast-undo" data-action="undo">↶ Undo</button>
-  <button type="button" class="toast-close" data-action="toast-close" aria-label="閉じる">×</button>
+  <button type="button" class="toast-close" data-action="toast-close" aria-label="{{ T.close }}">×</button>
 </div>
 
 <script src="/static/htmx.min.js"></script>
+<script src="/static/i18n.js"></script>
 <script src="/static/keymap.js"></script>
 <script src="/static/dnd.js"></script>
 <script src="/static/edit.js"></script>

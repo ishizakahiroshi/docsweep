@@ -275,9 +275,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_inject.add_argument("--project", default=".", help="注入先プロジェクト（既定 .）")
     p_inject.add_argument("--preset", help="プリセット名（claude-jp / frontmatter）")
     p_inject.add_argument("--no-yaml", action="store_true", help=".docsweep.yaml を書かない")
-    p_inject.add_argument("--no-guidance", action="store_true", help="導線を省きラベル節だけ注入（導線をグローバルに寄せる場合）")
-    p_inject.add_argument("--global", dest="is_global", action="store_true", help="個人グローバル設定へ導線だけ注入（全プロジェクトで効く）")
+    p_inject.add_argument("--no-guidance", action="store_true", help="導線と due ルールを省きラベル節だけ注入（グローバルに寄せる場合）")
+    p_inject.add_argument("--global", dest="is_global", action="store_true", help="個人グローバル設定へ導線＋due ルールを注入（全プロジェクトで効く）")
     p_inject.add_argument("--agent", choices=("claude", "codex"), default="claude", help="グローバル注入先の AI ツール（--global 時）")
+    p_inject.add_argument("--lang", choices=("ja", "en"), help="注入文言の言語（プロジェクト注入は preset の言語を上書き / --global の既定は ja）")
     p_inject.add_argument("--global-target", dest="global_target", help="グローバル注入先を明示パスで上書き")
     p_inject.add_argument("--dry-run", action="store_true")
 
@@ -1317,7 +1318,9 @@ def cmd_inject(args: argparse.Namespace) -> int:
 
     tag = "（dry-run）" if args.dry_run else ""
     if getattr(args, "is_global", False):
-        r = inject_global(agent=args.agent, target=args.global_target, dry_run=args.dry_run)
+        r = inject_global(
+            agent=args.agent, target=args.global_target, lang=args.lang or "ja", dry_run=args.dry_run,
+        )
         print(f"inject {r.project}{tag}: 書込={r.written or '-'} 温存/不変={r.skipped or '-'}")
         for w in r.warnings:
             print(f"  ⚠ {w}")
@@ -1325,7 +1328,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
 
     r = inject(
         Path(args.project), preset=args.preset, write_yaml=not args.no_yaml,
-        include_guidance=not args.no_guidance, dry_run=args.dry_run,
+        include_guidance=not args.no_guidance, lang=args.lang, dry_run=args.dry_run,
     )
     print(f"inject {r.project}{tag}: 書込={r.written or '-'} 温存/不変={r.skipped or '-'}")
     if r.yaml_path:

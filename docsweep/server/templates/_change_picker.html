@@ -2,26 +2,27 @@
    - 2026-06-23 改修: 独立ボタン（着手・廃止）を撤去し、全状態を本ピッカーに集約。
      [廃止] は archive 連動の破壊的アクションなので applyStatus 側で確認ダイアログを出す。
    - keymap.js が `/board/_partial/change_picker?type=<type>` を fetch してポップオーバー表示
-   - クラス `label-picker` を共有して既存 CSS を流用、追加クラス `change-picker` で識別 #}
-<div class="label-picker change-picker" role="listbox" aria-label="状態を選択">
+   - クラス `label-picker` を共有して既存 CSS を流用、追加クラス `change-picker` で識別
+   - ラベル表示は route から渡る labels（states の二言語辞書を lang 解決したもの）を使う #}
+<div class="label-picker change-picker" role="listbox" aria-label="{{ T.change_picker_aria }}">
   {% if file_type == 'pending' %}
-    <button type="button" role="option" class="lp-opt" data-new-state="pending"   data-key="1">1 [保留]</button>
-    <button type="button" role="option" class="lp-opt" data-new-state="planned"   data-key="2">2 [計画]</button>
-    <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded" data-key="3">3 [廃止]</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="pending"   data-key="1">1 {{ labels.pending }}</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="planned"   data-key="2">2 {{ labels.planned }}</button>
+    <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded" data-key="3">3 {{ labels.discarded }}</button>
   {% elif file_type == 'bugfix' %}
     {# bugfix は事後記録なので [計画] を持たない。 #}
-    <button type="button" role="option" class="lp-opt" data-new-state="in-progress" data-key="1">1 [実行中]</button>
-    <button type="button" role="option" class="lp-opt" data-new-state="watching"    data-key="2">2 [様子見]</button>
-    <button type="button" role="option" class="lp-opt" data-new-state="pending"     data-key="3">3 [保留]</button>
-    <button type="button" role="option" class="lp-opt" data-new-state="done"        data-key="4">4 [完了]</button>
-    <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded" data-key="5">5 [廃止]</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="in-progress" data-key="1">1 {{ labels['in-progress'] }}</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="watching"    data-key="2">2 {{ labels.watching }}</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="pending"     data-key="3">3 {{ labels.pending }}</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="done"        data-key="4">4 {{ labels.done }}</button>
+    <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded" data-key="5">5 {{ labels.discarded }}</button>
   {% else %}
     {# plan / 未知 type #}
-    <button type="button" role="option" class="lp-opt" data-new-state="planned"     data-key="1">1 [計画]</button>
-    <button type="button" role="option" class="lp-opt" data-new-state="in-progress" data-key="2">2 [実行中]</button>
-    <button type="button" role="option" class="lp-opt" data-new-state="watching"    data-key="3">3 [様子見]</button>
-    <button type="button" role="option" class="lp-opt" data-new-state="pending"     data-key="4">4 [保留]</button>
-    <button type="button" role="option" class="lp-opt" data-new-state="done"        data-key="5">5 [完了]</button>
-    <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded" data-key="6">6 [廃止]</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="planned"     data-key="1">1 {{ labels.planned }}</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="in-progress" data-key="2">2 {{ labels['in-progress'] }}</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="watching"    data-key="3">3 {{ labels.watching }}</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="pending"     data-key="4">4 {{ labels.pending }}</button>
+    <button type="button" role="option" class="lp-opt" data-new-state="done"        data-key="5">5 {{ labels.done }}</button>
+    <button type="button" role="option" class="lp-opt lp-danger" data-new-state="discarded" data-key="6">6 {{ labels.discarded }}</button>
   {% endif %}
 </div>

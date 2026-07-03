@@ -58,7 +58,11 @@ def page_resurrect(
     result = find_candidates(
         state.config, threshold=threshold, use_embedding=not no_embedding,
     )
+    from ..i18n import get_messages, resolve_lang
+
+    resolved_lang = resolve_lang(request)
     return TEMPLATES.TemplateResponse(
         request, "resurrect.html",
-        {"result": result.to_dict(), "token": state.token},
+        {"result": result.to_dict(), "token": state.token,
+         "lang": resolved_lang, "T": get_messages(resolved_lang)},
     )

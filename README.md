@@ -1,5 +1,7 @@
 # docsweep
 
+> English version: [README.en.md](README.en.md)
+
 AI コーディングツール（Claude Code / Codex 等）が生成する `plan_*.md` / `bugfix_*.md` /
 `pending_*.md` の **蓄積・陳腐化問題を解決する** クロスプラットフォーム CLI + Web UI ツール。
 
@@ -274,9 +276,10 @@ python -m docsweep inject --project ./foo --preset claude-jp
 python -m docsweep inject --project ./foo --no-guidance   # 導線を省きラベル節だけ（導線をグローバルに寄せる場合）
 python -m docsweep eject  --project ./foo                  # 管理ブロックだけ剥がす（手書きは温存。--purge で .docsweep.yaml も）
 
-# 個人グローバルへ「セッション開始時に triage を読む」導線を一度だけ注入（全プロジェクトで有効）
+# 個人グローバルへ「セッション開始時に triage を読む」導線＋due ルールを一度だけ注入（全プロジェクトで有効）
 python -m docsweep inject --global                         # 既定 agent=claude（~/.claude/CLAUDE.md に @import 1 行）
 python -m docsweep inject --global --agent codex           # ~/.codex/AGENTS.md にインライン（CODEX_HOME 尊重）
+python -m docsweep inject --global --lang en               # 注入文言を英語で生成（プロジェクト注入でも --lang 可）
 python -m docsweep eject  --global
 
 python -m docsweep list                                    # 注入済み（プロジェクト＋グローバル）一覧

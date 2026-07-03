@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
 <title>docsweep — graph</title>
@@ -17,7 +17,7 @@
 <body>
 <header>
   <h1>docsweep graph <span class="meta">— {{ graph.nodes|length }} nodes / {{ graph.edges|length }} edges</span></h1>
-  <span class="meta">クリックでノード詳細</span>
+  <span class="meta">{{ T.graph_click_hint }}</span>
 </header>
 
 <div class="legend">

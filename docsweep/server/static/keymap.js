@@ -40,7 +40,7 @@
     const dlg = document.getElementById("settings-dialog");
     const body = document.getElementById("settings-body");
     if (!dlg || !body) return;
-    body.innerHTML = "<p class='settings-note'>読み込み中…</p>";
+    body.innerHTML = "<p class='settings-note'>" + DS_T("loading") + "</p>";
     try { dlg.showModal(); } catch (e) { return; }
     await refreshSettings();
   }
@@ -51,10 +51,15 @@
       headers: { "X-Docsweep-Token": TOKEN },
     });
     if (!res.ok) {
-      body.innerHTML = `<p class="settings-note">設定の読み込みに失敗: ${res.status}</p>`;
+      body.innerHTML = `<p class="settings-note">${DS_T("settings_load_failed", res.status)}</p>`;
       return;
     }
     body.innerHTML = await res.text();
+  }
+  function setUiLang(lang) {
+    // 言語は cookie（1 年）に保存してリロード。config.yaml は書き換えない（ユーザー設定温存）。
+    document.cookie = "docsweep_lang=" + lang + "; path=/; max-age=31536000; samesite=lax";
+    location.reload();
   }
   async function settingsInject(opts) {
     // opts: { scope: 'project'|'global', project?, agent? }
@@ -66,10 +71,10 @@
     });
     const json = await safeJson(res);
     if (!res.ok) {
-      showToast(`注入失敗: ${(json && json.detail) || res.status}`, { undoable: false });
+      showToast(DS_T("inject_failed", (json && json.detail) || res.status), { undoable: false });
       return;
     }
-    showToast(`✓ 注入しました${json && json.yaml ? `（${basename(json.yaml)}）` : ""}`, { undoable: false, duration: 6000 });
+    showToast(DS_T("injected", json && json.yaml ? `（${basename(json.yaml)}）` : ""), { undoable: false, duration: 6000 });
     refreshSettings();
   }
   async function settingsEject(opts) {
@@ -81,11 +86,11 @@
     });
     const json = await safeJson(res);
     if (!res.ok) {
-      showToast(`eject 失敗: ${(json && json.detail) || res.status}`, { undoable: false });
+      showToast(DS_T("eject_failed", (json && json.detail) || res.status), { undoable: false });
       return;
     }
     const removed = (json && json.removed) || [];
-    showToast(`✓ eject しました（${removed.length} 件除去）`, { undoable: false, duration: 6000 });
+    showToast(DS_T("ejected", removed.length), { undoable: false, duration: 6000 });
     refreshSettings();
   }
 
@@ -190,7 +195,7 @@
     if (cnt) {
       if (q) {
         cnt.hidden = false;
-        cnt.textContent = `${visible} 件ヒット`;
+        cnt.textContent = DS_T("hits", visible);
       } else {
         cnt.hidden = true;
         cnt.textContent = "";
@@ -243,17 +248,17 @@
     });
     const json = await safeJson(res);
     if (!res.ok) {
-      showToast(`Undo 失敗: ${(json && json.detail) || res.status}`, { undoable: false });
+      showToast(DS_T("undo_failed", (json && json.detail) || res.status), { undoable: false });
       return;
     }
     const restored = (json && json.restored) || [];
     const failed = (json && json.failed) || [];
     if (restored.length === 0) {
-      showToast("Undo 対象がありません（既に復元済み or バッチ ID 無し）", { undoable: false });
+      showToast(DS_T("undo_nothing"), { undoable: false });
       return;
     }
     showToast(
-      `✓ ${restored.length} 件を復元しました` + (failed.length ? `（${failed.length} 件失敗）` : ""),
+      DS_T("undo_restored", restored.length) + (failed.length ? DS_T("undo_restored_failed_suffix", failed.length) : ""),
       { undoable: false, duration: 6000 }
     );
     reloadBoard();
@@ -278,7 +283,7 @@
   // ⏻ サーバー停止（画面右上ボタン）。確認 → POST /api/shutdown → uvicorn が graceful 停止する。
   // 停止後は HTTP が落ちるためページは「サーバーを停止しました」と表示してリンクを止める。
   async function shutdownServer() {
-    const ok = await confirmDialog("docsweep のサーバーを停止します。停止後はブラウザのリロードでは再起動できません（端末で再度 docsweep serve を実行してください）。よろしいですか？");
+    const ok = await confirmDialog(DS_T("shutdown_confirm"));
     if (!ok) return;
     const btn = document.getElementById("shutdown-btn");
     if (btn) btn.disabled = true;
@@ -293,8 +298,8 @@
     overlay.innerHTML =
       "<div class=\"shutdown-card\">" +
       "<div class=\"shutdown-icon\">⏻</div>" +
-      "<h2>サーバーを停止しました</h2>" +
-      "<p>再度開くには端末で <code>docsweep serve</code> を実行してください。</p>" +
+      "<h2>" + DS_T("shutdown_done_title") + "</h2>" +
+      "<p>" + DS_T("shutdown_done_body") + "</p>" +
       "</div>";
     document.body.appendChild(overlay);
   }
@@ -344,13 +349,13 @@
 
   // 選択中の path がどのセクションに属するかをラベル名で集計
   const SECTION_LABELS = {
-    overdue:    "🔴やり忘れ",
-    today:      "🟡今日",
-    active:     "🟢実行中",
-    graduate:   "▼卒業判定",
-    future:     "▶未来期日",
-    no_due:     "▶期日未設定",
-    archivable: "▶archive候補",
+    overdue:    DS_T("sec_overdue"),
+    today:      DS_T("sec_today"),
+    active:     DS_T("sec_active"),
+    graduate:   DS_T("sec_graduate"),
+    future:     DS_T("sec_future"),
+    no_due:     DS_T("sec_no_due"),
+    archivable: DS_T("sec_archivable"),
   };
   function sectionOfCard(cardEl) {
     let cur = cardEl ? cardEl.parentElement : null;
@@ -422,11 +427,11 @@
     actions.className = "bp-actions";
     const selAll = document.createElement("button");
     selAll.type = "button";
-    selAll.textContent = "✓ 全プロジェクト ON";
+    selAll.textContent = DS_T("bp_all_on");
     selAll.dataset.action = "bp-all-on";
     const selNone = document.createElement("button");
     selNone.type = "button";
-    selNone.textContent = "✕ 全 OFF";
+    selNone.textContent = DS_T("bp_all_off");
     selNone.dataset.action = "bp-all-off";
     actions.appendChild(selAll);
     actions.appendChild(selNone);
@@ -553,17 +558,17 @@
   }
 
   function summarizeBulkResult(json, op) {
-    if (!json) return "（応答なし）";
+    if (!json) return DS_T("no_response");
     const okN = (json.ok || json.moved || []).length;
     const failed = json.failed || json.failed_validation || [];
     const skipped = json.skipped || [];
-    const okMsg = `成功 ${okN} 件`;
-    const ngMsg = failed.length ? `／失敗 ${failed.length} 件` : "";
-    const skMsg = skipped.length ? `／スキップ ${skipped.length} 件（archive 不可ラベル等）` : "";
+    const okMsg = DS_T("ok_count", okN);
+    const ngMsg = failed.length ? DS_T("fail_count", failed.length) : "";
+    const skMsg = skipped.length ? DS_T("skip_count", skipped.length) : "";
     let detail = "";
     if (failed.length) {
-      detail = "\n失敗:\n" + failed.slice(0, 5).map((f) => `  ${basename(f.path)}: ${f.error || f.kind || ""}`).join("\n");
-      if (failed.length > 5) detail += `\n  …他 ${failed.length - 5} 件`;
+      detail = DS_T("fail_head") + failed.slice(0, 5).map((f) => `  ${basename(f.path)}: ${f.error || f.kind || ""}`).join("\n");
+      if (failed.length > 5) detail += DS_T("fail_more", failed.length - 5);
     }
     return `${okMsg}${ngMsg}${skMsg}${detail}`;
   }
@@ -577,32 +582,28 @@
   async function runBulk(op, paths, params, opts) {
     opts = opts || {};
     if (!paths || paths.length === 0) {
-      await confirmDialog("選択されているカードがありません。");
+      await confirmDialog(DS_T("no_selection"));
       return;
     }
-    const labelMap = {
-      due: `期日を ${params.spec} に更新`,
-      status_planned: "[計画] に変更",
-      status_in_progress: "[実行中] に変更",
-      status_watching: "[様子見] に変更",
-      status_pending: "[保留] に変更",
-      status_done: "[完了] に変更 → archive へ移送",
-      status_discarded: "[廃止] に変更 → archive へ移送",
-      archive: "archive 配下へ移送",
-    };
-    const key = op === "status" ? `status_${(params.state || "").replace("-", "_")}` : op;
-    const action = labelMap[key] || op;
+    const stateLabel = (s) => DS_T("state_" + (s || "").replace("-", "_"));
+    let action;
+    if (op === "due") {
+      action = DS_T("bulk_due", params.spec);
+    } else if (op === "status") {
+      const archiveBound = params.state === "done" || params.state === "discarded";
+      action = DS_T(archiveBound ? "bulk_status_archive" : "bulk_status", stateLabel(params.state));
+    } else {
+      action = DS_T("bulk_archive");
+    }
     const danger = (op === "status" && (params.state === "done" || params.state === "discarded")) || op === "archive";
-    const head = danger
-      ? `⚠ ${paths.length} 件のファイルを ${action} します。元には戻せません（archive から手動復元）。よろしいですか？`
-      : `${paths.length} 件のファイルを ${action} します。よろしいですか？`;
+    const head = DS_T(danger ? "confirm_danger" : "confirm_normal", paths.length, action);
     const ok = await confirmDialog(head);
     if (!ok) return;
 
     const result = await bulkApi(op, paths, params);
     if (!result) return;
     if (!result.ok && result.status !== 200) {
-      await confirmDialog(`API 失敗: ${result.status}\n${(result.json && result.json.detail) || ""}`);
+      await confirmDialog(DS_T("api_failed", result.status, (result.json && result.json.detail) || ""));
       return;
     }
     // archive 系（archive 直接 or status で archive_triggered）は Undo 可能トーストを表示
@@ -614,7 +615,7 @@
         ? ((result.json.moved && result.json.moved.length) || 0)
         : ((result.json.archive && result.json.archive.moved.length) || 0);
       if (movedN > 0) {
-        showToast(`${movedN} 件を archive へ移送しました`, { undoable: true });
+        showToast(DS_T("archived_n", movedN), { undoable: true });
       } else {
         await confirmDialog(summarizeBulkResult(result.json, op));
       }
@@ -689,7 +690,7 @@
     if (bdd) {
       e.preventDefault();
       const paths = Array.from(selected);
-      if (paths.length === 0) { confirmDialog("選択されているカードがありません。"); return; }
+      if (paths.length === 0) { confirmDialog(DS_T("no_selection")); return; }
       bulkDateDialog().then((date) => {
         if (!date) return;
         runBulk("due", paths, { spec: date });
@@ -776,6 +777,13 @@
       shutdownServer();
       return;
     }
+    // 設定モーダル: 表示言語トグル（cookie に保存してリロード）
+    const langBtn = e.target.closest && e.target.closest("[data-action='settings-set-lang']");
+    if (langBtn) {
+      e.preventDefault();
+      setUiLang(langBtn.dataset.lang);
+      return;
+    }
     if (e.target.closest && e.target.closest("[data-action='settings-inject']")) {
       e.preventDefault();
       const btn = e.target.closest("[data-action='settings-inject']");
@@ -858,7 +866,7 @@
     // セクション一括（列内全カード）と sticky バー（選択中のみ）の両方から呼ばれる。
     // 適用は runBulk("status", paths, {state}) — 既存 services 経由でラベル不許可は failed[] へ。
     if (!paths || paths.length === 0) {
-      await confirmDialog("対象カードがありません（選択 or セクション内が空）。");
+      await confirmDialog(DS_T("no_target"));
       return;
     }
     closePicker();
@@ -961,11 +969,8 @@
     const mtime = card.dataset.mtime;
     const needsConfirm = (newState === "done" || newState === "discarded");
     if (needsConfirm) {
-      const ok = await confirmDialog(
-        newState === "done"
-          ? "このファイルを [完了] にして archive へ移送します。よろしいですか？"
-          : "このファイルを [廃止] にして archive へ移送します。よろしいですか？"
-      );
+      const label = DS_T(newState === "done" ? "state_done" : "state_discarded");
+      const ok = await confirmDialog(DS_T("confirm_done_single", label));
       if (!ok) return;
     }
     const { ok, status, json } = await postForm("/api/cards/status", {
@@ -975,12 +980,12 @@
     });
     if (!ok) {
       const msg = (json && json.detail) ? json.detail : ("status " + status);
-      await confirmDialog("ラベル変更に失敗しました: " + msg);
+      await confirmDialog(DS_T("status_change_failed", msg));
       return;
     }
     // [完了]/[廃止] で archive 連動した時は Undo トースト
     if (json && json.archive_triggered && json.archive && json.archive.moved && json.archive.moved.length > 0) {
-      showToast(`1 件を archive へ移送しました`, { undoable: true });
+      showToast(DS_T("archived_one"), { undoable: true });
     }
     reloadBoard();
   }
@@ -995,7 +1000,7 @@
     });
     if (!ok) {
       const msg = (json && json.detail) ? json.detail : ("status " + status);
-      await confirmDialog("期日変更に失敗しました: " + msg);
+      await confirmDialog(DS_T("due_change_failed", msg));
       return;
     }
     if (json && json.warning) {
@@ -1064,15 +1069,7 @@
     // Help / Escape -------------------------------------------------------
     if (e.key === "?") {
       e.preventDefault();
-      confirmDialog(
-        "キーボードショートカット:\n" +
-        "  数字 1-5 = ラベル変更（1=計画 2=実行中 3=様子見 4=保留 5=完了・廃止は下段ボタン）\n" +
-        "  d = +1 日 / w = +1 週 / m = +1 ヶ月 / Shift+D = -1 日\n" +
-        "  a = 画面全カード選択 / Esc = ピッカーを閉じる + 選択解除\n" +
-        "  Tab = カード巡回 / Ctrl+S = 編集ペインを保存\n" +
-        "  ※ 状態 / 期日のバッジは表示専用です。変更はカード下段の" +
-        "「変更▾」「期日更新▾」ボタンから行ってください。"
-      );
+      confirmDialog(DS_T("help"));
       return;
     }
     if (e.key === "Escape") {

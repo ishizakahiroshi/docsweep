@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
 <title>docsweep — capture</title>
@@ -20,26 +20,33 @@
 </style>
 </head>
 <body>
-<h1>capture — 会話を貼って草案抽出</h1>
+<h1>{{ T.capture_heading }}</h1>
 
 <form id="capture-form">
-  <textarea id="text" placeholder="ここに会話履歴を貼り付け..."></textarea>
+  <textarea id="text" placeholder="{{ T.capture_placeholder }}"></textarea>
   <div class="row">
-    <label><input type="checkbox" id="use-llm"> LLM 経路を使う (現状は mock のみ)</label>
+    <label><input type="checkbox" id="use-llm"> {{ T.capture_use_llm }}</label>
   </div>
   <div class="row">
-    <button type="submit" class="primary">草案を生成</button>
+    <button type="submit" class="primary">{{ T.capture_generate }}</button>
   </div>
 </form>
 
 <div id="drafts-area"></div>
 <div id="save-area" style="display:none">
-  <button id="save-btn" class="primary">採用したものを保存</button>
+  <button id="save-btn" class="primary">{{ T.capture_save_selected }}</button>
 </div>
 <div id="result-area"></div>
 
 <script>
 const TOKEN = {{ token|tojson }};
+const MSG = {
+  extractFailed: {{ T.capture_extract_failed|tojson }},
+  noDrafts: {{ T.capture_no_drafts|tojson }},
+  selectOne: {{ T.capture_select_one|tojson }},
+  saveFailed: {{ T.capture_save_failed|tojson }},
+  saved: {{ T.capture_saved|tojson }},
+};
 let lastDrafts = [];
 
 document.getElementById('capture-form').addEventListener('submit', async (e) => {
@@ -52,7 +59,7 @@ document.getElementById('capture-form').addEventListener('submit', async (e) => 
     body: JSON.stringify({text, use_llm: useLLM}),
   });
   if (!res.ok) {
-    alert('extract 失敗: ' + res.status);
+    alert(MSG.extractFailed + res.status);
     return;
   }
   const data = await res.json();
@@ -64,7 +71,7 @@ function renderDrafts(drafts) {
   const area = document.getElementById('drafts-area');
   area.innerHTML = '';
   if (drafts.length === 0) {
-    area.innerHTML = '<p>草案候補なし</p>';
+    area.innerHTML = '<p>' + escapeHtml(MSG.noDrafts) + '</p>';
     document.getElementById('save-area').style.display = 'none';
     return;
   }
@@ -95,7 +102,7 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     if (cb.checked) selected.push(lastDrafts[parseInt(cb.dataset.idx)]);
   });
   if (selected.length === 0) {
-    alert('採用候補を選択してください');
+    alert(MSG.selectOne);
     return;
   }
   const res = await fetch(`/api/capture/save?token=${encodeURIComponent(TOKEN)}`, {
@@ -104,12 +111,12 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     body: JSON.stringify({drafts: selected}),
   });
   if (!res.ok) {
-    alert('save 失敗: ' + res.status);
+    alert(MSG.saveFailed + res.status);
     return;
   }
   const data = await res.json();
   const area = document.getElementById('result-area');
-  area.innerHTML = '<h3>保存しました:</h3><ul>' +
+  area.innerHTML = '<h3>' + escapeHtml(MSG.saved) + '</h3><ul>' +
     data.saved.map(p => `<li>${escapeHtml(p)}</li>`).join('') + '</ul>';
 });
 
