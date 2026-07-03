@@ -3,7 +3,23 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
-## [Unreleased]
+## [0.1.0] - 2026-07-03
+
+初回リリース。AI コーディングツール（Claude Code / Codex 等）が生成する
+`plan_*.md` / `bugfix_*.md` / `pending_*.md` の蓄積・陳腐化問題を解決する CLI + Web UI + MCP サーバー。
+
+主な機能:
+
+- H1 ステータスラベル（`[完了]` / `[計画]` / `[様子見]` / `[保留]` / `[廃止]`）の機械的読み取り
+- 完了したファイルを各プロジェクトの `archive/` へ自動移送
+- 陳腐化を「要判断」フラグで可視化
+- 複数プロジェクトを横断する INDEX
+- AI エージェント向け **MCP サーバー**（`scan` / `triage` / `apply` / `sweep` / `promote` / `summary` / `index` / `inject` / `eject` + 書き込みツール 4 種）
+- 個人グローバル設定への運用ルール **`inject --global`**（Claude Code / Codex 対応）
+- Web UI: 看板（カンバン）ボード（FastAPI + htmx・`docsweep[web]`）
+- 対話レビュー（`--review` / `docsweep[review]`）
+
+以下は初版に含まれる機能の開発経緯別の内訳。
 
 ### Added — OKF（Open Knowledge Format）採用 Phase 3（親 plan `okf-adoption_2026-06-29` C3）
 
@@ -139,7 +155,7 @@
 - 旧 dashboard 専用ルート `GET /list` / `GET /fragment` は削除
 - 看板 topbar に **「⚙ 設定・注入」モーダル** を追加（プロジェクト一覧 / inject / eject / グローバル inject Claude・Codex 切替）
 - 看板 topbar に **health chip**（上位 5 プロジェクトの最古経過日数を `📊 mer 90d` 形式で表示）
-- 旧 dashboard テンプレ・CSS・JS（`dashboard.html` / `_dashboard_body.html` / `_list.html` / `index.html` / `app.css` / `app.js`）は **削除せず残置**（後で復活可能・Web からは到達不能）
+- 旧 dashboard テンプレ・CSS・JS（`dashboard.html` / `_dashboard_body.html` / `_list.html` / `index.html` / `app.css` / `app.js`）は当初残置としたが、その後**物理撤去**（下記 Removed 参照）
 - 看板の編集ペインからは引き続き `/preview` `/api/cards/raw` を使用
 
 ### Changed
@@ -149,6 +165,20 @@
 - 配布規約 `templates/CLAUDE.md` と運用解説 `docs/conventions.md` からも
   `> 最終更新: ...` 行の指示・記述を撤去（書く側と読む側を整合）
 - 自リポ `CLAUDE.md` 先頭の `> 最終更新:` 行を撤去（ドッグフーディング整合）
+
+### Removed — 旧 dashboard 資産と TS+Vite スタックの撤去（plan `legacy-stack-retirement` C1/C2）
+
+- Web から到達不能になっていた旧 dashboard 資産を物理撤去
+  （テンプレ 4 枚 + `static/app.js` / `app.css` + server 内の死コードヘルパ群）
+- フロントエンドの TS+Vite+bun ビルドスタック（`src/` / `vite.config.ts` / `tsconfig.json` /
+  `package.json` / `bun.lock`）を撤去し、看板の plain JS + `htmx.min.js` に一本化
+  （**Python 環境だけで開発・配布が完結**。Node/bun 不要）
+
+### Fixed
+
+- archive 移送先を**対象プロジェクト自身の `.docsweep.yaml` から解決**するように修正。
+  sweep / promote は複数プロジェクト横断で動くのに archive 先が起動時の単一 config でしか
+  解決されず、`--project-dir` を明示しないとプロジェクト設定の `archive_dir` が無視されていた
 
 ### 不変条件（新機能でも厳守）
 
@@ -160,21 +190,5 @@
 
 `docsweep/detect.py` の `>` 引用行スキップロジックと
 `tests/test_detect.py` の後方互換 fixture は残置（過去ファイルとの互換のため）。
-
-## [0.1.0] - 2026-06-21
-
-初回リリース。AI コーディングツール（Claude Code / Codex 等）が生成する
-`plan_*.md` / `bugfix_*.md` / `pending_*.md` の蓄積・陳腐化問題を解決する CLI + Web UI + MCP サーバー。
-
-主な機能:
-
-- H1 ステータスラベル（`[完了]` / `[計画]` / `[様子見]` / `[保留]` / `[廃止]`）の機械的読み取り
-- 完了したファイルを各プロジェクトの `archive/` へ自動移送
-- 陳腐化を「要判断」フラグで可視化
-- 複数プロジェクトを横断する INDEX
-- AI エージェント向け **MCP サーバー**（`scan` / `triage` / `apply` / `sweep` / `promote` / `summary` / `index` / `inject` / `eject` ほか）
-- 個人グローバル設定への運用ルール **`inject --global`**（Claude Code / Codex 対応）
-- Web UI（FastAPI + htmx・`docsweep[web]`）
-- 対話レビュー（`--review` / `docsweep[review]`）
 
 [0.1.0]: https://github.com/ishizakahiroshi/docsweep/releases/tag/v0.1.0
