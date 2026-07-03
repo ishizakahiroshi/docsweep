@@ -1429,7 +1429,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
     config = uvicorn.Config(app, host="127.0.0.1", port=args.port, log_level="warning")
     server = uvicorn.Server(config)
     app.state.docsweep.server = server
-    server.run()
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        # Python 3.14 の asyncio.runners は Ctrl+C を KeyboardInterrupt として再送出する。
+        # 正常な停止操作なのでスタックトレースを見せず 1 行で終える。
+        print("停止しました（Ctrl+C）")
     return 0
 
 

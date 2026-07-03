@@ -29,6 +29,10 @@ class ScannedDoc:
     text: str
 
 
+# frontmatter 矛盾 warning のプロセス内 dedup（(path, message) 単位で 1 回だけ stderr へ）。
+_WARNED_ONCE: set[tuple[str, str]] = set()
+
+
 def _read_gitignore(root: Path) -> list[str]:
     gi = root / ".gitignore"
     if not gi.is_file():
@@ -169,9 +173,16 @@ def _build_doc(
 
     # 型矛盾は warn として stderr へ出す（自動上書きしない）。
     # plan_okf-adoption_2026-06-29.md C1 の方針: 矛盾を可視化するが直さない。
+    # 同一 (path, warning) はプロセス内 1 回だけ出す。Web UI (serve) は描画のたびに
+    # run_scan を呼ぶため、毎回出すと同じ warning がログを埋める（2026-07-03 実測）。
+    # 矛盾自体は needs_fix フラグとして UI にも出続けるので、抑制しても見落とさない。
     if det.frontmatter_warnings:
         import sys
         for w in det.frontmatter_warnings:
+            key = (fpath.resolve().as_posix(), w)
+            if key in _WARNED_ONCE:
+                continue
+            _WARNED_ONCE.add(key)
             print(f"warning: {fpath}: {w}", file=sys.stderr)
 
     record = FileRecord(

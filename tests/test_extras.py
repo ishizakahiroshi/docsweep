@@ -642,3 +642,25 @@ def test_mcp_build_server_smoke(tmp_path):
     from docsweep.mcp_server import build_server
 
     assert build_server(load_config(global_path=tmp_path / "no.yaml")) is not None
+
+
+def test_scan_frontmatter_warning_printed_once_per_process(tmp_path, capsys):
+    """同一 (path, warning) の frontmatter 矛盾 warning はプロセス内 1 回だけ stderr へ出す。
+
+    Web UI は描画のたびに run_scan するため、毎回出すと同じ warning がログを埋める
+    （2026-07-03 serve 実測）。矛盾自体は needs_fix フラグで UI に出続ける。
+    """
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+
+    p = tmp_path / "a" / "plan_conflict.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        "---\nstatus: planned\n---\n# [様子見] 食い違い\n\n## 概要\n\nx\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    run_scan(cfg)
+    run_scan(cfg)  # 2 回目（Web UI の再描画相当）
+    err = capsys.readouterr().err
+    assert err.count("食い違います") == 1
