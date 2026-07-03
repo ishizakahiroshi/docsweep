@@ -3,6 +3,16 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
+## [Unreleased]
+
+### Fixed
+
+- `serve` を Ctrl+C で停止した際に KeyboardInterrupt のスタックトレースが出ていたのを
+  1 行の停止メッセージに変更（Python 3.14 の asyncio.runners 再送出を捕捉）。
+- frontmatter と H1 ラベルの status 食い違い warning が Web UI の描画のたびに
+  繰り返し出力されていたのを、同一 (path, message) につきプロセス内 1 回に抑制
+  （矛盾自体は従来どおり needs_fix フラグで可視化され続ける）。
+
 ## [0.2.0] - 2026-07-03
 
 ### Added
