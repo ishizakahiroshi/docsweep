@@ -30,6 +30,15 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
+## Loaded from CDN (not bundled)
+
+### cytoscape.js 3.30.0
+
+- 用途: Web UI の graph ページのネットワーク可視化
+- 読込元: `https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js`（実行時に CDN から取得・配布物には含まれない）
+- 出典: https://github.com/cytoscape/cytoscape.js
+- ライセンス: **MIT License**（同梱していないため転載義務はないが、利用の透明性のため記録）
+
 ## Runtime dependencies (not bundled — pulled by pip)
 
 参考。これらは wheel に含まれず、ユーザーの `pip install` 時に PyPI から個別に取得されます。

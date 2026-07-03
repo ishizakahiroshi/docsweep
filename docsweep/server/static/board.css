@@ -21,6 +21,24 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+
+/* ===== scrollbars（ダークテーマ準拠・全スクロール領域共通） =====
+   標準プロパティ（Chrome 121+ / Firefox）と ::-webkit-scrollbar（Safari）を併記する。
+   標準プロパティが効くブラウザでは webkit 疑似要素は無視される（二重適用にならない）。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--fg-dim2); }
+::-webkit-scrollbar-corner { background: transparent; }
 body {
   font-family: system-ui, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
   font-size: 14px; line-height: 1.55; color: var(--fg);
@@ -576,6 +594,33 @@ dialog.settings-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .settings-state { font-family: var(--mono); font-size: 11px; }
 .settings-state.on { color: var(--col-active); }
 .settings-state.off { color: var(--fg-dim2); }
+.settings-roots { list-style: none; margin: 0 0 8px; padding: 0; }
+.settings-root-path {
+  flex: 1; font-family: var(--mono); font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.settings-root-input {
+  flex: 1; font: inherit; font-family: var(--mono); font-size: 11px;
+  background: var(--bg2); color: var(--fg);
+  border: 1px solid var(--border-soft); border-radius: 4px;
+  padding: 5px 8px;
+}
+.settings-lang { border-bottom: 0; }
+.settings-about { border-top: 1px solid var(--border-soft); padding-top: 12px; }
+.about-summary {
+  cursor: pointer; font-size: 13px; color: var(--accent);
+  font-weight: 600; list-style-position: inside;
+}
+.about-summary:hover { color: var(--fg); }
+.settings-about .about-section { margin: 10px 0 0; }
+.settings-about .about-section h4 { margin: 0 0 4px; font-size: 12px; color: var(--fg-dim); }
+.about-app-name { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.about-version { font-family: var(--mono); font-size: 11px; color: var(--fg-dim); font-weight: normal; }
+.about-oss-list { list-style: none; margin: 0; padding: 0; }
+.about-oss-item { padding: 4px 0; }
+.about-oss-link { color: inherit; text-decoration: none; display: block; border-radius: 4px; }
+.about-oss-link:hover .about-oss-name { color: var(--accent); text-decoration: underline; }
+.about-oss-name { display: block; font-family: var(--mono); font-size: 12px; }
 .settings-projects {
   width: 100%; border-collapse: collapse; font-size: 12px;
 }

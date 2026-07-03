@@ -479,6 +479,8 @@ def settings_partial(
         {
             "token": state.token,
             "settings": _settings_state(result.records),
+            "roots": [Path(r).as_posix() for r in state.config.roots],
+            "version": __version__,
             "T": _t(request),
             "lang": _scope_lang(request, None),
         },
