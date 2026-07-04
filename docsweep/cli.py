@@ -1459,7 +1459,8 @@ def cmd_migrate_frontmatter(args: argparse.Namespace) -> int:
     print(f"migrate-frontmatter {verb}: {len(result.planned)} 件 / skipped {len(result.skipped)} 件")
     for p in result.planned:
         marker = "[適用済]" if (apply and p.path in result.applied) else "[予定]"
-        print(f"  {marker} {p.doc_type:<8} status={p.status:<11} {p.path}")
+        mode_note = "（既存frontmatterへ不足キー追記）" if p.mode == "upgrade" else ""
+        print(f"  {marker} {p.doc_type:<8} status={p.status:<11} {p.path}{mode_note}")
     for p in result.skipped:
         print(f"  [skip] {p.path}  ({p.skipped_reason})")
     return 0

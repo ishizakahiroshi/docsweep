@@ -43,7 +43,7 @@ GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "3"
+GUIDANCE_VERSION = "4"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -257,6 +257,42 @@ def generate_due_block(lang: str = "ja") -> str:
     ])
 
 
+def generate_okf_block(lang: str = "ja") -> str:
+    """新規 md 作成ルール（OKF frontmatter の注入経路）節を生成する（プロジェクト非依存）。
+
+    OKF frontmatter を注入する経路は ``docsweep new``（templates_gen）だけなので、
+    AI が Write 等で手書きすると ``due:`` だけの最小 frontmatter になり OKF が欠落する
+    （2026-07-04 に many-ai-cli で実発生）。導線側で「原則 new を使う / 手書き時は
+    OKF 一式を必ず入れる」を宣言して穴を塞ぐ。many-ai-cli 等の特定ツールには依存しない。
+    """
+    new_cmd = docsweep_command("new", "<type>", "<topic>")
+    migrate_cmd = docsweep_command("migrate-frontmatter", "--apply")
+    if lang == "en":
+        return "\n".join([
+            "### Creating new docs (OKF frontmatter is required)",
+            "",
+            f"Create new `plan_*.md` / `bugfix_*.md` / `pending_*.md` with `{new_cmd}` by default.",
+            "It injects OKF (Open Knowledge Format) compatible frontmatter automatically",
+            "(`type` / `status` / `tags` / `owner` / `review_status` / `related` / `last_reviewed`, plus `due`).",
+            "If you (an AI agent) hand-write the file instead, do NOT emit a due-only minimal frontmatter:",
+            "always include the same OKF field set (`type: plan|bugfix|pending`, `status: planned` for plan /",
+            "`in-progress` for bugfix / `pending` for pending, `tags: []`, `owner: `, `review_status: draft`,",
+            "`related: []`, `last_reviewed: <today>`).",
+            f"To retrofit existing frontmatter-less docs in bulk, run `{migrate_cmd}`.",
+        ])
+    return "\n".join([
+        "### 新規 md の作成（OKF frontmatter 必須）",
+        "",
+        f"新規 `plan_*.md` / `bugfix_*.md` / `pending_*.md` は原則 `{new_cmd}` で作る。",
+        "OKF（Open Knowledge Format）互換の frontmatter",
+        "（`type` / `status` / `tags` / `owner` / `review_status` / `related` / `last_reviewed` と `due`）が自動注入される。",
+        "AI が Write 等で手書きする場合も、`due:` だけの最小 frontmatter にせず、同じ OKF フィールド一式を必ず入れること",
+        "（`type: plan|bugfix|pending`、`status:` は plan=`planned` / bugfix=`in-progress` / pending=`pending`、",
+        "`tags: []` / `owner: ` / `review_status: draft` / `related: []` / `last_reviewed: <今日>`）。",
+        f"frontmatter 無しの既存 md を一括変換したい時は `{migrate_cmd}` を使う。",
+    ])
+
+
 def generate_guidance_block(lang: str = "ja") -> str:
     """セッション開始時に brief を読む導線＋ due ルール（プロジェクト非依存・グローバル注入可）。
 
@@ -283,6 +319,8 @@ def generate_guidance_block(lang: str = "ja") -> str:
             "- Everything else (consistency checks, archive resurrection, graphs, etc.): `docsweep <command> --json` via shell",
             "- In Claude Code, the `/D` slash command also dispatches all three routes",
             "",
+            generate_okf_block(lang),
+            "",
             generate_due_block(lang),
         ])
     return "\n".join([
@@ -300,6 +338,8 @@ def generate_guidance_block(lang: str = "ja") -> str:
         "- 朝の入口（自然言語起動の価値が高い）: MCP `brief` / `cross` / `capture_extract` / `capture_save`",
         "- それ以外（整合チェック・archive 蘇生・グラフ等）: Bash で `docsweep <command> --json`",
         "- Claude Code では `/D` slash command でも 3 経路をまとめてディスパッチできる",
+        "",
+        generate_okf_block(lang),
         "",
         generate_due_block(lang),
     ])
