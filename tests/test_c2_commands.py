@@ -106,13 +106,62 @@ def test_migrate_apply_inserts_frontmatter_and_preserves_h1(workspace: Path):
 
 
 def test_migrate_skips_already_frontmatter(workspace: Path):
-    """既に frontmatter があるファイルは apply してもそのまま。"""
+    """OKF キーが揃っているファイルは apply してもそのまま。"""
     cfg = _cfg(workspace)
     bf_path = workspace / "demo" / "docs" / "local" / "bugfix_alpha_2026-06-01.md"
     before = bf_path.read_text(encoding="utf-8", newline="")
     apply_migration(cfg)
     after = bf_path.read_text(encoding="utf-8", newline="")
     assert before == after
+
+
+def test_migrate_upgrades_due_only_frontmatter(workspace: Path):
+    """`due:` だけの部分 frontmatter は upgrade 対象になり、不足キーが追記される（due は温存）。"""
+    gamma = _write(
+        workspace / "demo" / "docs" / "local" / "plan_gamma.md",
+        "---\ndue: 2026-07-11\n---\n\n# [計画] γ 計画\n\n## 概要\n\nγの計画。\n",
+    )
+    cfg = _cfg(workspace)
+    plan_result = plan_migration(cfg)
+    modes = {Path(p.path).name: p.mode for p in plan_result.planned}
+    assert modes.get("plan_gamma.md") == "upgrade"
+
+    apply_migration(cfg, today="2026-07-04")
+    after = gamma.read_text(encoding="utf-8", newline="")
+    # 不足キーが正典順で入り、既存 due とブロック直後の空行・H1・本文は不変
+    assert after.startswith(
+        "---\n"
+        "type: plan\n"
+        "status: planned\n"
+        "tags: []\n"
+        "owner: \n"
+        "review_status: draft\n"
+        "related: []\n"
+        "last_reviewed: 2026-07-04\n"
+        "due: 2026-07-11\n"
+        "---\n"
+        "\n"
+        "# [計画] γ 計画\n"
+    )
+    assert after.endswith("## 概要\n\nγの計画。\n")
+
+
+def test_migrate_completes_partial_okf_keys(workspace: Path):
+    """type/status が既にあっても、不足キー（tags 等）だけ追記され、既存キーの値は不変。"""
+    delta = _write(
+        workspace / "demo" / "docs" / "local" / "plan_delta.md",
+        "---\ntype: plan\nstatus: watching\ndue: 2026-07-20\n---\n# [様子見] δ 計画\n\n本文。\n",
+    )
+    cfg = _cfg(workspace)
+    apply_migration(cfg, today="2026-07-04")
+    after = delta.read_text(encoding="utf-8", newline="")
+    # 既存キーはそのまま（status: watching が planned 等に書き換わらない）
+    assert "type: plan\nstatus: watching\ndue: 2026-07-20\n" in after
+    assert after.count("\nstatus:") == 1  # review_status: は含めない（行頭一致）
+    # 不足キーが追記されている
+    for line in ("tags: []", "owner: ", "review_status: draft", "related: []", "last_reviewed: 2026-07-04"):
+        assert line in after
+    assert "# [様子見] δ 計画\n\n本文。\n" in after
 
 
 # ----------------------------------------------------------------------

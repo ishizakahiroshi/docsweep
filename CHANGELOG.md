@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- `migrate-frontmatter` を「素の md を OKF 形式に整えるフォーマッタ」へ一般化。従来は
+  frontmatter が 1 行でもあると無条件スキップだったが、OKF キー（type/status/tags/owner/
+  review_status/related/last_reviewed）が欠けている md へ**不足キーだけを追記**する
+  mode=`upgrade` を追加（`due:` だけの部分 frontmatter 等が対象。既存キーの値・行は不変・
+  H1 温存の不変条件は維持）。JSON 出力とCLI 表示に `mode` を追加。
+- inject の導線（グローバル / プロジェクト）に「新規 md の作成（OKF frontmatter 必須）」節を追加
+  （`GUIDANCE_VERSION` 3 → 4）。AI が `docsweep new` を通さず手書きすると `due:` だけの
+  最小 frontmatter になり OKF フィールドが欠落する穴を、docsweep 自身の注入ルールで塞ぐ
+  （特定の AI ツールに依存しない）。反映には `docsweep inject --global` の再実行が必要。
+
 ## [0.2.1] - 2026-07-04
 
 ### Fixed

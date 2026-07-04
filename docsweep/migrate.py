@@ -4,21 +4,37 @@ H1 ステータスラベルとファイル名プレフィックスから ``type`
 ``tags: []`` / ``owner: `` / ``review_status: draft`` / ``related: []`` /
 ``last_reviewed: <today>`` の最小ブロックを先頭に追加する。
 
+「どんな素の md でも OKF 形式に整える」フォーマッタとして動く:
+- frontmatter が無い md → ブロックごと先頭挿入（mode=``insert``）
+- frontmatter はあるが OKF キーが欠けている md（``due:`` だけ・``type:`` だけ等、
+  形は問わない）→ 既存ブロックへ不足キーだけ追記（mode=``upgrade``）
+- OKF キーが全部揃っている md → スキップ（何もしない）
+
 不変条件:
 - H1 ラベルは絶対に書き換えない（後方互換 100%）
-- 既に frontmatter がある md はスキップする（``--force`` 等は持たない・誤上書き防止）
+- 既存 frontmatter の既存キーは値・行とも一切書き換えない（不足分の追記のみ・誤上書き防止）
 - 本文・末尾改行も触らない
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 from .config import Config
 from .detect import _FRONTMATTER_RE, detect_status
 from .engine import run_scan
+
+# 書き換え用の厳密版（detect の _FRONTMATTER_RE は閉じフェンス後の空行まで \s* で飲み込むため、
+# 再構築に使うと本文側の空行が失われる。行内空白のみ許容し、本文をバイト位置で温存する）。
+_FRONTMATTER_SPLIT_RE = re.compile(r"^---[ \t]*\n(.*?\n)---[ \t]*\n", re.DOTALL)
+
+# OKF frontmatter の必須キー集合（_okf_key_lines と同順・同内容の正典）。
+_OKF_KEYS = ("type", "status", "tags", "owner", "review_status", "related", "last_reviewed")
 
 
 def _today() -> str:
@@ -43,19 +59,58 @@ def _state_to_status(state_key: str | None) -> str:
     return mapping.get(state_key, state_key)
 
 
+def _okf_key_lines(*, doc_type: str, status: str, today: str) -> list[tuple[str, str]]:
+    """OKF キーと行表現の対（挿入順の正典。new_doc テンプレと同順）。"""
+    return [
+        ("type", f"type: {doc_type}"),
+        ("status", f"status: {status}"),
+        ("tags", "tags: []"),
+        ("owner", "owner: "),
+        ("review_status", "review_status: draft"),
+        ("related", "related: []"),
+        ("last_reviewed", f"last_reviewed: {today}"),
+    ]
+
+
 def _build_frontmatter_block(*, doc_type: str, status: str, today: str) -> str:
     """先頭に挿入する最小 frontmatter ブロック（末尾改行 1 つ・本文側に空行は足さない）。"""
-    return (
-        "---\n"
-        f"type: {doc_type}\n"
-        f"status: {status}\n"
-        "tags: []\n"
-        "owner: \n"
-        "review_status: draft\n"
-        "related: []\n"
-        f"last_reviewed: {today}\n"
-        "---\n"
-    )
+    lines = "\n".join(line for _, line in _okf_key_lines(doc_type=doc_type, status=status, today=today))
+    return f"---\n{lines}\n---\n"
+
+
+def _parse_frontmatter_keys(text: str) -> set[str] | None:
+    """先頭 frontmatter のトップレベルキー集合を返す。無い/壊れている場合は None。"""
+    m = _FRONTMATTER_RE.match(text)
+    if not m:
+        return None
+    try:
+        data = yaml.safe_load(m.group(1)) or {}
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {str(k) for k in data.keys()}
+
+
+def _upgrade_frontmatter(
+    text: str, *, doc_type: str, status: str, today: str, existing_keys: set[str]
+) -> str | None:
+    """既存 frontmatter へ不足 OKF キーを追記した全文を返す（既存行は不変）。
+
+    再構築に失敗する形（閉じフェンスが厳密版で取れない等）は None を返し、呼び出し側でスキップする。
+    """
+    m = _FRONTMATTER_SPLIT_RE.match(text)
+    if not m:
+        return None
+    missing = [
+        line
+        for key, line in _okf_key_lines(doc_type=doc_type, status=status, today=today)
+        if key not in existing_keys
+    ]
+    if not missing:
+        return None
+    # 不足キーを正典順で先頭に置き、既存行（due: 等）はそのまま後ろへ温存する。
+    return "---\n" + "\n".join(missing) + "\n" + m.group(1) + "---\n" + text[m.end():]
 
 
 @dataclass
@@ -66,6 +121,7 @@ class MigratePlan:
     doc_type: str
     status: str
     skipped_reason: str | None = None  # None なら適用可能
+    mode: str = "insert"  # insert=frontmatter 無し / upgrade=旧形式（due: 等のみ）へ追記
 
 
 @dataclass
@@ -77,7 +133,8 @@ class MigrateResult:
     def to_dict(self) -> dict:
         return {
             "planned": [
-                {"path": p.path, "type": p.doc_type, "status": p.status} for p in self.planned
+                {"path": p.path, "type": p.doc_type, "status": p.status, "mode": p.mode}
+                for p in self.planned
             ],
             "skipped": [
                 {"path": p.path, "reason": p.skipped_reason} for p in self.skipped
@@ -105,13 +162,27 @@ def plan_migration(config: Config, *, project: str | None = None) -> MigrateResu
                 skipped_reason=f"読み取り失敗: {e}",
             ))
             continue
-        if _FRONTMATTER_RE.match(text):
+        keys = _parse_frontmatter_keys(text)
+        status = _state_to_status(rec.state)
+        if keys is None and _FRONTMATTER_RE.match(text):
             result.skipped.append(MigratePlan(
                 path=rec.path, doc_type=rec.type, status=rec.state or "?",
-                skipped_reason="既に frontmatter があります",
+                skipped_reason="frontmatter を解析できません（YAML 不正）",
             ))
             continue
-        status = _state_to_status(rec.state)
+        if keys is not None:
+            missing = [k for k in _OKF_KEYS if k not in keys]
+            if not missing:
+                result.skipped.append(MigratePlan(
+                    path=rec.path, doc_type=rec.type, status=rec.state or "?",
+                    skipped_reason="OKF frontmatter が揃っています",
+                ))
+                continue
+            # 部分 frontmatter（due: だけ・type: だけ等）→ 不足キーを追記する upgrade 対象。
+            result.planned.append(MigratePlan(
+                path=rec.path, doc_type=rec.type, status=status, mode="upgrade",
+            ))
+            continue
         result.planned.append(MigratePlan(
             path=rec.path, doc_type=rec.type, status=status,
         ))
@@ -132,6 +203,31 @@ def apply_migration(
             plan.skipped_reason = f"読み取り失敗: {e}"
             result.skipped.append(plan)
             continue
+        from .atomic import update_line
+
+        if plan.mode == "upgrade":
+            # 二重チェック（plan 後に手で frontmatter が完成された/壊れたケースは触らない）。
+            keys = _parse_frontmatter_keys(text)
+            if keys is None or all(k in keys for k in _OKF_KEYS):
+                plan.skipped_reason = "frontmatter が変化しています（再検出・スキップ）"
+                result.skipped.append(plan)
+                continue
+            new_text = _upgrade_frontmatter(
+                text, doc_type=plan.doc_type, status=plan.status,
+                today=today, existing_keys=keys,
+            )
+            if new_text is None:
+                plan.skipped_reason = "frontmatter を再構築できません（スキップ）"
+                result.skipped.append(plan)
+                continue
+
+            def _xform_upgrade(_t: str, _new: str = new_text) -> str:
+                return _new
+
+            update_line(path, transform=_xform_upgrade)
+            result.applied.append(plan.path)
+            continue
+
         # 二重チェック（plan 後にユーザーが手で frontmatter を入れたケース）。
         if _FRONTMATTER_RE.match(text):
             plan.skipped_reason = "既に frontmatter があります（再検出）"
@@ -140,9 +236,6 @@ def apply_migration(
         block = _build_frontmatter_block(
             doc_type=plan.doc_type, status=plan.status, today=today,
         )
-        new_text = block + text
-        # H1 ラベルが書き換わらないこと: 単純な前置挿入なので不変。
-        from .atomic import update_line
 
         def _xform(_t: str, _block: str = block) -> str:
             return _block + _t
