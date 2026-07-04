@@ -83,16 +83,16 @@ body {
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand .logo {
   width: 30px; height: 30px; border-radius: 8px;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #1a132b; font-weight: 700; font-size: 12px;
+  display: inline-block;
 }
 .brand .title { font-weight: 600; }
 .brand .subtitle { color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; margin-left: 4px; }
-.topbar-actions { display: flex; gap: 8px; align-items: center; }
+.topbar-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 .ghost {
   background: transparent; color: var(--fg-dim);
   border: 1px solid var(--border); padding: 5px 10px; border-radius: 6px;
   text-decoration: none; font-size: 12px; cursor: pointer;
+  white-space: nowrap;
 }
 .ghost:hover { color: var(--fg); border-color: var(--accent); }
 
@@ -115,6 +115,7 @@ body {
   padding: 3px 8px;
   font-size: 1rem;
   line-height: 1;
+  white-space: nowrap;
 }
 #shutdown-btn:hover {
   color: #ff8a8a;
@@ -333,14 +334,15 @@ button.proj-badge-btn:hover { color: var(--accent); background: var(--card2); }
 
 /* ===== 編集ペイン ===== */
 .edit-pane-inner { padding: 12px; display: flex; flex-direction: column; gap: 10px; height: 100%; }
-.ep-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.ep-tabs { display: flex; gap: 4px; }
+.ep-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 8px; }
+.ep-tabs { display: flex; gap: 4px; flex-shrink: 0; }
 .ep-tab {
   background: var(--card); color: var(--fg-dim); border: 1px solid var(--border);
   padding: 4px 10px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px;
+  white-space: nowrap;
 }
 .ep-tab.on { background: var(--card2); color: var(--accent); border-bottom-color: var(--card2); }
-.ep-info { color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; word-break: break-all; }
+.ep-info { flex: 1 1 100%; min-width: 0; color: var(--fg-dim2); font-family: var(--mono); font-size: 11px; word-break: break-all; }
 .ep-body { flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; }
 .ep-preview {
   flex: 1 1 auto; overflow-y: auto; background: var(--card); border: 1px solid var(--border);
@@ -682,4 +684,22 @@ dialog.confirm::backdrop { background: rgba(0, 0, 0, 0.45); }
   background: var(--bg); color: var(--fg);
   border: 1px solid var(--border); border-radius: 4px;
   padding: 4px 8px; font-family: inherit;
+}
+
+/* ===== レスポンシブ（狭幅ウィンドウ・埋め込みブラウザ想定）=====
+   #board-main は既定で 1fr / 420px の左右 2 カラム。編集ペインの固定 420px が
+   狭幅では左のボード列を潰し、タブ文字が折り返して縦積みになる事故があったため、
+   一定幅を下回ったら縦積み（上下）に切り替える。 */
+@media (max-width: 900px) {
+  #board-main { grid-template-columns: 1fr; grid-template-rows: auto auto; overflow: visible; }
+  #board-body { overflow-y: visible; }
+  .edit-pane {
+    border-left: 0; border-top: 1px solid var(--border);
+    max-height: 70vh;
+  }
+}
+@media (max-width: 640px) {
+  .board-cols { grid-template-columns: 1fr; }
+  .topbar { flex-wrap: wrap; row-gap: 8px; }
+  .topbar-search { order: 3; flex-basis: 100%; max-width: none; }
 }
