@@ -291,6 +291,14 @@ python -m docsweep serve --root ~/dev
 python -m docsweep mcp
 ```
 
+Web UI（看板）はこんな見た目です。
+
+![やり忘れ列](assets/screenshots/webui-todo.png)
+
+「完了」「廃止」になったカードは archive 候補列にまとまり、まとめて archive へ送れます。
+
+![archive 候補列](assets/screenshots/webui-archive.png)
+
 ## 状態モデル（一直線・単一正本）
 
 ```
