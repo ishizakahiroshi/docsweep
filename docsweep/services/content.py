@@ -58,6 +58,12 @@ def update_content(
     masked = mask_code_fences(new_content)
     if not _H1_RE.search(masked):
         warnings.append("H1 行が見つかりません（ステータスラベル抽出ができなくなる可能性）")
+    try:
+        from ..secrets_guard import format_warnings, scan_secrets
+
+        warnings.extend(format_warnings(scan_secrets(new_content)))
+    except Exception:
+        pass
 
     new_mtime = write_atomic(Path(abs_path), new_content, expected_mtime=expected_mtime)
     return UpdateContentResult(

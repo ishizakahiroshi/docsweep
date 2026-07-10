@@ -93,6 +93,11 @@
     currentMtime = card.dataset.mtime;
     const pathLabel = $(".ep-path");
     if (pathLabel) pathLabel.textContent = currentPath;
+    const workpackBtn = document.querySelector(".ep-workpack");
+    if (workpackBtn) {
+      workpackBtn.hidden = !currentPath;
+      workpackBtn.dataset.path = currentPath || "";
+    }
     const mtimeLabel = $(".ep-mtime");
     if (mtimeLabel) mtimeLabel.textContent = "mtime=" + currentMtime;
 
@@ -110,6 +115,7 @@
     if (ta) {
       if (raw && typeof raw.content === "string") {
         ta.value = raw.content;
+        originalContent = raw.content;
         // raw の mtime を優先する（カードの dataset.mtime は board レンダリング時点・最新ではない）。
         if (raw.mtime) {
           currentMtime = String(raw.mtime);
@@ -118,15 +124,45 @@
       } else if (previewEl) {
         // フォールバック: raw が取れなければプレビューテキスト（保存はできるが構造劣化警告を出す）。
         ta.value = previewEl.textContent || "";
+        originalContent = ta.value;
       }
     }
   }
   window.__docsweepLoadEditPane = loadEditPane;
 
+  function simpleDiffPreview(oldText, newText) {
+    // 行単位の簡易 diff（+/- のみ・UX W3 / P16）
+    const a = (oldText || "").split("\n");
+    const b = (newText || "").split("\n");
+    const max = Math.max(a.length, b.length);
+    const lines = [];
+    let changed = 0;
+    for (let i = 0; i < max; i++) {
+      const L = a[i];
+      const R = b[i];
+      if (L === R) continue;
+      if (L !== undefined && R === undefined) { lines.push("- " + L); changed++; }
+      else if (L === undefined && R !== undefined) { lines.push("+ " + R); changed++; }
+      else { lines.push("- " + L); lines.push("+ " + R); changed++; }
+      if (lines.length > 40) { lines.push("…"); break; }
+    }
+    return { changed: changed, text: lines.join("\n") };
+  }
+
+  let originalContent = "";
+
   async function saveContent() {
     if (!currentPath) return;
     const ta = $(".ep-textarea");
     if (!ta) return;
+    // 保存前 diff プレビュー（必須・P16）
+    if (originalContent !== ta.value) {
+      const d = simpleDiffPreview(originalContent, ta.value);
+      const msg = (d.changed
+        ? ("変更 " + d.changed + " 行付近:\n\n" + (d.text || "(構造差分)") + "\n\n")
+        : "") + "この内容で保存しますか？";
+      if (!window.confirm(msg)) return;
+    }
     const sp = new URLSearchParams();
     sp.set("token", TOKEN);
     sp.set("path", currentPath);
@@ -146,7 +182,11 @@
       window.alert(DS_T("save_failed", body && body.detail ? body.detail : ("status " + res.status)));
       return;
     }
+    if (body && body.warnings && body.warnings.length) {
+      window.alert("保存しました（警告）:\n" + body.warnings.join("\n"));
+    }
     currentMtime = body && body.new_mtime ? body.new_mtime : currentMtime;
+    originalContent = ta.value;
     const mtimeLabel = $(".ep-mtime");
     if (mtimeLabel) mtimeLabel.textContent = DS_T("saved_mtime", currentMtime);
     if (typeof window.__docsweepReloadBoard === "function") {

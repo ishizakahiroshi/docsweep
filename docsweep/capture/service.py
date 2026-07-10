@@ -74,6 +74,13 @@ def save_drafts(
                     path = cand
                     break
                 n += 1
+        try:
+            from ..secrets_guard import format_warnings, scan_secrets
+            for w in format_warnings(scan_secrets(d.body)):
+                import sys
+                print(f"warn: {path.name}: {w}", file=sys.stderr)
+        except Exception:
+            pass
         path.write_text(d.body, encoding="utf-8")
         written.append(path)
     return written

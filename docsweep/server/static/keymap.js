@@ -36,6 +36,41 @@
   }
 
   // ===== ⚙ 設定モーダル（注入 / eject / グローバル inject） ==================
+  async function openSuggestions() {
+    const dlg = document.getElementById("suggestions-dialog");
+    const body = document.getElementById("suggestions-body");
+    if (!dlg || !body) return;
+    body.innerHTML = "<p class='settings-note'>" + DS_T("loading") + "</p>";
+    dlg.showModal();
+    const res = await fetch("/api/suggestions?token=" + encodeURIComponent(TOKEN), {
+      headers: headers(),
+    });
+    const json = await safeJson(res);
+    if (!res.ok) {
+      body.innerHTML = "<p class='settings-note'>failed: " + res.status + "</p>";
+      return;
+    }
+    const items = (json && json.suggestions) || [];
+    if (!items.length) {
+      body.innerHTML = "<h3>提案トレイ</h3><p class='settings-note'>" + DS_T("suggestions_empty") + "</p>";
+      return;
+    }
+    let html = "<h3>提案トレイ</h3><ul class='suggestions-list'>";
+    items.forEach(function (s, i) {
+      html += "<li class='suggestion-item' data-idx='" + i + "'>"
+        + "<div><b>" + (s.proposed_action || "") + "</b> "
+        + (s.proposed_to ? ("→ " + s.proposed_to + " ") : "")
+        + "<code>" + (s.path || "") + "</code></div>"
+        + "<div class='settings-note'>" + (s.reason || "") + " (c=" + (s.confidence || 0) + ")</div>"
+        + "<div class='tp-actions'>"
+        + "<button type='button' class='primary' data-action='suggestion-accept' data-path='" + (s.path || "") + "' data-act='" + (s.proposed_action || "") + "' data-to='" + (s.proposed_to || "") + "'>" + DS_T("suggestions_accept") + "</button> "
+        + "<button type='button' class='ghost' data-action='suggestion-skip'>" + DS_T("suggestions_skip") + "</button>"
+        + "</div></li>";
+    });
+    html += "</ul>";
+    body.innerHTML = html;
+  }
+
   async function openSettings() {
     const dlg = document.getElementById("settings-dialog");
     const body = document.getElementById("settings-body");
@@ -233,6 +268,92 @@
       applySearch();
     }
   });
+  document.addEventListener("change", (e) => {
+    if (e.target && e.target.id === "profile-select") {
+      const sp = new URLSearchParams();
+      sp.set("token", TOKEN);
+      sp.set("profile", e.target.value || "all");
+      fetch("/api/profile", { method: "POST", headers: headers(), body: sp.toString() })
+        .then(function () {
+          if (typeof window.__docsweepReloadBoard === "function") window.__docsweepReloadBoard();
+          else location.reload();
+        });
+    }
+  });
+
+  // フィルタチップ（P14）
+  document.addEventListener("click", function (e) {
+    const chip = e.target.closest && e.target.closest(".fchip");
+    if (!chip) return;
+    e.preventDefault();
+    document.querySelectorAll(".fchip").forEach(function (c) { c.classList.remove("on"); });
+    chip.classList.add("on");
+    const f = chip.dataset.filter || "all";
+    document.querySelectorAll(".card").forEach(function (card) {
+      let show = true;
+      if (f === "type:plan") show = card.dataset.type === "plan";
+      else if (f === "type:bugfix") show = card.dataset.type === "bugfix";
+      else if (f === "flag:overdue") show = (card.closest(".col-overdue") != null);
+      else if (f === "flag:needs_decision") {
+        const flags = (card.dataset.flags || "") + " " + (card.querySelector(".okf-tag") ? "tag" : "");
+        show = (card.dataset.state === "planned" || card.dataset.state === "watching"
+          || (card.textContent || "").indexOf("needs") >= 0);
+        // 簡易: flags が dataset に無いので postpone/overdue 列以外の要判断は state で近似
+        show = card.dataset.state === "planned" || card.dataset.state === "watching"
+          || card.closest(".col-overdue") != null;
+      }
+      card.classList.toggle("filter-hide", f !== "all" && !show);
+    });
+  }, true);
+
+  // fold open/close 記憶 + 静かな朝モード（P10）
+  function restoreFolds() {
+    try {
+      const raw = localStorage.getItem("docsweep_folds");
+      if (!raw) return;
+      const map = JSON.parse(raw);
+      document.querySelectorAll("details.fold[data-section]").forEach(function (el) {
+        const key = el.dataset.section;
+        if (key && Object.prototype.hasOwnProperty.call(map, key)) {
+          el.open = !!map[key];
+        }
+      });
+    } catch (err) { /* ignore */ }
+  }
+  document.addEventListener("toggle", function (e) {
+    const el = e.target;
+    if (!el || !el.classList || !el.classList.contains("fold")) return;
+    try {
+      const map = JSON.parse(localStorage.getItem("docsweep_folds") || "{}");
+      if (el.dataset.section) map[el.dataset.section] = !!el.open;
+      localStorage.setItem("docsweep_folds", JSON.stringify(map));
+    } catch (err) { /* ignore */ }
+  }, true);
+  setTimeout(restoreFolds, 0);
+
+  // 今日の tips（P69）
+  (function showTip() {
+    try {
+      const tips = [
+        "u キーで Undo（archive 直後）",
+        "docsweep intent \"昨日何やった\" でコマンド候補",
+        "設定でプロジェクトを OFF にできる",
+        "find --q で本文検索",
+        "day open / day close で 1 日を儀式化",
+      ];
+      const week = Math.floor(Date.now() / (7 * 864e5));
+      const tip = tips[week % tips.length];
+      const bar = document.querySelector(".topbar-health");
+      if (bar && !document.getElementById("daily-tip")) {
+        const span = document.createElement("span");
+        span.id = "daily-tip";
+        span.className = "health-chip";
+        span.title = "今日の tips";
+        span.textContent = "tip: " + tip;
+        bar.appendChild(span);
+      }
+    } catch (err) { /* ignore */ }
+  })();
 
   // ===== Undo トースト ========================================================
   let toastTimer = null;
@@ -256,6 +377,32 @@
     if (toast) toast.hidden = true;
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
   }
+  async function copyWorkPack(path) {
+    const url = "/api/cards/context?token=" + encodeURIComponent(TOKEN)
+      + "&path=" + encodeURIComponent(path);
+    try {
+      const res = await fetch(url, { headers: headers() });
+      const json = await safeJson(res);
+      if (!res.ok || !json || !json.text) {
+        showToast(DS_T("work_pack_fail"), { undoable: false });
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(json.text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = json.text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      showToast(DS_T("work_pack_ok"), { undoable: false, duration: 4000 });
+    } catch (err) {
+      showToast(DS_T("work_pack_fail"), { undoable: false });
+    }
+  }
+
   async function callUndo() {
     const undoBtn = document.getElementById("toast-undo");
     if (undoBtn) undoBtn.disabled = true;
@@ -772,6 +919,27 @@
     if (!e.target.closest(".bulk-projects-wrap")) {
       closeProjectsDropdown();
     }
+    // 今日の 1 個 → 編集ペイン
+    const openTp = e.target.closest && e.target.closest("[data-action='open-today-pick']");
+    if (openTp) {
+      e.preventDefault();
+      const p = openTp.dataset.path;
+      if (p && typeof window.__docsweepLoadEditPane === "function") {
+        const fake = { dataset: { path: p, mtime: "" } };
+        window.__docsweepLoadEditPane(fake);
+        const card = document.querySelector('.card[data-path="' + CSS.escape(p) + '"]');
+        if (card) card.focus();
+      }
+      return;
+    }
+    // 作業開始パック: context を clipboard へ（P7）
+    const copyCtx = e.target.closest && e.target.closest("[data-action='copy-context']");
+    if (copyCtx) {
+      e.preventDefault();
+      const p = copyCtx.dataset.path || (document.querySelector(".ep-workpack") && document.querySelector(".ep-workpack").dataset.path);
+      if (p) copyWorkPack(p);
+      return;
+    }
     // トーストの Undo / × 閉じ
     if (e.target.closest && e.target.closest("[data-action='undo']")) {
       e.preventDefault();
@@ -787,6 +955,59 @@
     if (e.target.closest && e.target.closest("[data-action='open-settings']")) {
       e.preventDefault();
       openSettings();
+      return;
+    }
+    if (e.target.closest && e.target.closest("[data-action='open-suggestions']")) {
+      e.preventDefault();
+      openSuggestions();
+      return;
+    }
+    const sugAcc = e.target.closest && e.target.closest("[data-action='suggestion-accept']");
+    if (sugAcc) {
+      e.preventDefault();
+      const sp = new URLSearchParams();
+      sp.set("token", TOKEN);
+      sp.set("path", sugAcc.dataset.path || "");
+      sp.set("action", sugAcc.dataset.act || "");
+      if (sugAcc.dataset.to) sp.set("to", sugAcc.dataset.to);
+      fetch("/api/suggestions/apply", { method: "POST", headers: headers(), body: sp.toString() })
+        .then(function () {
+          const li = sugAcc.closest(".suggestion-item");
+          if (li) li.remove();
+          if (typeof window.__docsweepReloadBoard === "function") window.__docsweepReloadBoard();
+        });
+      return;
+    }
+    const sugSkip = e.target.closest && e.target.closest("[data-action='suggestion-skip']");
+    if (sugSkip) {
+      e.preventDefault();
+      const li = sugSkip.closest(".suggestion-item");
+      if (li) li.remove();
+      return;
+    }
+    const togProj = e.target.closest && e.target.closest("[data-action='settings-toggle-project']");
+    if (togProj) {
+      e.preventDefault();
+      const root = togProj.dataset.root;
+      const currentlyOn = togProj.dataset.enabled === "true";
+      const sp = new URLSearchParams();
+      sp.set("token", TOKEN);
+      sp.set("root", root);
+      sp.set("enabled", currentlyOn ? "false" : "true");
+      fetch("/api/project/toggle", { method: "POST", headers: headers(), body: sp.toString() })
+        .then(function () { openSettings(); });
+      return;
+    }
+    const hlRel = e.target.closest && e.target.closest("[data-action='highlight-related']");
+    if (hlRel) {
+      e.preventDefault();
+      e.stopPropagation();
+      const names = (hlRel.dataset.related || "").split("|").filter(Boolean);
+      document.querySelectorAll(".card").forEach(function (c) {
+        c.classList.remove("related-hl");
+        const name = (c.dataset.path || "").split(/[/\\]/).pop();
+        if (names.indexOf(name) >= 0) c.classList.add("related-hl");
+      });
       return;
     }
     // ⏻ サーバー停止
@@ -1151,6 +1372,39 @@
       const iso = d.toISOString().slice(0, 10);
       applyDue(card, iso);
       return;
+    }
+  });
+
+  // j/k カード移動・x 選択・u Undo（カードフォーカス不要）（UX W2 / P11）
+  document.addEventListener("keydown", (e) => {
+    if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
+    if (e.key === "u" && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      callUndo();
+      return;
+    }
+    if (e.key !== "j" && e.key !== "k" && e.key !== "x") return;
+    const cards = Array.from(document.querySelectorAll(".card:not(.filter-hide)"));
+    if (!cards.length) return;
+    const cur = document.activeElement && document.activeElement.classList
+      && document.activeElement.classList.contains("card")
+      ? document.activeElement : null;
+    let idx = cur ? cards.indexOf(cur) : -1;
+    if (e.key === "j") {
+      e.preventDefault();
+      idx = Math.min(cards.length - 1, idx + 1);
+      cards[idx].focus();
+      if (typeof window.__docsweepLoadEditPane === "function") window.__docsweepLoadEditPane(cards[idx]);
+    } else if (e.key === "k") {
+      e.preventDefault();
+      idx = Math.max(0, idx <= 0 ? 0 : idx - 1);
+      cards[idx].focus();
+      if (typeof window.__docsweepLoadEditPane === "function") window.__docsweepLoadEditPane(cards[idx]);
+    } else if (e.key === "x" && cur) {
+      e.preventDefault();
+      const path = cur.dataset.path;
+      if (path) setSelected(path, !selected.has(path));
+      updateBulkBar();
     }
   });
 })();

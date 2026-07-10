@@ -70,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--review", action="store_true",
         help="インタラクティブ triage を起動（c=完了/w=様子見/x=廃止/s=スキップ/l=後で/o=開く/q=終了）",
     )
+    p_triage.add_argument(
+        "--head", type=int, default=0, metavar="N",
+        help="先頭 N 件だけ出す（1 件ループ用・UX W2 / P33）",
+    )
 
     p_apply = sub.add_parser("apply", help="1 ファイルに閉じた action を適用")
     _add_scope_args(p_apply)
@@ -89,6 +93,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument("--port", type=int, default=8765)
     p_serve.add_argument("--no-browser", action="store_true", help="ブラウザを自動で開かない")
     p_serve.add_argument("--token", help="アクセストークンを固定（未指定なら環境変数 DOCSWEEP_TOKEN、それも無ければ毎回ランダム生成）")
+    p_serve.add_argument(
+        "--read-only", action="store_true",
+        help="閲覧・検索のみ（書き込み API を 403）（UX W4 / P58）",
+    )
 
     p_promote = sub.add_parser("promote", help="release sweep: 様子見をまとめて完了へ昇格し archive へ")
     _add_scope_args(p_promote)
@@ -267,6 +275,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-due", action="store_true",
         help="初期 due の自動付与を抑止する（.docsweep.yaml の offset を無視して frontmatter を入れない）",
     )
+    p_new.add_argument(
+        "--split", type=int, default=0, metavar="N",
+        help="親 plan + 子 N 本を一括生成し related 双方向を結ぶ（UX W3 / P26）",
+    )
 
     p_review = sub.add_parser("review", help="対話チェックリストで選択分を archive へ一括移送")
     _add_scope_args(p_review)
@@ -390,7 +402,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_find = sub.add_parser(
-        "find", help="自由クエリ: --owner / --tag / --type / --status / --review-status / --project"
+        "find",
+        help="自由クエリ: --q / --owner / --tag / --type / --status / --review-status / --project",
     )
     _add_scope_args(p_find)
     p_find.add_argument("--owner", help="owner 一致（'me' で現ユーザー）")
@@ -404,6 +417,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="draft / review / published",
     )
     p_find.add_argument("--project", help="対象プロジェクトを絞る")
+    p_find.add_argument(
+        "--q", dest="q",
+        help="全文検索（title/summary/本文の部分一致・MVP）",
+    )
     p_find.add_argument("--json", action="store_true")
 
     p_completion = sub.add_parser(
@@ -432,6 +449,118 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_export.add_argument("--json", action="store_true")
 
+    # UX W1: doctor / init / undo
+    p_doctor = sub.add_parser(
+        "doctor",
+        help="環境ヘルスチェック（config / roots / index / inject / extras）",
+    )
+    p_doctor.add_argument("--json", action="store_true", help="機械可読 JSON で出力")
+    p_doctor.add_argument("--config", help="グローバル config のパス（既定 ~/.docsweep/config.yaml）")
+
+    p_init = sub.add_parser(
+        "init",
+        help="初回セットアップ（~/.docsweep/config.yaml を作成）",
+    )
+    p_init.add_argument("--yes", "-y", action="store_true", help="非対話（既定値で作成）")
+    p_init.add_argument("--root", help="スキャン root（未指定なら対話 or cwd）")
+    p_init.add_argument("--lang", choices=("ja", "en"), default="ja")
+    p_init.add_argument(
+        "--agent", choices=("claude", "codex", "none"), default="claude",
+        help="AI ツール（inject ヒント用）",
+    )
+    p_init.add_argument("--force", action="store_true", help="既存 config を上書き")
+    p_init.add_argument("--config", help="書き込み先 config パス")
+    p_init.add_argument("--json", action="store_true")
+
+    p_undo = sub.add_parser(
+        "undo",
+        help="直近の archive / promote バッチを元に戻す",
+    )
+    _add_scope_args(p_undo)
+    p_undo.add_argument("--json", action="store_true")
+
+    # UX W2: day / intent / fix-conflict
+    p_day = sub.add_parser("day", help="1 日の開閉（open=朝 / close=夜）")
+    _add_scope_args(p_day)
+    p_day.add_argument("phase", choices=("open", "close"), help="open | close")
+    p_day.add_argument("--json", action="store_true")
+
+    p_intent = sub.add_parser(
+        "intent",
+        help="自然言語の意図を docsweep コマンドにマップする",
+    )
+    p_intent.add_argument("text", nargs="+", help="意図のテキスト（例: 昨日何やった）")
+    p_intent.add_argument("--json", action="store_true")
+
+    p_fix_conflict = sub.add_parser(
+        "fix-conflict",
+        help="frontmatter と H1 の食い違いを修理する",
+    )
+    _add_scope_args(p_fix_conflict)
+    p_fix_conflict.add_argument(
+        "--prefer", choices=("h1", "frontmatter", "both"), default="h1",
+        help="どちらを正とするか（both=h1 と同じ）",
+    )
+    p_fix_conflict.add_argument("--path", action="append", dest="paths", help="対象 path（複数可）")
+    p_fix_conflict.add_argument("--list", action="store_true", help="conflict 一覧のみ")
+    p_fix_conflict.add_argument("--dry-run", action="store_true")
+    p_fix_conflict.add_argument("--json", action="store_true")
+
+    p_notify = sub.add_parser(
+        "notify",
+        help="overdue 件数を OS ローカル通知（クラウド push なし）",
+    )
+    _add_scope_args(p_notify)
+    p_notify.add_argument("--dry-run", action="store_true", help="送らず本文だけ表示")
+    p_notify.add_argument("--json", action="store_true")
+
+    # UX W2 / P39: project enable|disable|list
+    p_project = sub.add_parser(
+        "project",
+        help="プロジェクト除外リストの確認 / ON/OFF",
+    )
+    p_project_sub = p_project.add_subparsers(dest="project_cmd")
+    p_pl = p_project_sub.add_parser("list", help="プロジェクト一覧と有効/除外")
+    _add_scope_args(p_pl)
+    p_pl.add_argument("--json", action="store_true")
+    p_pe = p_project_sub.add_parser("enable", help="除外を解除して ON")
+    p_pe.add_argument("root", help="プロジェクト root の絶対パス")
+    p_pe.add_argument("--json", action="store_true")
+    p_pd = p_project_sub.add_parser("disable", help="除外リストへ追加して OFF")
+    p_pd.add_argument("root", help="プロジェクト root の絶対パス")
+    p_pd.add_argument("--json", action="store_true")
+
+    p_review_week = sub.add_parser(
+        "review-week",
+        help="週次レビュー用サマリ（watching / 古い planned / 提案件数）",
+    )
+    _add_scope_args(p_review_week)
+    p_review_week.add_argument("--json", action="store_true")
+
+    p_history = sub.add_parser("history", help="moves.jsonl 操作履歴（人が読める）")
+    _add_scope_args(p_history)
+    p_history.add_argument("--limit", type=int, default=30)
+    p_history.add_argument("--json", action="store_true")
+
+    p_cookbook = sub.add_parser("cookbook", help="シナリオ別コピペコマンド集")
+    p_cookbook.add_argument(
+        "scenario", nargs="?", default=None,
+        help="morning / release / onboard / ai / hygiene（省略で一覧）",
+    )
+    p_cookbook.add_argument("--json", action="store_true")
+
+    p_memory = sub.add_parser(
+        "memory",
+        help="AI memory ファイルの読み取り専用スキャン（看板には混ぜない）",
+    )
+    p_memory.add_argument("--path", action="append", dest="paths", help="追加スキャンパス")
+    p_memory.add_argument("--stale-days", type=int, default=90)
+    p_memory.add_argument("--json", action="store_true")
+
+    p_ics = sub.add_parser("ics", help="due 付き open を .ics で export")
+    _add_scope_args(p_ics)
+    p_ics.add_argument("--out", default="docsweep-due.ics", help="出力パス")
+
     return parser
 
 
@@ -444,6 +573,181 @@ def _print_records_table(records, lang: str) -> None:
         flags = f" !{','.join(r.flags)}" if r.flags else ""
         summary = f" — {r.summary}" if r.summary else ""
         print(f"{label:<8} {r.age_days:>4}d  {r.project}/{Path(r.path).name}{flags}{summary}")
+
+
+def cmd_day(args: argparse.Namespace) -> int:
+    """1 日の開閉（UX W2 / P18）。"""
+    from .day import day_close, day_open
+
+    cfg = _build_config(args)
+    phase = args.phase
+    if phase == "open":
+        result = day_open(cfg)
+        payload = result.to_dict()
+    else:
+        result = day_close(cfg)
+        payload = result.to_dict()
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if phase == "open":
+        print(f"day open · {payload.get('generated_at')}")
+        print(f"  overdue: {payload.get('overdue_count')} · open: {payload.get('open_count')}")
+        tp = payload.get("today_pick")
+        if tp:
+            print(f"  today_pick: {tp.get('state_label')} {tp.get('title') or tp.get('rel')}")
+            print(f"    {tp.get('path')}")
+        else:
+            print("  today_pick: （なし）")
+        yd = payload.get("yesterday_done") or []
+        if yd:
+            print(f"  yesterday_done: {len(yd)} 件")
+    else:
+        print(f"day close · {payload.get('generated_at')}")
+        print(f"  touched_today: {len(payload.get('touched_today') or [])}")
+        print(f"  incomplete_due: {len(payload.get('incomplete_due') or [])}")
+        for it in (payload.get("suggest_defer") or [])[:5]:
+            print(f"    defer? {it.get('state_label')} {it.get('name')} due={it.get('due')}")
+    return 0
+
+
+def cmd_intent(args: argparse.Namespace) -> int:
+    """意図 → コマンド（UX W2 / P28）。"""
+    from .intent import route_intent
+
+    text = " ".join(args.text)
+    route = route_intent(text)
+    if getattr(args, "json", False):
+        print(json.dumps(route.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        cmdline = " ".join(["docsweep", route.command, *route.args])
+        print(f"intent: {route.intent}")
+        print(f"→ {cmdline}")
+        print(f"  ({route.reason}; confidence={route.confidence:.2f})")
+    return 0
+
+
+def cmd_fix_conflict(args: argparse.Namespace) -> int:
+    """conflict 修理（UX W2 / P37）。"""
+    from .fix_conflict import fix_conflicts, list_conflicts
+
+    cfg = _build_config(args)
+    if getattr(args, "list", False):
+        rows = list_conflicts(cfg)
+        if getattr(args, "json", False):
+            print(json.dumps({"conflicts": rows}, ensure_ascii=False, indent=2))
+        else:
+            if not rows:
+                print("conflict なし")
+            for r in rows:
+                print(f"{r.get('state_label')} {r.get('path')} (source={r.get('state_source')})")
+        return 0
+    res = fix_conflicts(
+        cfg,
+        prefer=getattr(args, "prefer", "h1") or "h1",
+        paths=getattr(args, "paths", None),
+        dry_run=bool(getattr(args, "dry_run", False)),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        if not res.items:
+            print("修理対象の conflict なし")
+        for it in res.items:
+            mark = "ok" if it.fixed else "ng"
+            print(f"[{mark}] {it.path}: {it.detail}")
+    return 0 if all(i.fixed for i in res.items) or not res.items else 1
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """環境ヘルスチェック（UX W1 / P3）。"""
+    from .doctor import format_human, run_doctor
+
+    global_path = Path(args.config) if getattr(args, "config", None) else None
+    report = run_doctor(global_path=global_path)
+    if getattr(args, "json", False):
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_human(report), end="")
+    return 0 if report.ok else 1
+
+
+def cmd_notify(args: argparse.Namespace) -> int:
+    """OS ローカル通知（UX W4 / P53）。"""
+    from .notify import notify_overdue
+
+    cfg = _build_config(args)
+    res = notify_overdue(cfg, dry_run=bool(getattr(args, "dry_run", False)))
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(f"[{res.backend}] {res.title}: {res.body}")
+        if res.detail and not res.sent:
+            print(f"  detail: {res.detail}", file=sys.stderr)
+    return 0 if res.sent or getattr(args, "dry_run", False) else 1
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """初回ウィザード（UX W1 / P1）。"""
+    from .init_cmd import interactive_prompts, run_init
+
+    yes = bool(getattr(args, "yes", False))
+    root = getattr(args, "root", None)
+    lang = getattr(args, "lang", None) or "ja"
+    agent = getattr(args, "agent", None) or "claude"
+    if not yes and root is None and not getattr(args, "force", False):
+        answers = interactive_prompts()
+        root = answers["root"]
+        lang = answers["lang"]
+        agent = answers["agent"]
+    global_path = Path(args.config) if getattr(args, "config", None) else None
+    result = run_init(
+        yes=yes,
+        root=root,
+        lang=lang,
+        agent=agent,
+        global_path=global_path,
+        force=bool(getattr(args, "force", False)),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(result.message)
+        if result.created or not getattr(args, "force", False):
+            print("次の一手:")
+            for s in result.next_steps:
+                print(f"  {s}")
+    return 0
+
+
+def cmd_undo(args: argparse.Namespace) -> int:
+    """直近 archive/promote バッチを復元（UX W1 / P12 CLI）。"""
+    from .services.archive import undo_last_batch
+
+    cfg = _build_config(args)
+    res = undo_last_batch(config=cfg)
+    payload = {
+        "batch_id": res.batch_id,
+        "restored": [
+            {"src": e.src, "dst": e.dst, "project": e.project, "state": e.state}
+            for e in res.restored
+        ],
+        "failed": list(res.failed),
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        if not res.batch_id:
+            print("Undo 対象がありません（既に復元済み、または batch_id 無し）")
+            return 1
+        print(f"batch {res.batch_id}: {len(res.restored)} 件を復元")
+        for e in res.restored:
+            print(f"  {e.dst} -> {e.src}")
+        if res.failed:
+            print(f"失敗 {len(res.failed)} 件:")
+            for f in res.failed:
+                print(f"  {f}")
+    return 1 if res.failed and not res.restored else 0
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
@@ -494,6 +798,15 @@ def cmd_triage(args: argparse.Namespace) -> int:
             **payload,
             "items": [i for i in payload.get("items", []) if _has_tag(i)],
             "needs_fix": [i for i in payload.get("needs_fix", []) if _has_tag(i)],
+        }
+
+    head = int(getattr(args, "head", 0) or 0)
+    if head > 0:
+        payload = {
+            **payload,
+            "items": (payload.get("items") or [])[:head],
+            "needs_fix": (payload.get("needs_fix") or [])[:head],
+            "head": head,
         }
 
     show = getattr(args, "show", None) or []
@@ -1287,23 +1600,195 @@ def cmd_summary(args: argparse.Namespace) -> int:
 
 
 def cmd_new(args: argparse.Namespace) -> int:
-    from .templates_gen import new_doc
+    from .secrets_guard import format_warnings, scan_secrets
+    from .similar_guard import find_similar_open
+    from .templates_gen import new_doc, new_split_plans
 
     project_dir = Path(args.project_dir)
     # ``.docsweep.yaml`` の ``due:`` ブロックから default_offset_days を読む。
     # --no-due 指定時は空 dict を渡してオフセット計算自体を無効化する（嘘の日付防止）。
     cfg = load_config(project_dir=project_dir)
+    # 類似ガード（現役 open）
+    try:
+        sim = find_similar_open(cfg, topic=args.topic)
+        if sim:
+            print("類似の現役ドキュメントがあります（重複防止ヒント）:", file=sys.stderr)
+            for s in sim[:3]:
+                print(f"  - {s.get('state_label')} {s.get('path')}", file=sys.stderr)
+    except Exception:
+        pass
     offsets: dict[str, int] = {} if getattr(args, "no_due", False) else cfg.due_default_offset_days
+    split_n = int(getattr(args, "split", 0) or 0)
+    if split_n > 0:
+        if args.type != "plan":
+            print("--split は plan のみ対応です", file=sys.stderr)
+            return 2
+        created = new_split_plans(
+            args.topic,
+            n=split_n,
+            project_dir=project_dir,
+            title=args.title,
+            due=getattr(args, "due", None),
+            offset_days=offsets,
+        )
+        for d in created:
+            print(f"生成しました: {d.path}" + (f" (due={d.due})" if d.due else ""))
+        return 0
     doc = new_doc(
         args.type, args.topic,
         project_dir=project_dir, title=args.title,
         due=getattr(args, "due", None),
         offset_days=offsets,
     )
+    try:
+        body = doc.path.read_text(encoding="utf-8")
+        for w in format_warnings(scan_secrets(body)):
+            print(f"warn: {w}", file=sys.stderr)
+    except Exception:
+        pass
     if doc.due:
         print(f"生成しました: {doc.path} (due={doc.due})")
     else:
         print(f"生成しました: {doc.path}")
+    return 0
+
+
+def cmd_project(args: argparse.Namespace) -> int:
+    """project list|enable|disable（UX W2 / P39）。"""
+    from .excluded import disable_project, enable_project, list_known_projects, load_excluded
+
+    sub = getattr(args, "project_cmd", None)
+    if sub == "list":
+        cfg = _build_config(args)
+        rows = list_known_projects(cfg)
+        if getattr(args, "json", False):
+            print(json.dumps({"projects": rows, "excluded": sorted(load_excluded())},
+                             ensure_ascii=False, indent=2))
+        else:
+            for r in rows:
+                mark = "ON " if r["enabled"] else "OFF"
+                print(f"[{mark}] {r['name']:<24} open≈{r['open_approx']:<4} {r['root']}")
+        return 0
+    if sub == "enable":
+        s = enable_project(args.root)
+        payload = {"enabled": True, "root": args.root, "excluded": sorted(s)}
+        print(json.dumps(payload, ensure_ascii=False, indent=2) if getattr(args, "json", False)
+              else f"enabled: {args.root}")
+        return 0
+    if sub == "disable":
+        s = disable_project(args.root)
+        payload = {"enabled": False, "root": args.root, "excluded": sorted(s)}
+        print(json.dumps(payload, ensure_ascii=False, indent=2) if getattr(args, "json", False)
+              else f"disabled: {args.root}")
+        return 0
+    print("usage: docsweep project list|enable|disable", file=sys.stderr)
+    return 2
+
+
+def cmd_history(args: argparse.Namespace) -> int:
+    from .history import read_history
+
+    cfg = _build_config(args)
+    res = read_history(cfg, limit=int(getattr(args, "limit", 30) or 30))
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+    if not res.entries:
+        print("履歴なし")
+        return 0
+    for e in res.entries:
+        print(f"{e.ts}  {e.op:<8}  {e.project}  {e.src} -> {e.dst}")
+    return 0
+
+
+def cmd_cookbook(args: argparse.Namespace) -> int:
+    from .cookbook import get_scenario, list_scenarios, render_cookbook
+
+    name = getattr(args, "scenario", None)
+    if getattr(args, "json", False):
+        if name:
+            items = get_scenario(name) or []
+            print(json.dumps({"scenario": name, "items": items}, ensure_ascii=False, indent=2))
+        else:
+            print(json.dumps({"scenarios": list_scenarios()}, ensure_ascii=False, indent=2))
+        return 0
+    print(render_cookbook(name), end="")
+    return 0
+
+
+def cmd_memory(args: argparse.Namespace) -> int:
+    from .memory_scan import scan_memory
+
+    res = scan_memory(
+        paths=getattr(args, "paths", None),
+        stale_days=int(getattr(args, "stale_days", 90) or 90),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+    print(f"memory scan: {len(res.files)} files (stale≥{res.stale_over_days}d: "
+          f"{sum(1 for f in res.files if f.age_days >= res.stale_over_days)})")
+    for f in res.files[:30]:
+        mark = "STALE" if f.age_days >= res.stale_over_days else "ok"
+        print(f"  [{mark}] {f.age_days:>4}d  {f.path}")
+    return 0
+
+
+def cmd_ics(args: argparse.Namespace) -> int:
+    from .ics_export import write_ics
+
+    cfg = _build_config(args)
+    out = write_ics(cfg, Path(getattr(args, "out", None) or "docsweep-due.ics"))
+    print(f"wrote {out}")
+    return 0
+
+
+def cmd_review_week(args: argparse.Namespace) -> int:
+    """週次レビューサマリ（UX W3 / P19 MVP）。"""
+    from .auto_triage import suggest_transitions
+    from .engine import scan_records
+    from .models import Flag
+
+    cfg = _build_config(args)
+    records = scan_records(cfg)
+    watching = [r for r in records if r.state == "watching"]
+    old_planned = [
+        r for r in records
+        if r.state == "planned" and (r.age_days or 0) >= 90
+    ]
+    conflict = [r for r in records if Flag.CONFLICT.value in (r.flags or [])]
+    suggestions = suggest_transitions(cfg).suggestions
+    payload = {
+        "watching_count": len(watching),
+        "watching": [
+            {"path": r.path, "title": r.title, "age_days": r.age_days}
+            for r in watching[:20]
+        ],
+        "old_planned_count": len(old_planned),
+        "old_planned": [
+            {"path": r.path, "title": r.title, "age_days": r.age_days}
+            for r in old_planned[:20]
+        ],
+        "conflict_count": len(conflict),
+        "suggestion_count": len(suggestions),
+        "suggestions": [s.to_dict() for s in suggestions[:20]],
+        "hints": [
+            "docsweep project list  # 不要プロジェクトを disable",
+            "docsweep fix-conflict --list",
+            "docsweep auto-triage --suggest",
+            "docsweep promote --dry-run",
+        ],
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"review-week")
+        print(f"  watching: {payload['watching_count']}")
+        print(f"  planned≥90d: {payload['old_planned_count']}")
+        print(f"  conflict: {payload['conflict_count']}")
+        print(f"  auto-triage suggestions: {payload['suggestion_count']}")
+        for h in payload["hints"]:
+            print(f"  next: {h}")
     return 0
 
 
@@ -1412,11 +1897,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     # トークンはコマンドライン引数（他プロセスから見える）より環境変数を推奨。
     token = args.token or os.environ.get("DOCSWEEP_TOKEN") or secrets.token_urlsafe(16)
-    app = create_app(cfg, token=token)
+    app = create_app(cfg, token=token, read_only=bool(getattr(args, "read_only", False)))
     url = f"http://127.0.0.1:{args.port}/?token={token}"
     print("=" * 60)
     print("  ブラウザでこのアドレスを開いてください（自動で開きます）:")
     print(f"  {url}")
+    if getattr(args, "read_only", False):
+        print("  [read-only] 書き込み API は 403 です")
     print("=" * 60)
     print("（Ctrl+C または画面右上の ⏻ で停止）")
     if not args.no_browser:
@@ -1680,6 +2167,7 @@ def cmd_find(args: argparse.Namespace) -> int:
         states=list(getattr(args, "states", None) or []),
         review_statuses=list(getattr(args, "review_statuses", None) or []),
         project=getattr(args, "project", None),
+        q=getattr(args, "q", None),
     )
     records = find_records(cfg, filters)
     if getattr(args, "json", False):
@@ -1731,6 +2219,8 @@ _SUBCOMMANDS = {
     "report", "summary", "new", "review", "inject", "eject", "list", "mcp",
     "migrate-frontmatter", "fix-related", "show", "stale", "context", "claim",
     "config", "timeline", "find", "completion", "export", "activity",
+    "doctor", "init", "undo", "day", "intent", "fix-conflict", "notify",
+    "project", "review-week", "history", "cookbook", "memory", "ics",
 }
 
 _DISPATCH = {
@@ -1757,6 +2247,19 @@ _DISPATCH = {
     "completion": cmd_completion,
     "export": cmd_export,
     "activity": cmd_activity,
+    "doctor": cmd_doctor,
+    "init": cmd_init,
+    "undo": cmd_undo,
+    "day": cmd_day,
+    "intent": cmd_intent,
+    "fix-conflict": cmd_fix_conflict,
+    "notify": cmd_notify,
+    "project": cmd_project,
+    "review-week": cmd_review_week,
+    "history": cmd_history,
+    "cookbook": cmd_cookbook,
+    "memory": cmd_memory,
+    "ics": cmd_ics,
 }
 
 
@@ -1773,7 +2276,22 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 1
-    return handler(args)
+    code = handler(args)
+    # 次の一手ヒント（うるさくしない・失敗しても握りつぶす）
+    try:
+        from .hints import suggest_after_command
+
+        cfg = None
+        try:
+            cfg = _build_config(args)
+        except Exception:
+            cfg = None
+        hint = suggest_after_command(args.command, cfg)
+        if hint and not getattr(args, "json", False):
+            print(hint, file=sys.stderr)
+    except Exception:
+        pass
+    return code
 
 
 if __name__ == "__main__":

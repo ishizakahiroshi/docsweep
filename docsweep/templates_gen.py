@@ -176,3 +176,66 @@ def new_doc(
     body = _BUILDERS[doc_type](title or topic, due=resolved_due)
     path.write_text(body, encoding="utf-8")
     return NewDoc(path=path, created=True, due=resolved_due)
+
+
+def _patch_related(path: Path, related_names: list[str]) -> None:
+    """frontmatter related: を差し替え（親/子スキャフォールド用・最小実装）。"""
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        return
+    end = text.find("\n---", 3)
+    if end < 0:
+        return
+    fm = text[4:end]
+    body = text[end + 4:]
+    lines = fm.splitlines()
+    out_lines: list[str] = []
+    replaced = False
+    items = ", ".join(related_names)
+    for line in lines:
+        if line.strip().startswith("related:"):
+            out_lines.append(f"related: [{items}]")
+            replaced = True
+        else:
+            out_lines.append(line)
+    if not replaced:
+        out_lines.append(f"related: [{items}]")
+    path.write_text("---\n" + "\n".join(out_lines) + "\n---" + body, encoding="utf-8")
+
+
+def new_split_plans(
+    topic: str,
+    *,
+    n: int,
+    project_dir: Path,
+    title: str | None = None,
+    due: str | None = None,
+    offset_days: dict[str, int] | None = None,
+) -> list[NewDoc]:
+    """親 plan + 子 N 本を生成し related 双方向を結ぶ（UX W3 / P26）。"""
+    if n < 1 or n > 20:
+        raise ValueError("--split は 1〜20")
+    parent_title = title or topic
+    parent = new_doc(
+        "plan", topic,
+        project_dir=project_dir, title=parent_title,
+        due=due, offset_days=offset_days,
+    )
+    children: list[NewDoc] = []
+    child_names: list[str] = []
+    for i in range(1, n + 1):
+        child_topic = f"{topic}-c{i}"
+        child = new_doc(
+            "plan", child_topic,
+            project_dir=project_dir,
+            title=f"{parent_title} C{i}",
+            due=due, offset_days=offset_days,
+        )
+        children.append(child)
+        child_names.append(child.path.name)
+    # parent related → children
+    _patch_related(parent.path, child_names)
+    # each child related → parent
+    for ch in children:
+        _patch_related(ch.path, [parent.path.name])
+    return [parent, *children]
