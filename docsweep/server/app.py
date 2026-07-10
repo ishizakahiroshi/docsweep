@@ -70,9 +70,15 @@ def _find_doc(result: ScanResult, path: str):
     return next((d for d in result.docs if d.record.path == target), None)
 
 
-def create_app(config: Config, token: str | None = None) -> FastAPI:
+def create_app(
+    config: Config,
+    token: str | None = None,
+    *,
+    read_only: bool = False,
+) -> FastAPI:
     token = token or secrets.token_urlsafe(16)
     state = ServerState(config, token)
+    state.read_only = read_only  # type: ignore[attr-defined]
 
     from contextlib import asynccontextmanager
 
@@ -94,6 +100,20 @@ def create_app(config: Config, token: str | None = None) -> FastAPI:
 
     app = FastAPI(title="docsweep", docs_url=None, redoc_url=None, lifespan=_lifespan)
     app.state.docsweep = state
+
+    @app.middleware("http")
+    async def _read_only_guard(request: Request, call_next):
+        """serve --read-only 時は POST/PUT/PATCH/DELETE を 403（UX W4 / P58）。"""
+        if getattr(state, "read_only", False) and request.method in (
+            "POST", "PUT", "PATCH", "DELETE",
+        ):
+            # shutdown だけは許可（デモ終了）
+            if request.url.path.rstrip("/") != "/api/shutdown":
+                return JSONResponse(
+                    {"detail": "server is read-only"},
+                    status_code=403,
+                )
+        return await call_next(request)
 
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):

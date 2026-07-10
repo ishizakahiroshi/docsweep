@@ -27,6 +27,7 @@ class FindFilters:
     states: list[str] = field(default_factory=list)  # state key またはラベル文字列
     review_statuses: list[str] = field(default_factory=list)  # draft / review / published
     project: str | None = None
+    q: str | None = None  # 全文（title/summary/body 部分一致・大小無視）UX W2 / P44 MVP
 
     def is_empty(self) -> bool:
         return not (
@@ -36,6 +37,7 @@ class FindFilters:
             or self.states
             or self.review_statuses
             or self.project
+            or self.q
         )
 
 
@@ -98,6 +100,25 @@ def _match_project(rec: FileRecord, wanted: str | None) -> bool:
     return rec.project == wanted
 
 
+def _match_q(rec: FileRecord, q: str | None) -> bool:
+    """title / summary / ファイル本文に部分一致（P44 MVP・SQLite FTS 前の簡易版）。"""
+    if not q:
+        return True
+    needle = q.strip().lower()
+    if not needle:
+        return True
+    hay = " ".join(
+        filter(None, [rec.title or "", rec.summary or "", Path(rec.path).name])
+    ).lower()
+    if needle in hay:
+        return True
+    try:
+        body = Path(rec.path).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return needle in body.lower()
+
+
 def find_records(config: Config, filters: FindFilters) -> list[FileRecord]:
     """AND クエリで FileRecord を絞り込む（経過日数の降順 = 古い順で返す）。"""
     from .engine import scan_records
@@ -116,6 +137,8 @@ def find_records(config: Config, filters: FindFilters) -> list[FileRecord]:
         if not _match_review_status(rec, filters.review_statuses):
             continue
         if not _match_state(rec, filters.states, config):
+            continue
+        if not _match_q(rec, filters.q):
             continue
         out.append(rec)
     out.sort(key=lambda r: r.age_days, reverse=True)

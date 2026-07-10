@@ -94,6 +94,13 @@ def run_scan(config: Config) -> ScanResult:
     docs = scan(config)
     for d in docs:
         classify(d, config)
+    # UX W2 / P39: グローバル除外リスト
+    try:
+        from .excluded import filter_docs_by_excluded
+
+        docs = filter_docs_by_excluded(docs)
+    except Exception:
+        pass
     return ScanResult(docs=docs)
 
 
@@ -109,9 +116,11 @@ def scan_records(config: Config, *, project: str | None = None) -> list[FileReco
     """
     try:
         from .index import load_records_from_index
+        from .excluded import filter_records_by_excluded
 
         recs = load_records_from_index(config, project_filter=project)
         if recs is not None:
+            recs = filter_records_by_excluded(recs)
             return recs
     except Exception:
         # 索引が壊れていてもユーザー体験は止めない。run_scan へ落とす。

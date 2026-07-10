@@ -92,6 +92,28 @@ MESSAGES: dict[str, dict[str, str]] = {
     "sec_future": {"ja": "未来期日", "en": "Future due"},
     "sec_no_due": {"ja": "期日未設定", "en": "No due date"},
     "sec_archivable": {"ja": "archive 候補（[完了]/[廃止]）", "en": "Archive candidates ([Done]/[Discarded])"},
+    "empty_overdue": {
+        "ja": "やり忘れは 0 件。今日はきれい。上の「今日の 1 個」へ。",
+        "en": "No overdue items. Clear day — open Today's pick above.",
+    },
+    "empty_today": {
+        "ja": "今日 due のカードはなし。ピンの 1 個から始めてもよい。",
+        "en": "Nothing due today. Start from the pinned pick if you like.",
+    },
+    "empty_active": {
+        "ja": "実行中は空。着手したらここに並びます。",
+        "en": "Nothing in progress yet. Cards appear here when you start work.",
+    },
+    "today_pick_aria": {"ja": "今日の 1 個", "en": "Today's pick"},
+    "today_pick_label": {"ja": "今日の 1 個", "en": "Today's pick"},
+    "today_pick_open": {"ja": "編集を開く", "en": "Open editor"},
+    "work_pack_copy": {"ja": "AI に渡す", "en": "Copy for AI"},
+    "work_pack_title": {
+        "ja": "path / 本文 / related を context としてクリップボードへ",
+        "en": "Copy path / body / related as context to clipboard",
+    },
+    "work_pack_ok": {"ja": "クリップボードへコピーしました", "en": "Copied to clipboard"},
+    "work_pack_fail": {"ja": "コピーに失敗しました", "en": "Copy failed"},
 
     # ---- _card.html ----
     "card_check_title": {"ja": "選択（一括操作対象）", "en": "Select (target of bulk actions)"},
@@ -195,6 +217,24 @@ MESSAGES: dict[str, dict[str, str]] = {
     "settings_col_project": {"ja": "プロジェクト", "en": "Project"},
     "settings_col_state": {"ja": "状態", "en": "State"},
     "settings_col_actions": {"ja": "操作", "en": "Actions"},
+    "settings_toggle_project": {
+        "ja": "看板・scan から除外 / 復帰",
+        "en": "Exclude from board/scan or re-enable",
+    },
+    "settings_project_on": {"ja": "ON", "en": "ON"},
+    "settings_project_off": {"ja": "OFF", "en": "OFF"},
+    "profile_switch_title": {
+        "ja": "プロファイル切替（config profiles）",
+        "en": "Switch profile (config profiles)",
+    },
+    "suggestions_btn": {"ja": "提案", "en": "Suggestions"},
+    "suggestions_title": {
+        "ja": "auto-triage 提案トレイ",
+        "en": "auto-triage suggestion tray",
+    },
+    "suggestions_empty": {"ja": "提案はありません", "en": "No suggestions"},
+    "suggestions_accept": {"ja": "採用", "en": "Accept"},
+    "suggestions_skip": {"ja": "後で", "en": "Later"},
     "settings_no_projects": {
         "ja": "スキャン対象にプロジェクトがありません。",
         "en": "No projects found in the scan roots.",

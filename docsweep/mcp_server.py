@@ -107,6 +107,53 @@ def build_server(config: Config):
         return [r.to_dict() for r in records]
 
     @mcp.tool()
+    def list_projects() -> dict:
+        """プロジェクト一覧と有効/除外状態（UX W2 / P39）。"""
+        from .excluded import list_known_projects, load_excluded
+
+        return {
+            "projects": list_known_projects(config),
+            "excluded": sorted(load_excluded()),
+        }
+
+    @mcp.tool()
+    def set_project_enabled(root: str, enabled: bool = True) -> dict:
+        """プロジェクトを看板/scan から除外（enabled=False）または復帰。"""
+        from .excluded import disable_project, enable_project, is_excluded
+
+        if enabled:
+            enable_project(root)
+        else:
+            disable_project(root)
+        return {"root": root, "enabled": not is_excluded(root)}
+
+    @mcp.tool()
+    def route_intent(text: str) -> dict:
+        """自然言語の意図を docsweep サブコマンドへマップする（UX W2 / P28）。
+
+        典型: 「昨日何やった」「今日の続き」「看板開いて」「undo」
+        """
+        from .intent import route_intent as _route
+
+        return _route(text).to_dict()
+
+    @mcp.tool()
+    def doctor() -> dict:
+        """環境ヘルスチェック（config / roots / index / inject）。CLI ``docsweep doctor`` と同一。"""
+        from .doctor import run_doctor
+
+        return run_doctor(config=config).to_dict()
+
+    @mcp.tool()
+    def day(phase: str = "open") -> dict:
+        """1 日の開閉。phase は open（朝）または close（夜）。"""
+        from .day import day_close, day_open
+
+        if phase == "close":
+            return day_close(config).to_dict()
+        return day_open(config).to_dict()
+
+    @mcp.tool()
     def brief(project: str | None = None, all_projects: bool = False) -> dict:
         """朝の入口 = 今日 1 個だけやろうを断定する。CLI ``docsweep brief`` と同一契約。
 

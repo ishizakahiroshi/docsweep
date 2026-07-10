@@ -23,11 +23,34 @@
     <button type="button" class="ghost search-clear" id="search-clear" hidden data-action="search-clear" title="{{ T.search_clear_title }}">×</button>
   </div>
   <div class="topbar-health" title="{{ T.health_title.format(n=data.health|length) }}">
+    {% if data.index_freshness %}
+      <span class="health-chip index-freshness index-{{ data.index_freshness.level }}"
+            title="{{ data.index_freshness.path }}">
+        {{ data.index_freshness.label }}
+      </span>
+    {% endif %}
     {% for h in data.health %}
-      <span class="health-chip">📊 {{ h.project }} <b>{{ h.oldest }}d</b></span>
+      <span class="health-chip">{{ h.project }} <b>{{ h.oldest }}d</b></span>
     {% endfor %}
   </div>
   <div class="topbar-actions">
+    {% if data.profiles %}
+    <label class="profile-switch" title="{{ T.profile_switch_title }}">
+      <select id="profile-select" data-action="set-profile" aria-label="{{ T.profile_switch_title }}">
+        <option value="all" {% if data.profile == 'all' %}selected{% endif %}>all</option>
+        {% for pr in data.profiles %}
+        <option value="{{ pr }}" {% if data.profile == pr %}selected{% endif %}>{{ pr }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    {% if data.suggestion_count %}
+    <button type="button" class="ghost" data-action="open-suggestions"
+            title="{{ T.suggestions_title }}">{{ T.suggestions_btn }} ({{ data.suggestion_count }})</button>
+    {% else %}
+    <button type="button" class="ghost" data-action="open-suggestions"
+            title="{{ T.suggestions_title }}">{{ T.suggestions_btn }}</button>
+    {% endif %}
     <button type="button" class="ghost" data-action="reload-board">{{ T.reload_board }}</button>
     <button type="button" id="shutdown-btn" data-action="shutdown-server" title="{{ T.shutdown_title }}">⏻</button>
     <button type="button" id="settings-btn" data-action="open-settings" title="{{ T.settings_btn_title }}">
@@ -94,6 +117,15 @@
       <button value="cancel" class="ghost">{{ T.cancel }}</button>
       <button value="ok" class="primary">{{ T.execute }}</button>
     </menu>
+  </form>
+</dialog>
+
+<dialog id="suggestions-dialog" class="settings-dialog">
+  <form method="dialog" class="settings-form">
+    <button value="close" class="settings-close" title="{{ T.close_esc }}" aria-label="{{ T.close }}">×</button>
+    <div id="suggestions-body" class="settings-body">
+      <p class="settings-note">{{ T.loading }}</p>
+    </div>
   </form>
 </dialog>
 
