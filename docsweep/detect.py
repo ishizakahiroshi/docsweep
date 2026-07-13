@@ -19,6 +19,9 @@ _H1_RE = re.compile(r"^#\s+(.*)$", re.MULTILINE)
 _H1_LABEL_RE = re.compile(r"^\[([^\]]+)\]\s*(.*)$")
 # fenced code block の開始/終了マーカー（``` か ~~~ が 3 個以上・先頭インデント許容）。
 _FENCE_TOKEN_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+# HTML コメント形式のメタ: <!--docsweep-meta ... -->（内側 YAML 本体を group(1) で取る）。
+# md の frontmatter を持てない生成物（design-html / review-sheet / mockup 等）用。
+_HTML_META_RE = re.compile(r"<!--\s*docsweep-meta\s*\n(.*?)\n\s*-->", re.DOTALL)
 
 
 def mask_code_fences(text: str) -> str:
@@ -65,6 +68,9 @@ class Detection:
     frontmatter_type: str | None = None  # frontmatter の type 値（plan/bugfix/pending 等）
     type_conflict: bool = False  # frontmatter type と filename 由来 type が食い違う
     frontmatter_warnings: list[str] = field(default_factory=list)  # warn 文字列の生コピー
+    # sweep 挙動の指示。既定は「関連リリース or 親 plan が archive されたら道連れ」= None 相当。
+    # ``never_archive`` を指定すると sweep/promote の archive 移送対象から外れる（可視化はする）。
+    docsweep_policy: str | None = None
 
 
 def _read_head(text: str, limit: int = 8000) -> str:
@@ -72,17 +78,31 @@ def _read_head(text: str, limit: int = 8000) -> str:
 
 
 def _parse_frontmatter_dict(text: str) -> dict | None:
-    """先頭の YAML frontmatter を dict として返す（無ければ None）。
+    """先頭の YAML frontmatter または HTML の ``<!--docsweep-meta ... -->`` を dict で返す。
 
-    既存の ``_detect_frontmatter`` / ``_extract_due`` は各々 yaml.safe_load を独立に呼ぶが、
-    OKF 拡張フィールド（type/tags/owner/review_status/related/last_reviewed）の取り込みは
-    1 回パースしたものを共有する方が素直なので、共有ヘルパとして導入する。
+    - .md 等の frontmatter を持てるファイル: 先頭 ``---\\n...\\n---`` を YAML として読む
+    - .html 等 frontmatter を持てないファイル: 先頭近くの ``<!--docsweep-meta\\n...\\n-->`` を
+      YAML として読む（design-html / review-sheet / mockup / recap-html 等の生成物向け）
+
+    どちらのブロックも無ければ ``None``。既存の ``_detect_frontmatter`` / ``_extract_due`` は
+    各々 yaml.safe_load を独立に呼ぶが、OKF 拡張フィールド（type/tags/owner/review_status/
+    related/last_reviewed/docsweep_policy）の取り込みは 1 回パースしたものを共有する方が素直
+    なので、共有ヘルパとして導入する。
     """
+    yaml_body: str | None = None
     m = _FRONTMATTER_RE.match(text)
-    if not m:
+    if m:
+        yaml_body = m.group(1)
+    else:
+        # HTML の docsweep-meta コメントは先頭 4KB 以内に置く運用（生成テンプレ側で保証）。
+        head = text[:4000]
+        hm = _HTML_META_RE.search(head)
+        if hm:
+            yaml_body = hm.group(1)
+    if yaml_body is None:
         return None
     try:
-        data = yaml.safe_load(m.group(1)) or {}
+        data = yaml.safe_load(yaml_body) or {}
     except yaml.YAMLError:
         return None
     if not isinstance(data, dict):
@@ -126,16 +146,26 @@ def _coerce_date_str(raw: object) -> str | None:
     return str(raw).strip() or None
 
 
+_ALLOWED_POLICIES: frozenset[str] = frozenset({"archive_with_release", "never_archive"})
+
+
 def _extract_okf_fields(data: dict | None) -> dict:
     """frontmatter dict から OKF 拡張フィールドを取り出す（無いキーは既定値）。"""
     if not data:
         return {
             "tags": [], "owner": None, "review_status": None,
             "related": [], "last_reviewed": None, "frontmatter_type": None,
+            "docsweep_policy": None,
         }
     owner_raw = data.get("owner")
     review_raw = data.get("review_status")
     type_raw = data.get("type")
+    policy_raw = data.get("docsweep_policy")
+    policy: str | None = None
+    if policy_raw is not None:
+        s = str(policy_raw).strip()
+        if s in _ALLOWED_POLICIES:
+            policy = s
     return {
         "tags": _coerce_str_list(data.get("tags")),
         "owner": (str(owner_raw).strip() or None) if owner_raw is not None else None,
@@ -143,18 +173,13 @@ def _extract_okf_fields(data: dict | None) -> dict:
         "related": _coerce_str_list(data.get("related")),
         "last_reviewed": _coerce_date_str(data.get("last_reviewed")),
         "frontmatter_type": (str(type_raw).strip() or None) if type_raw is not None else None,
+        "docsweep_policy": policy,
     }
 
 
 def _detect_frontmatter(text: str, sm: StateModel) -> str | None:
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        return None
-    try:
-        data = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError:
-        return None
-    if not isinstance(data, dict):
+    data = _parse_frontmatter_dict(text)
+    if not data:
         return None
     status = data.get("status")
     if status is None:
@@ -171,14 +196,8 @@ def _extract_due(text: str) -> tuple[str | None, bool]:
         due_str  — "YYYY-MM-DD" 文字列（due フィールドが無い場合は None）
         parse_error — due フィールドは存在するが YYYY-MM-DD に変換できない場合 True
     """
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        return None, False
-    try:
-        data = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError:
-        return None, False
-    if not isinstance(data, dict) or "due" not in data:
+    data = _parse_frontmatter_dict(text)
+    if not data or "due" not in data:
         return None, False
     raw = data["due"]
     if raw is None:
@@ -296,6 +315,7 @@ def detect_status(
         frontmatter_type=okf["frontmatter_type"],
         type_conflict=type_conflict,
         frontmatter_warnings=warnings,
+        docsweep_policy=okf["docsweep_policy"],
     )
 
 

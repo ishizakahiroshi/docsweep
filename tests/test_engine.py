@@ -43,6 +43,100 @@ def test_scan_finds_docs_excludes_archive(workspace: Path):
     assert "plan_old.md" not in names  # archive は除外
 
 
+def test_html_docsweep_type_prefix_is_scanned(tmp_path: Path):
+    """命名規約 mockup_*.html / review_*.html / design_*.html / incident_*.html は type 判定される。"""
+    root = tmp_path / "dev"
+    html = (
+        "<!doctype html>\n"
+        "<!--docsweep-meta\n"
+        "status: planned\n"
+        "tags: [ui]\n"
+        "owner: bob\n"
+        "related: [plan_x.md]\n"
+        "docsweep_policy: archive_with_release\n"
+        "-->\n"
+        "<html><body>mock</body></html>\n"
+    )
+    _write(root / "proj" / "docs" / "local" / "mockup_admin_2026-07-13.html", html)
+    # 命名規約に合わない HTML はスキャン対象外（LP・README・その他資料を巻き込まない）
+    _write(root / "proj" / "docs" / "local" / "index.html",
+           "<!doctype html><html><body>普通のページ</body></html>")
+    cfg = _cfg(root)
+    records = run_scan(cfg).records
+    names = {Path(r.path).name for r in records}
+    assert "mockup_admin_2026-07-13.html" in names
+    assert "index.html" not in names  # 命名規約外
+    rec = next(r for r in records if Path(r.path).name == "mockup_admin_2026-07-13.html")
+    assert rec.type == "mockup"
+    assert rec.state == "planned"
+    assert rec.tags == ["ui"]
+    assert rec.owner == "bob"
+    assert rec.related == ["plan_x.md"]
+    assert rec.docsweep_policy == "archive_with_release"
+
+
+def test_html_review_prefix_maps_to_review_sheet_type(tmp_path: Path):
+    """review_*.html は type='review-sheet' に解決される。"""
+    root = tmp_path / "dev"
+    html = (
+        "<!doctype html>\n"
+        "<!--docsweep-meta\nstatus: done\n-->\n<html></html>\n"
+    )
+    _write(root / "proj" / "docs" / "local" / "review_kanban_2026-07-13.html", html)
+    cfg = _cfg(root)
+    records = run_scan(cfg).records
+    rec = next(r for r in records if r.path.endswith("review_kanban_2026-07-13.html"))
+    assert rec.type == "review-sheet"
+    assert rec.state == "done"
+
+
+def test_html_with_naming_but_no_meta_still_scanned(tmp_path: Path):
+    """命名規約に合致すれば meta 無しでも拾う（needs_fix として可視化・後で追記させる）。"""
+    root = tmp_path / "dev"
+    _write(root / "proj" / "docs" / "local" / "mockup_wip_2026-07-13.html",
+           "<!doctype html><html><body>meta 未追加のモック</body></html>")
+    cfg = _cfg(root)
+    names = {Path(r.path).name for r in run_scan(cfg).records}
+    assert "mockup_wip_2026-07-13.html" in names
+
+
+def test_never_archive_policy_blocks_auto_sweep(tmp_path: Path):
+    """docsweep_policy: never_archive の md は auto_sweep で移送されない（C6）。"""
+    root = tmp_path / "dev"
+    _write(
+        root / "proj" / "docs" / "local" / "plan_keep.md",
+        "---\ntype: plan\nstatus: done\ndocsweep_policy: never_archive\n---\n"
+        "# [完了] 記録として残す計画\n\n## 概要\n\n重要\n",
+    )
+    _write(
+        root / "proj" / "docs" / "local" / "plan_move.md",
+        "# [完了] 通常の完了計画\n\n## 概要\n\nOK\n",
+    )
+    cfg = _cfg(root)
+    moved = auto_sweep(cfg, dry_run=False)
+    moved_names = {Path(m.src).name for m in moved}
+    assert "plan_move.md" in moved_names
+    assert "plan_keep.md" not in moved_names  # never_archive で守られる
+    # 実ファイルも移動していないこと
+    assert (root / "proj" / "docs" / "local" / "plan_keep.md").exists()
+
+
+def test_never_archive_policy_blocks_apply_promote(tmp_path: Path):
+    """apply_action(discard/promote) も never_archive を尊重して ValueError を投げる（C6）。"""
+    from docsweep.engine import run_scan
+    root = tmp_path / "dev"
+    _write(
+        root / "proj" / "docs" / "local" / "plan_keep.md",
+        "---\ntype: plan\nstatus: watching\ndocsweep_policy: never_archive\n---\n"
+        "# [様子見] 手動 promote でも守る\n\n## 概要\n\nx\n",
+    )
+    cfg = _cfg(root)
+    docs = run_scan(cfg).docs
+    doc = next(d for d in docs if d.record.path.endswith("plan_keep.md"))
+    with pytest.raises(ValueError, match="never_archive"):
+        apply_action(doc, "promote", cfg, dry_run=True)
+
+
 def test_non_type_md_is_skipped(tmp_path: Path):
     """plan_/bugfix_/pending_ に一致しない .md（LICENSE/README 等）は拾わない。"""
     root = tmp_path / "dev"
