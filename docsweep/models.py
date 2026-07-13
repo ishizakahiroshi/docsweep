@@ -64,6 +64,11 @@ class FileRecord:
     review_status: str | None = field(default=None)
     related: list[str] = field(default_factory=list)
     last_reviewed: str | None = field(default=None)
+    # sweep 挙動の指示。既定 None = ``archive_with_release`` 相当（通常の archive 対象）。
+    # ``never_archive`` を指定するとリリース sweep / promote / apply_action(discard/promote)
+    # で archive 移送されない（可視化はする）。archive_with_release を明示指定した場合も
+    # None と同じ挙動（コード上は "既定" と同義）。
+    docsweep_policy: str | None = field(default=None)
 
     def to_dict(self) -> dict:
         return asdict(self)

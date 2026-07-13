@@ -96,15 +96,17 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
         dirnames[:] = pruned
 
         for fn in filenames:
-            if not fn.endswith(".md"):
+            # .md / .html を対象拡張子とする。type 判定は filename pattern（config.match_type）
+            # で行うため、命名規約に合わない .md/.html（LICENSE・README・LP 等）は自然に除外される。
+            if not (fn.endswith(".md") or fn.endswith(".html") or fn.endswith(".htm")):
                 continue
             fpath = cur / fn
             rel = fpath.relative_to(root).as_posix()
             if _is_ignored(rel, fn, base_patterns):
                 continue
             type_def = config.match_type(fn)
-            # 命名規約（plan_/bugfix_/pending_ 等の type パターン）に一致しない .md は
-            # docsweep の管理対象外（LICENSE・README・依存ライブラリの .md 等）。拾わない。
+            # 命名規約（plan_*.md / mockup_*.html 等の type パターン）に一致しないファイルは
+            # docsweep の管理対象外。拾わない（プロジェクトの LP や README を巻き込まない）。
             if type_def is None:
                 continue
             project_root = detect_project_root(cur, root, config.project_markers, proj_cache)
@@ -164,7 +166,7 @@ def _build_doc(
     det = detect_status(text=text, filename=fpath.name, sm=sm, _type=type_def)
 
     summary = None
-    if type_def is not None:
+    if type_def is not None and type_def.summary_section:
         summary = extract_summary(text, type_def.summary_section)
 
     stat = fpath.stat()
@@ -206,6 +208,7 @@ def _build_doc(
         review_status=det.review_status,
         related=list(det.related),
         last_reviewed=det.last_reviewed,
+        docsweep_policy=det.docsweep_policy,
     )
     return ScannedDoc(record=record, detection=det, type_def=type_def, text=text)
 

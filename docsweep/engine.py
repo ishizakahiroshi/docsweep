@@ -29,6 +29,12 @@ def classify(doc: ScannedDoc, config: Config) -> None:
     if det.conflict:
         flags.append(Flag.CONFLICT.value)
 
+    # never_archive は archive 対象状態でも移送されない（policy による保持）。
+    # archivable/auto_movable を False に落として下流の sweep/apply_action で自動的に外れる形にする。
+    if rec.docsweep_policy == "never_archive":
+        rec.archivable = False
+        rec.auto_movable = False
+
     # stale 判定（type 別 stale_days）。
     type_def = doc.type_def
     if type_def is not None and rec.age_days >= type_def.stale_days:
@@ -210,6 +216,9 @@ def promote_state(
             continue
         if project and rec.project != project:
             continue
+        # docsweep_policy: never_archive は昇格しても archive しない（policy による保持）。
+        if rec.docsweep_policy == "never_archive":
+            continue
         project_dir, root = _project_dir_for(doc, config)
         if not dry_run:
             if not relabel_file(Path(rec.path), f"[{target.label(config.lang)}]", config):
@@ -255,6 +264,12 @@ def apply_action(
         return MoveLogEntry(ts="", op="keep", project=rec.project, status=rec.state, src=rec.path, dst=None)
 
     if action in (Action.DISCARD.value, Action.PROMOTE.value):
+        # docsweep_policy: never_archive は明示 discard/promote でも archive しない。
+        # 手動 apply でも policy を尊重する（Web UI の三点メニューからでも同じ挙動）。
+        if rec.docsweep_policy == "never_archive":
+            raise ValueError(
+                f"docsweep_policy: never_archive のため archive 移送できません: {rec.path}"
+            )
         target_key = "discarded" if action == Action.DISCARD.value else "done"
         st = sm.by_key(target_key)
         if st and not dry_run:
