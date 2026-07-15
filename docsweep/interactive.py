@@ -304,36 +304,42 @@ def run_interactive_triage(
     pairs: list[tuple[ScannedDoc, str]] = []
     open_results: list[DecisionResult] = []
     quit_loop = False
-    for i, d in enumerate(docs, start=1):
-        if quit_loop:
-            break
-        wr(f"\n[{i}/{len(docs)}] {_format_item(d)}")
-        # `o` は副作用がその場で必要なので、判定ループの中で即時 dispatch する。
-        # 開いた後は同じ item で再度キーを読む（c/w/x/s/l/q のいずれかが来るまで）。
-        while True:
-            try:
-                raw = rd("  [c/w/x/s/l/o/q]? ")
-            except EOFError:
-                wr("（入力ストリーム終了 → q として終了）")
-                raw = "q"
-            key = parse_key(raw)
-            if key is None:
-                wr("  → 不明なキーです。c/w/x/s/l/o/q のいずれかを入力してください。")
-                continue
-            if key == KEY_QUIT:
-                wr("  → 中断しました（ここまでの判定だけ適用します）")
-                quit_loop = True
+    try:
+        for i, d in enumerate(docs, start=1):
+            if quit_loop:
                 break
-            if key == KEY_OPEN:
-                res = apply_decision(d, KEY_OPEN, config, dry_run=dry_run)
-                open_results.append(res)
-                if res.error:
-                    wr(f"  → 開けませんでした: {res.error}")
-                else:
-                    wr("  → 開きました。続けてキーを入力してください。")
-                continue
-            pairs.append((d, key))
-            break
+            wr(f"\n[{i}/{len(docs)}] {_format_item(d)}")
+            # `o` は副作用がその場で必要なので、判定ループの中で即時 dispatch する。
+            # 開いた後は同じ item で再度キーを読む（c/w/x/s/l/q のいずれかが来るまで）。
+            while True:
+                try:
+                    raw = rd("  [c/w/x/s/l/o/q]? ")
+                except EOFError:
+                    wr("（入力ストリーム終了 → q として終了）")
+                    raw = "q"
+                key = parse_key(raw)
+                if key is None:
+                    wr("  → 不明なキーです。c/w/x/s/l/o/q のいずれかを入力してください。")
+                    continue
+                if key == KEY_QUIT:
+                    wr("  → 中断しました（ここまでの判定だけ適用します）")
+                    quit_loop = True
+                    break
+                if key == KEY_OPEN:
+                    res = apply_decision(d, KEY_OPEN, config, dry_run=dry_run)
+                    open_results.append(res)
+                    if res.error:
+                        wr(f"  → 開けませんでした: {res.error}")
+                    else:
+                        wr("  → 開きました。続けてキーを入力してください。")
+                    continue
+                pairs.append((d, key))
+                break
+    except KeyboardInterrupt:
+        # 蓄積した pairs を捨てず、ここまでの判定を一括処理する（docstring の「終了時に
+        # 一括処理する」設計と整合させる）。EOFError は q 相当で扱っているが、Ctrl+C は
+        # 無捕捉だったため蓄積分が全消失していた。
+        wr("\n  → Ctrl+C を検知しました（ここまでの判定だけ適用します）")
 
     results = dispatch_decisions(pairs, config, dry_run=dry_run)
     wr("")

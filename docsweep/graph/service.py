@@ -50,8 +50,24 @@ class GraphData:
         }
 
 
-def _record_id(path: str) -> str:
-    return Path(path).name
+def _make_id_resolver(records) -> callable:
+    """basename が全体で一意なら basename、複数出現なら ``project/basename`` を返す関数を作る。
+
+    後方互換を保つため、衝突が無い通常ケースでは以前と同じ basename id を返す。
+    衝突があるケースだけ project 付き複合キーに切り替えて edge の混線を防ぐ。
+    """
+    counts: dict[str, int] = {}
+    for r in records:
+        name = Path(r.path).name
+        counts[name] = counts.get(name, 0) + 1
+
+    def _resolve(record) -> str:
+        name = Path(record.path).name
+        if counts.get(name, 0) > 1:
+            return f"{record.project}/{name}"
+        return name
+
+    return _resolve
 
 
 def build_graph(config: Config, *, project: str | None = None) -> GraphData:
@@ -65,9 +81,13 @@ def build_graph(config: Config, *, project: str | None = None) -> GraphData:
         ``GraphData``。
     """
     records = scan_records(config, project=project)
-    name_to_id: dict[str, str] = {}
+    resolve_id = _make_id_resolver(records)
+    # basename → 属する project の一覧（同名複数プロジェクトを許容）。
+    # related の参照は「同一プロジェクト内優先」で解決し、無ければ他プロジェクトの候補が
+    # 1 件だけならそれに解決、複数プロジェクト同名なら未解決として残す。
+    name_to_records: dict[str, list] = {}
     for r in records:
-        name_to_id[Path(r.path).name] = _record_id(r.path)
+        name_to_records.setdefault(Path(r.path).name, []).append(r)
 
     nodes: list[GraphNode] = []
     edges: list[GraphEdge] = []
@@ -75,22 +95,32 @@ def build_graph(config: Config, *, project: str | None = None) -> GraphData:
     outgoing_count: dict[str, int] = {}
 
     for r in records:
-        nid = _record_id(r.path)
+        nid = resolve_id(r)
         for ref in r.related or []:
             ref_name = Path(ref).name
-            target = name_to_id.get(ref_name)
-            resolved = target is not None
+            candidates = name_to_records.get(ref_name, [])
+            # 同一プロジェクト内優先、次いで単一候補、複数候補なら未解決として残す。
+            same_proj = [c for c in candidates if c.project == r.project]
+            if same_proj:
+                target_id = resolve_id(same_proj[0])
+                resolved = True
+            elif len(candidates) == 1:
+                target_id = resolve_id(candidates[0])
+                resolved = True
+            else:
+                target_id = ref_name
+                resolved = False
             edges.append(GraphEdge(
                 source=nid,
-                target=target or ref_name,
+                target=target_id,
                 resolved=resolved,
             ))
             if resolved:
-                referenced.add(target)
+                referenced.add(target_id)
             outgoing_count[nid] = outgoing_count.get(nid, 0) + 1
 
     for r in records:
-        nid = _record_id(r.path)
+        nid = resolve_id(r)
         is_isolated = (outgoing_count.get(nid, 0) == 0) and (nid not in referenced)
         nodes.append(GraphNode(
             id=nid,

@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 
 from ...capture import extract_drafts, save_drafts
 from ...capture.models import Draft
+from ...capture.service import CaptureScopeError
 
 _DIR = Path(__file__).parent.parent
 TEMPLATES = Jinja2Templates(directory=str(_DIR / "templates"))
@@ -105,7 +106,11 @@ def api_capture_save(
     else:
         target = Path.cwd() / "docs" / "local"
 
-    saved = save_drafts(drafts, config=state.config, target_dir=target)
+    try:
+        saved = save_drafts(drafts, config=state.config, target_dir=target)
+    except CaptureScopeError as e:
+        # 400 に落とす（403 でも良いが、入力の不正として 400 を選ぶ）。
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return JSONResponse({
         "saved": [str(p) for p in saved],
         "count": len(saved),

@@ -1539,7 +1539,14 @@ def cmd_auto_triage(args: argparse.Namespace) -> int:
         return 0
     apply_arg = getattr(args, "apply", None)
     if apply_arg:
-        decisions = json.loads(Path(apply_arg).read_text(encoding="utf-8"))
+        try:
+            decisions = json.loads(Path(apply_arg).read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            print(f"apply 対象の JSON が見つかりません: {apply_arg}", file=sys.stderr)
+            return 2
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            print(f"apply 対象の JSON を読み込めません: {apply_arg}: {e}", file=sys.stderr)
+            return 2
         if isinstance(decisions, dict):
             decisions = decisions.get("decisions") or decisions.get("suggestions") or []
         result = apply_suggestions(cfg, decisions, dry_run=getattr(args, "dry_run", False))

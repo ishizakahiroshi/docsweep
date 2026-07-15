@@ -125,14 +125,16 @@ def _build_for_project(
     watchouts = watchouts[:5]
 
     start, end = _yesterday_window(now)
-    yesterday: list[dict] = []
+    yesterday: list[tuple[float, dict]] = []
     for rec in records:
         if rec.state not in {"done", "discarded"}:
             continue
         if rec.mtime and start <= rec.mtime <= end:
-            yesterday.append(_short_record(rec))
-    yesterday.sort(key=lambda d: -(d.get("age_days") or 0))
-    yesterday = yesterday[:5]
+            yesterday.append((rec.mtime, _short_record(rec)))
+    # 「昨日終わったこと」は新しい順に見せる意図。以前は age_days 降順（＝古い順）で
+    # 直感と逆になっていた。24h ウィンドウ内では mtime 降順が最も自然。
+    yesterday.sort(key=lambda pair: -pair[0])
+    yesterday_dicts = [d for _, d in yesterday[:5]]
 
     stale_count = sum(1 for r in open_recs if Flag.STALE.value in (r.flags or []))
 
@@ -141,7 +143,7 @@ def _build_for_project(
         today_pick=today_pick,
         co_running=co_running,
         watchouts=watchouts,
-        yesterday_done=yesterday,
+        yesterday_done=yesterday_dicts,
         open_count=len(open_recs),
         stale_count=stale_count,
     )

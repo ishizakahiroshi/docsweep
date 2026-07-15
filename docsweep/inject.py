@@ -441,8 +441,31 @@ def load_manifest() -> dict:
 
 
 def save_manifest(data: dict) -> None:
+    """``injected.json`` を **tmp → os.replace** でアトミックに書く。
+
+    直書きだと inject/eject 中のプロセス停止で truncate 状態のファイルが残り、
+    次回 ``load_manifest`` が JSONDecodeError → 空 dict にフォールバックする。
+    その瞬間に全プロジェクトの注入履歴（block ハッシュ・preset_version）が事実上失われ、
+    以後の再注入で手編集検出（``.bak``）が効かなくなる。
+    """
+    import os
+    import tempfile
+
     MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MANIFEST_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{MANIFEST_PATH.name}.", suffix=".tmp", dir=str(MANIFEST_PATH.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(payload)
+        os.replace(tmp_name, str(MANIFEST_PATH))
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def _now() -> str:

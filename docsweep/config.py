@@ -260,8 +260,23 @@ def load_config(
     # 「プロジェクトが書いたキーだけ強い」として正確に表現する）。
     g_due = g.get("due") or {}
     p_due = project_cfg.get("due") or {}
-    due_warn = int(p_due.get("postpone_warn_threshold", g_due.get("postpone_warn_threshold", 3)))
-    due_alert = int(p_due.get("postpone_alert_threshold", g_due.get("postpone_alert_threshold", 5)))
+    # 直下の default_offset_days / stale_thresholds が try/except で保護しているのと同じく、
+    # ユーザー YAML に文字列や None が入っても load_config を落とさない。落とすと
+    # doctor / brief / scan など全コマンドが起動不能になる。
+    def _safe_int(value: object, default: int) -> int:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return default
+
+    due_warn = _safe_int(
+        p_due.get("postpone_warn_threshold", g_due.get("postpone_warn_threshold", 3)),
+        3,
+    )
+    due_alert = _safe_int(
+        p_due.get("postpone_alert_threshold", g_due.get("postpone_alert_threshold", 5)),
+        5,
+    )
     offsets: dict[str, int] = dict(DEFAULT_DUE_OFFSET_DAYS)
     for layer in (g_due.get("default_offset_days"), p_due.get("default_offset_days")):
         if isinstance(layer, dict):

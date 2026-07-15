@@ -81,8 +81,8 @@ function renderDrafts(drafts) {
     div.innerHTML = `
       <label>
         <input type="checkbox" data-idx="${idx}" checked>
-        <span class="kind">${d.kind}</span>
-        <span class="fname">${d.suggested_filename}</span>
+        <span class="kind">${escapeHtml(d.kind)}</span>
+        <span class="fname">${escapeHtml(d.suggested_filename)}</span>
       </label>
       <div class="title">${escapeHtml(d.title)}</div>
       <pre>${escapeHtml(d.body.substring(0, 400))}</pre>

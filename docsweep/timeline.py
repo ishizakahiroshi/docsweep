@@ -79,8 +79,15 @@ def _resolve_date(rec: FileRecord) -> tuple[str, str]:
     d = _git_last_date(rec.path)
     if d:
         return d, "git"
-    d = datetime.fromtimestamp(rec.mtime).astimezone().strftime("%Y-%m-%d")
-    return d, "mtime"
+    # 4 段フォールバック最終段: rec.mtime が None（壊れた stat / archive 索引の一部）でも
+    # timeline 全体を落とさない。activity.py が同じく mtime を defensive に扱っているのと対称。
+    if rec.mtime:
+        try:
+            d = datetime.fromtimestamp(rec.mtime).astimezone().strftime("%Y-%m-%d")
+            return d, "mtime"
+        except (OSError, OverflowError, ValueError):
+            pass
+    return "", "unknown"
 
 
 @dataclass

@@ -218,6 +218,7 @@ def build_server(config: Config):
         from pathlib import Path as _P
         from .capture import save_drafts
         from .capture.models import Draft as _Draft
+        from .capture.service import CaptureScopeError as _ScopeErr
 
         # dict -> Draft へ復元
         as_drafts = [
@@ -241,7 +242,11 @@ def build_server(config: Config):
         else:
             target = _P.cwd() / "docs" / "local"
 
-        saved = save_drafts(as_drafts, config=config, target_dir=target)
+        try:
+            saved = save_drafts(as_drafts, config=config, target_dir=target)
+        except _ScopeErr as e:
+            # MCP は例外を JSON-RPC error に変換する。tool 契約に沿った error dict を返す。
+            return {"error": str(e), "saved": [], "count": 0}
         return {"saved": [str(p) for p in saved], "count": len(saved)}
 
     @mcp.tool()
