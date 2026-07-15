@@ -52,8 +52,13 @@ resurrect = [
     "sentence-transformers>=2.0",
 ]
 # 全部入り（配布既定: CLI+Web+MCP+review+watch+resurrect が 1 パッケージ）
+# resurrect が sentence-transformers（torch/CUDA を引きずる GB 級）を含むため
+# 軽量版 all-lite も用意（resurrect を除いた実用最小 = 大半のユーザーはこちらで足りる）。
 all = [
     "docsweep[web,review,mcp,watch,resurrect]",
+]
+all-lite = [
+    "docsweep[web,review,mcp,watch]",
 ]
 dev = [
     "pytest>=8.0",
@@ -76,7 +81,20 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# 段階導入: SIM/RUF はスタイル系で警告数が読める。バグ検出系の PLE/PIE は初回噴出リスクを
+# 避けるため後回し（M-11 のフルセットは別 refactor plan で実施）。
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+# 段階導入: strict モードは既存コードで大量エラーになるため見送り。
+# 外部ライブラリ（mcp / sentence_transformers 等）は stub 無しなので ignore_missing_imports で緩める。
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 未宣言 marker と設定ミスを即エラー化（tests/ で `@pytest.mark.foo` を新規追加した際の
+# タイポを検知）。既存 tests に custom marker が無いことを確認済み → 追加影響なし。
+addopts = "-ra --strict-markers --strict-config"
