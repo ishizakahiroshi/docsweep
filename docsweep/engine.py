@@ -12,6 +12,7 @@ from datetime import date
 from pathlib import Path
 
 from .archive import _now_iso, append_move_log, archive_file
+from .atomic import write_atomic
 from .config import Config, project_archive_dir
 from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from .models import Action, Flag, FileRecord, MoveLogEntry
@@ -332,5 +333,8 @@ def relabel_file(path: Path, new_label: str, config: Config) -> bool:
     new_h1 = f"# {new_label} {title}".rstrip()
     # 元の改行コードを保ったまま H1 行だけ差し替える（OS 依存の CRLF 変換を避ける）。
     new_text = text[: m.start()] + new_h1 + cr + text[m.end():]
-    path.write_text(new_text, encoding="utf-8", newline="")
+    # atomic.py 冒頭の宣言「全ての書き込み API はこのヘルパ経由で MD を更新する」に沿って
+    # write_atomic 経由へ寄せる。これによりバックアップ・原子的差し替え（tmp → os.replace）が
+    # 効き、Web UI 編集中の md を CLI/MCP 側から書き換える race が壊れにくくなる。
+    write_atomic(path, new_text)
     return True

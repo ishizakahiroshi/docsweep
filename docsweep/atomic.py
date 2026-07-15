@@ -63,16 +63,19 @@ def backup_dir_for(path: Path) -> Path:
 
 
 def backup(path: Path) -> Path | None:
-    """書き込み直前に呼ぶ。``.docsweep/backup/<filename>.<unix_ts>`` へコピー。
+    """書き込み直前に呼ぶ。``.docsweep/backup/<filename>.<unix_ns>`` へコピー。
 
     対象が存在しない（新規作成）場合は何もしないで None を返す。古いバックアップは
     呼び出しのついでに掃除する（30 日超で自動削除）。
+
+    サフィックスは秒精度だと sweep が同一ファイルを短時間に 2 回書くケース（relabel →
+    archive 移送）で前世代を上書きしてしまうため、``time.time_ns()`` のナノ秒精度に上げる。
     """
     if not path.is_file():
         return None
     dst_dir = backup_dir_for(path)
     dst_dir.mkdir(parents=True, exist_ok=True)
-    ts = int(time.time())
+    ts = time.time_ns()
     dst = dst_dir / f"{path.name}.{ts}"
     shutil.copy2(str(path), str(dst))
     _cleanup_backups(dst_dir)

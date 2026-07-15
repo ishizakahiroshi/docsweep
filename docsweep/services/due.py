@@ -17,9 +17,13 @@ from ..atomic import update_line
 from ..detect import _FRONTMATTER_RE
 from ..state import increment_postpone
 
-# frontmatter ブロック内で `due: <値>` の 1 行だけを置換するための正規表現。
-# multiline を使うが、frontmatter ブロックの境界判定は別途行う（ここは差し替え時のみ使用）。
-_DUE_LINE_RE = re.compile(r"^(\s*due\s*:\s*)\S.*$", re.MULTILINE)
+# frontmatter ブロック内で `due:` 行を捉える正規表現。
+# `due:\n`（値なし）でも 1 行として掴めるように値部分は `.*` で任意許容にする。
+# 以前は `\S.*` を要求していたため、空 `due:` が残った md に対し `_replace_or_insert_due` が
+# else 分岐に落ちて重複 `due:` 行を末尾追加していた（PyYAML の last-wins 依存になり fragile）。
+# 空白は `\s` ではなく `[ \t]` に絞る（`\s` は `\n` を含み、MULTILINE でも直後の改行を
+# 貪欲に取り込んでしまうため group 1 に `\n` が混入する）。
+_DUE_LINE_RE = re.compile(r"^([ \t]*due[ \t]*:[ \t]*)(.*)$", re.MULTILINE)
 _RELATIVE_RE = re.compile(r"^\s*\+\s*(\d+)\s*([dwmy])\s*$", re.IGNORECASE)
 _ABSOLUTE_RE = re.compile(r"^\s*(\d{4}-\d{2}-\d{2})\s*$")
 # plan_activity-summary.md C1: --since/--until は過去方向（-3d 等）も受けるため符号付き。
@@ -97,7 +101,7 @@ def resolve_relative_offset(spec: str, *, today: date | None = None) -> date:
 
 
 def _read_current_due(text: str) -> str | None:
-    """frontmatter から現在の due 値を抽出（無ければ None）。"""
+    """frontmatter から現在の due 値を抽出（無ければ / 空値なら None）。"""
     m = _FRONTMATTER_RE.match(text)
     if not m:
         return None
@@ -105,8 +109,9 @@ def _read_current_due(text: str) -> str | None:
     dm = _DUE_LINE_RE.search(inner)
     if not dm:
         return None
-    line = dm.group(0)
-    return line.split(":", 1)[1].strip()
+    # 新しい regex は空値の `due:` にもヒットするので、値部分（group 2）が空なら None を返す。
+    value = (dm.group(2) or "").strip()
+    return value or None
 
 
 def _replace_or_insert_due(text: str, new_due: str) -> str:
