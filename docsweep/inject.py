@@ -279,6 +279,11 @@ def generate_okf_block(lang: str = "ja") -> str:
             "`in-progress` for bugfix / `pending` for pending, `tags: []`, `owner: `, `review_status: draft`,",
             "`related: []`, `last_reviewed: <today>`).",
             f"To retrofit existing frontmatter-less docs in bulk, run `{migrate_cmd}`.",
+            "",
+            "`new` resolves the project root by walking up from cwd for a `.git` (or other project marker) "
+            "when `--project-dir` is omitted, so calling it from a repo subdirectory (e.g. `web/`) still "
+            "places the doc under the repo's `docs/local/`. Pass `--project-dir` explicitly only for the "
+            "rare case where the detected root is not the one you want (e.g. nested git repos).",
         ])
     return "\n".join([
         "### 新規 md の作成（OKF frontmatter 必須）",
@@ -290,6 +295,10 @@ def generate_okf_block(lang: str = "ja") -> str:
         "（`type: plan|bugfix|pending`、`status:` は plan=`planned` / bugfix=`in-progress` / pending=`pending`、",
         "`tags: []` / `owner: ` / `review_status: draft` / `related: []` / `last_reviewed: <今日>`）。",
         f"frontmatter 無しの既存 md を一括変換したい時は `{migrate_cmd}` を使う。",
+        "",
+        "`--project-dir` を省略した場合、`new` は cwd から `.git` 等の project marker を上へ遡ってプロジェクトルートを自動検出する。"
+        "リポジトリのサブディレクトリ（例: `web/`）から呼んでも、そのリポジトリの `docs/local/` に正しく生成される。"
+        "検出されたルートが意図と異なる場合（ネストした git リポジトリ等の特殊ケース）のみ `--project-dir` を明示する。",
     ])
 
 
