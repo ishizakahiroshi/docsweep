@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from docsweep.services.frontmatter import (
+    FrontmatterBlockStyleError,
     FrontmatterValidationError,
     current_owner,
     update_frontmatter_field,
@@ -102,6 +103,34 @@ def test_rejects_dangerous_list_item(tmp_path: Path):
     p.write_text("---\nstatus: planned\n---\n# [計画] L\n", encoding="utf-8")
     with pytest.raises(FrontmatterValidationError):
         update_frontmatter_field(p, "tags", ["a,b"])
+
+
+def test_block_style_tags_rejected(tmp_path: Path):
+    """手書き block-style ``tags:\\n  - a\\n  - b`` は書き換え拒否 (B-02 防御)。"""
+    p = tmp_path / "plan_block.md"
+    p.write_text(
+        "---\ntype: plan\ntags:\n  - a\n  - b\n---\n# [計画] BLOCK\n",
+        encoding="utf-8",
+    )
+    with pytest.raises((FrontmatterBlockStyleError, ValueError)):
+        update_frontmatter_field(p, "tags", ["x"])
+    # 破壊されず元のまま残っていること
+    txt = _read(p)
+    assert "  - a" in txt
+    assert "  - b" in txt
+
+
+def test_flow_style_tags_still_works(tmp_path: Path):
+    """通常の flow 記法 ``tags: [a, b]`` は今まで通り書き換えできる（回帰なし）。"""
+    p = tmp_path / "plan_flow.md"
+    p.write_text(
+        "---\ntype: plan\ntags: [a, b]\n---\n# [計画] FLOW\n",
+        encoding="utf-8",
+    )
+    update_frontmatter_field(p, "tags", ["x", "y"])
+    txt = _read(p)
+    assert "tags: [x, y]" in txt
+    assert "tags: [a, b]" not in txt
 
 
 def test_current_owner_returns_nonempty():

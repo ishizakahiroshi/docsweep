@@ -37,6 +37,15 @@ class FrontmatterValidationError(ValueError):
     """field 名や値が許容外のときに発生。"""
 
 
+class FrontmatterBlockStyleError(ValueError):
+    """手書き block-style list（``tags:\\n  - a``）の書き換え要求を拒否したとき発生。
+
+    現在の実装はフロー記法（``tags: [a, b]``）前提で行単位置換するため、block 記法の
+    継続行（``  - item``）を残したままキー行だけ書き換えると YAML パースが壊れる。
+    そのような入力を受けたら破壊せず ValueError を投げてユーザーに気付かせる。
+    """
+
+
 @dataclass
 class UpdateFrontmatterResult:
     path: str
@@ -99,6 +108,10 @@ def _format_value(field: str, value) -> str:
 
 _FIELD_LINE_TEMPLATE = r"^(?P<indent>[ \t]*){name}[ \t]*:[ \t]*(?P<value>.*)$"
 
+# block-style list の継続行検出（``  - item`` / ``  -\n`` / ``  -`` EOF）。
+# 行頭スペース/タブ 1 個以上 + ``-`` + (空白 or 行末)。
+_BLOCK_LIST_CONTINUATION_RE = re.compile(r"^[ \t]+-(?:[ \t]|$)")
+
 
 def _field_line_re(field: str) -> re.Pattern[str]:
     if not _FIELD_NAME_RE.match(field):
@@ -131,6 +144,20 @@ def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
         inner = fm.group(1)
         m_line = line_re.search(inner)
         if m_line is not None:
+            # 手書き block 記法（``field:\n  - a\n  - b``）検出: フロー記法前提の
+            # 行単位置換では継続行が孤立して YAML が壊れるので、書き換えを拒否する。
+            after = inner[m_line.end():]
+            if after.startswith("\n"):
+                after = after[1:]
+            nl = after.find("\n")
+            next_line = after if nl == -1 else after[:nl]
+            if next_line and _BLOCK_LIST_CONTINUATION_RE.match(next_line):
+                raise FrontmatterBlockStyleError(
+                    f"frontmatter フィールド {field!r} が block-style list で書かれています "
+                    f"（次行: {next_line!r}）。docsweep は現在フロー記法 "
+                    f"（{field}: [a, b]）のみ書き換え可能です。"
+                    " 手動で flow 記法へ変換してから再実行してください。"
+                )
             indent = m_line.group("indent") or ""
             replacement = f"{indent}{new_yaml_line}"
             new_inner = inner[: m_line.start()] + replacement + inner[m_line.end():]
