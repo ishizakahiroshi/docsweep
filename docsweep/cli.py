@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .config import load_config
+from .config import DEFAULT_PROJECT_MARKERS, load_config
 from .engine import apply_action, auto_sweep, run_scan
 
 
@@ -263,7 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("type", choices=("plan", "bugfix", "pending"))
     p_new.add_argument("topic", help="ケバブケースの topic")
     p_new.add_argument("--title", help="H1 タイトル（既定は topic）")
-    p_new.add_argument("--project-dir", default=".", help="生成先プロジェクト（既定 .）")
+    p_new.add_argument(
+        "--project-dir",
+        default=None,
+        help="生成先プロジェクト（既定: cwd から .git 等の project marker を遡って自動検出）",
+    )
     p_new.add_argument(
         "--due",
         help=(
@@ -1600,11 +1604,20 @@ def cmd_summary(args: argparse.Namespace) -> int:
 
 
 def cmd_new(args: argparse.Namespace) -> int:
+    from .scan import detect_project_root
     from .secrets_guard import format_warnings, scan_secrets
     from .similar_guard import find_similar_open
     from .templates_gen import new_doc, new_split_plans
 
-    project_dir = Path(args.project_dir)
+    if getattr(args, "project_dir", None):
+        project_dir = Path(args.project_dir)
+    else:
+        # --project-dir 省略時は cwd をそのまま使わず、.git 等の project marker を
+        # 上へ辿って自動検出する（scan 系コマンドと同じ detect_project_root を再利用）。
+        # cwd がサブディレクトリ（例: リポジトリ内の web/）のときに、そこを誤って
+        # プロジェクトルート扱いしてしまう問題への対処。
+        cwd = Path.cwd().resolve()
+        project_dir = detect_project_root(cwd, Path(cwd.anchor), DEFAULT_PROJECT_MARKERS, {})
     # ``.docsweep.yaml`` の ``due:`` ブロックから default_offset_days を読む。
     # --no-due 指定時は空 dict を渡してオフセット計算自体を無効化する（嘘の日付防止）。
     cfg = load_config(project_dir=project_dir)
