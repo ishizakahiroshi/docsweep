@@ -239,7 +239,7 @@ def update_frontmatter_field(
             f"許可されていないフィールド名: {field!r}（許可: {sorted(ALLOWED_FIELDS)}）"
         )
     new_line = _format_value(field, new_value)
-    text_before = Path(abs_path).read_text(encoding="utf-8", newline="")
+    text_before = Path(abs_path).open("r", encoding="utf-8", newline="").read()
     old_raw = _read_current(text_before, field)
 
     def _xform(text: str) -> str:

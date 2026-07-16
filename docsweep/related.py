@@ -155,7 +155,7 @@ def apply_fix_related(config: Config) -> FixRelatedResult:
             seen.add(key)
             merged.append(ref if ref else key)
         path = Path(fix.path)
-        text = path.read_text(encoding="utf-8", newline="")
+        text = path.open("r", encoding="utf-8", newline="").read()
         _data, body = read_frontmatter_text(text)
         if body == text:
             # frontmatter が無い md には書けない（migrate-frontmatter を先に走らせる前提）。

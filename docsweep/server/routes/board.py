@@ -515,7 +515,7 @@ def card_raw(
     if resolved.suffix.lower() != ".md":
         raise HTTPException(status_code=400, detail="only .md files are readable here")
     try:
-        text = resolved.read_text(encoding="utf-8", newline="")
+        text = resolved.open("r", encoding="utf-8", newline="").read()
     except OSError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     return JSONResponse(

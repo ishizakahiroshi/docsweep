@@ -124,7 +124,7 @@ def update_due(
     """
     target = resolve_due(new_due_spec)
     new_due = target.isoformat()
-    text_before = Path(abs_path).read_text(encoding="utf-8", newline="")
+    text_before = Path(abs_path).open("r", encoding="utf-8", newline="").read()
     old_due = _read_current_due(text_before)
 
     updated = update_frontmatter_field(

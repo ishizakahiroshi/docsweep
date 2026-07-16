@@ -152,7 +152,7 @@ def update_line(
         actual = _mtime(path)
         if not _mtime_close(actual, expected_mtime):
             raise ConflictError(path, expected_mtime, actual)
-    text = path.read_text(encoding="utf-8", newline="")
+    text = path.open("r", encoding="utf-8", newline="").read()
     new_text = transform(text)
     if new_text == text:
         # 変更なし。書き込みも backup も省略する。

@@ -94,10 +94,10 @@ def test_migrate_apply_inserts_frontmatter_and_preserves_h1(workspace: Path):
     """apply は frontmatter を先頭挿入し、H1 ラベル・本文に手を加えない。"""
     cfg = _cfg(workspace)
     plan_path = workspace / "demo" / "docs" / "local" / "plan_alpha.md"
-    before = plan_path.read_text(encoding="utf-8", newline="")
+    before = plan_path.open("r", encoding="utf-8", newline="").read()
     result = apply_migration(cfg)
     assert plan_path.as_posix() in result.applied
-    after = plan_path.read_text(encoding="utf-8", newline="")
+    after = plan_path.open("r", encoding="utf-8", newline="").read()
     assert after.startswith("---\n")
     assert "type: plan" in after
     assert "# [計画] α 計画" in after  # H1 温存
@@ -109,9 +109,9 @@ def test_migrate_skips_already_frontmatter(workspace: Path):
     """OKF キーが揃っているファイルは apply してもそのまま。"""
     cfg = _cfg(workspace)
     bf_path = workspace / "demo" / "docs" / "local" / "bugfix_alpha_2026-06-01.md"
-    before = bf_path.read_text(encoding="utf-8", newline="")
+    before = bf_path.open("r", encoding="utf-8", newline="").read()
     apply_migration(cfg)
-    after = bf_path.read_text(encoding="utf-8", newline="")
+    after = bf_path.open("r", encoding="utf-8", newline="").read()
     assert before == after
 
 
@@ -127,7 +127,7 @@ def test_migrate_upgrades_due_only_frontmatter(workspace: Path):
     assert modes.get("plan_gamma.md") == "upgrade"
 
     apply_migration(cfg, today="2026-07-04")
-    after = gamma.read_text(encoding="utf-8", newline="")
+    after = gamma.open("r", encoding="utf-8", newline="").read()
     # 不足キーが正典順で入り、既存 due とブロック直後の空行・H1・本文は不変
     assert after.startswith(
         "---\n"
@@ -154,7 +154,7 @@ def test_migrate_completes_partial_okf_keys(workspace: Path):
     )
     cfg = _cfg(workspace)
     apply_migration(cfg, today="2026-07-04")
-    after = delta.read_text(encoding="utf-8", newline="")
+    after = delta.open("r", encoding="utf-8", newline="").read()
     # 既存キーはそのまま（status: watching が planned 等に書き換わらない）
     assert "type: plan\nstatus: watching\ndue: 2026-07-20\n" in after
     assert after.count("\nstatus:") == 1  # review_status: は含めない（行頭一致）

@@ -151,7 +151,7 @@ def plan_migration(config: Config, *, project: str | None = None) -> MigrateResu
             continue
         path = Path(rec.path)
         try:
-            text = path.read_text(encoding="utf-8", newline="")
+            text = path.open("r", encoding="utf-8", newline="").read()
         except (OSError, UnicodeDecodeError) as e:
             result.skipped.append(MigratePlan(
                 path=rec.path, doc_type=rec.type or "?", status="?",
@@ -195,7 +195,7 @@ def apply_migration(
     for plan in result.planned:
         path = Path(plan.path)
         try:
-            text = path.read_text(encoding="utf-8", newline="")
+            text = path.open("r", encoding="utf-8", newline="").read()
         except (OSError, UnicodeDecodeError) as e:
             plan.skipped_reason = f"読み取り失敗: {e}"
             result.skipped.append(plan)
@@ -252,7 +252,7 @@ def detect_doc_type(filename: str, config: Config) -> str | None:
 
 def detect_status_for_path(path: Path, config: Config) -> str | None:
     """指定ファイル単体に対する frontmatter status 値を割り出す（テスト用エントリポイント）。"""
-    text = path.read_text(encoding="utf-8", newline="")
+    text = path.open("r", encoding="utf-8", newline="").read()
     td = config.match_type(path.name)
     det = detect_status(text=text, filename=path.name, sm=config.state_model, _type=td)
     return _state_to_status(det.state_key)
