@@ -33,7 +33,8 @@ def client(tmp_path: Path):
     outside.write_text("# [完了] 外部秘密\n", encoding="utf-8")
 
     cfg = load_config(explicit_roots=[str(root)], global_path=tmp_path / "no_global.yaml")
-    app = create_app(cfg, token=TOKEN)
+    # roots mutation の既存 CRUD テストは、明示的に権限を有効化したサーバーで行う。
+    app = create_app(cfg, token=TOKEN, allow_root_mutation=True)
     return TestClient(app), root, outside
 
 

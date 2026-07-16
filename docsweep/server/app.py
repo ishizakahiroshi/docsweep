@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -70,11 +71,35 @@ def _find_doc(result: ScanResult, path: str):
     return next((d for d in result.docs if d.record.path == target), None)
 
 
+def _is_protected_root_target(target: Path, raw_path: str) -> bool:
+    """filesystem root / HOME と、その直下への scan root 拡張を拒否する。"""
+    home = Path(os.path.expanduser("~")).resolve()
+    if target == home or target.parent == home:
+        return True
+
+    if target.anchor:
+        filesystem_root = Path(target.anchor)
+        try:
+            if len(target.relative_to(filesystem_root).parts) <= 1:
+                return True
+        except ValueError:
+            pass
+
+    # POSIX 上でも ``C:/`` のような Windows drive root 指定を安全側で検出する。
+    windows_path = PureWindowsPath(raw_path)
+    return bool(
+        windows_path.drive
+        and windows_path.root
+        and len(windows_path.parts) <= 2
+    )
+
+
 def create_app(
     config: Config,
     token: str | None = None,
     *,
     read_only: bool = False,
+    allow_root_mutation: bool = False,
 ) -> FastAPI:
     token = token or secrets.token_urlsafe(16)
     state = ServerState(config, token)
@@ -247,13 +272,25 @@ def create_app(
         _check_token(request, token)
         if op not in ("add", "remove"):
             raise HTTPException(status_code=400, detail="op must be add or remove")
+        if op == "add" and not allow_root_mutation:
+            raise HTTPException(
+                status_code=403,
+                detail="roots 追加は --allow-root-mutation 起動時のみ許可",
+            )
         if not path.strip():
             raise HTTPException(status_code=400, detail="path is required")
-        target = Path(path.strip()).expanduser()
+        raw_path = path.strip()
+        target = Path(raw_path).expanduser()
         try:
             target = target.resolve()
         except OSError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+
+        if op == "add" and _is_protected_root_target(target, raw_path):
+            raise HTTPException(
+                status_code=400,
+                detail="システム root / HOME 直下の追加は禁止",
+            )
 
         current = [Path(r) for r in state.config.roots]
         if op == "add":

@@ -97,6 +97,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--read-only", action="store_true",
         help="閲覧・検索のみ（書き込み API を 403）（UX W4 / P58）",
     )
+    p_serve.add_argument(
+        "--allow-root-mutation", action="store_true",
+        help="Web UI からのスキャンルート追加を許可（既定は拒否）",
+    )
 
     p_promote = sub.add_parser("promote", help="release sweep: 様子見をまとめて完了へ昇格し archive へ")
     _add_scope_args(p_promote)
@@ -1917,7 +1921,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     # トークンはコマンドライン引数（他プロセスから見える）より環境変数を推奨。
     token = args.token or os.environ.get("DOCSWEEP_TOKEN") or secrets.token_urlsafe(16)
-    app = create_app(cfg, token=token, read_only=bool(getattr(args, "read_only", False)))
+    app = create_app(
+        cfg,
+        token=token,
+        read_only=bool(getattr(args, "read_only", False)),
+        allow_root_mutation=bool(getattr(args, "allow_root_mutation", False)),
+    )
     url = f"http://127.0.0.1:{args.port}/?token={token}"
     print("=" * 60)
     print("  ブラウザでこのアドレスを開いてください（自動で開きます）:")

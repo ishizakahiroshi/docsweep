@@ -29,7 +29,12 @@ def _write(p: Path, text: str) -> Path:
     return p
 
 
-def _make_client(tmp_path: Path, *, raise_server_exceptions: bool = True) -> TestClient:
+def _make_client(
+    tmp_path: Path,
+    *,
+    raise_server_exceptions: bool = True,
+    allow_root_mutation: bool = False,
+) -> TestClient:
     """テスト用の TestClient を組み立てる。
 
     500 を assert したいテストでは raise_server_exceptions=False にして
@@ -44,7 +49,11 @@ def _make_client(tmp_path: Path, *, raise_server_exceptions: bool = True) -> Tes
         explicit_roots=[str(root)],
         global_path=tmp_path / "no_global.yaml",
     )
-    app = create_app(cfg, token=TOKEN)
+    app = create_app(
+        cfg,
+        token=TOKEN,
+        allow_root_mutation=allow_root_mutation,
+    )
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 
@@ -217,3 +226,81 @@ def test_api_capture_extract_rejects_empty_text(app_client: TestClient):
         json={"text": ""},
     )
     assert r.status_code == 400
+
+
+# ---------------- /api/config/roots ----------------
+
+
+def test_add_root_rejected_without_allow_flag(tmp_path: Path):
+    extra = tmp_path / "extra-root"
+    extra.mkdir()
+    client = _make_client(tmp_path)
+
+    r = client.post(
+        "/api/config/roots",
+        data={"token": TOKEN, "op": "add", "path": str(extra)},
+    )
+
+    assert r.status_code == 403
+    assert r.json()["detail"] == "roots 追加は --allow-root-mutation 起動時のみ許可"
+
+
+def test_add_root_accepted_with_allow_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    from docsweep.server import config_write
+
+    monkeypatch.setattr(
+        config_write, "GLOBAL_CONFIG_PATH", tmp_path / "global-config.yaml",
+    )
+    extra = tmp_path / "extra-root"
+    extra.mkdir()
+    client = _make_client(tmp_path, allow_root_mutation=True)
+
+    r = client.post(
+        "/api/config/roots",
+        data={"token": TOKEN, "op": "add", "path": str(extra)},
+    )
+
+    assert r.status_code == 200
+    assert extra.resolve().as_posix() in r.json()["roots"]
+
+
+@pytest.mark.parametrize("protected_path", ["/", "C:/", "~"])
+def test_add_system_root_always_rejected(tmp_path: Path, protected_path: str):
+    client = _make_client(tmp_path, allow_root_mutation=True)
+
+    r = client.post(
+        "/api/config/roots",
+        data={"token": TOKEN, "op": "add", "path": protected_path},
+    )
+
+    assert r.status_code == 400
+    assert r.json()["detail"] == "システム root / HOME 直下の追加は禁止"
+
+
+def test_remove_root_still_works_without_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    from docsweep.server import config_write
+
+    monkeypatch.setattr(
+        config_write, "GLOBAL_CONFIG_PATH", tmp_path / "global-config.yaml",
+    )
+    primary = tmp_path / "roots" / "primary"
+    removable = tmp_path / "roots" / "removable"
+    primary.mkdir(parents=True)
+    removable.mkdir()
+    cfg = load_config(
+        explicit_roots=[str(primary), str(removable)],
+        global_path=tmp_path / "no_global.yaml",
+    )
+    client = TestClient(create_app(cfg, token=TOKEN))
+
+    r = client.post(
+        "/api/config/roots",
+        data={"token": TOKEN, "op": "remove", "path": str(removable)},
+    )
+
+    assert r.status_code == 200
+    assert removable.resolve().as_posix() not in r.json()["roots"]
