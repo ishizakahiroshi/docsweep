@@ -53,9 +53,9 @@ document.getElementById('capture-form').addEventListener('submit', async (e) => 
   e.preventDefault();
   const text = document.getElementById('text').value;
   const useLLM = document.getElementById('use-llm').checked;
-  const res = await fetch(`/api/capture/extract?token=${encodeURIComponent(TOKEN)}`, {
+  const res = await fetch('/api/capture/extract', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers: {'Content-Type': 'application/json', 'x-docsweep-token': TOKEN},
     body: JSON.stringify({text, use_llm: useLLM}),
   });
   if (!res.ok) {
@@ -105,9 +105,9 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     alert(MSG.selectOne);
     return;
   }
-  const res = await fetch(`/api/capture/save?token=${encodeURIComponent(TOKEN)}`, {
+  const res = await fetch('/api/capture/save', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers: {'Content-Type': 'application/json', 'x-docsweep-token': TOKEN},
     body: JSON.stringify({drafts: selected}),
   });
   if (!res.ok) {

@@ -1927,10 +1927,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
         read_only=bool(getattr(args, "read_only", False)),
         allow_root_mutation=bool(getattr(args, "allow_root_mutation", False)),
     )
-    url = f"http://127.0.0.1:{args.port}/?token={token}"
+    url = f"http://127.0.0.1:{args.port}/board"
+    initial_url = f"http://127.0.0.1:{args.port}/?token={token}"
     print("=" * 60)
-    print("  ブラウザでこのアドレスを開いてください（自動で開きます）:")
+    print("  ブックマーク用 URL（初回認証後はこちらで開けます）:")
     print(f"  {url}")
+    print("  初回認証 URL（?token= は Cookie 交換後に自動で消えます）:")
+    print(f"  {initial_url}")
     if getattr(args, "read_only", False):
         print("  [read-only] 書き込み API は 403 です")
     print("=" * 60)
@@ -1939,7 +1942,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         import threading
         import webbrowser
 
-        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.8, lambda: webbrowser.open(initial_url)).start()
     # uvicorn.run(app, ...) だと外から graceful 停止できないため、Server/Config を直接使い、
     # インスタンスを app.state に渡すことで /api/shutdown から should_exit=True できるようにする。
     config = uvicorn.Config(app, host="127.0.0.1", port=args.port, log_level="warning")

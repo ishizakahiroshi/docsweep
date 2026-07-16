@@ -30,7 +30,7 @@
   <ul>
     {% for p in cross.project_summaries %}
     <li>
-      <a href="/board?token={{ token }}&project={{ p.project|urlencode }}">
+      <a href="/board?project={{ p.project|urlencode }}">
         {{ p.project }}
         <div class="meta">open {{ p.open_count }} · stale {{ p.stale_count }}</div>
       </a>

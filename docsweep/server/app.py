@@ -6,6 +6,7 @@ import os
 import secrets
 import subprocess
 import sys
+from urllib.parse import urlencode
 from pathlib import Path, PureWindowsPath
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
@@ -35,7 +36,7 @@ from .routes import graph as graph_routes
 from .routes import resurrect as resurrect_routes
 from .i18n import get_messages, resolve_lang
 from .sanitize import sanitize_html
-from .security import resolve_under_roots
+from .security import TOKEN_COOKIE, check_token, resolve_under_roots
 
 _DIR = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=str(_DIR / "templates"))
@@ -127,6 +128,37 @@ def create_app(
     app.state.docsweep = state
 
     @app.middleware("http")
+    async def _token_cookie_exchange(request: Request, call_next):
+        """初回の正しい ``?token=`` を HttpOnly Cookie に交換して URL から除く。"""
+        query_token = request.query_params.get("token")
+        cookie_token = request.cookies.get(TOKEN_COOKIE)
+        if (
+            query_token
+            and cookie_token is None
+            and secrets.compare_digest(query_token, state.token)
+        ):
+            if request.method in ("GET", "HEAD"):
+                from fastapi.responses import RedirectResponse
+
+                query = [(k, v) for k, v in request.query_params.multi_items() if k != "token"]
+                target = "/board" if request.url.path == "/" else request.url.path
+                if query:
+                    target = f"{target}?{urlencode(query, doseq=True)}"
+                response = RedirectResponse(target, status_code=302)
+            else:
+                # POST を redirect すると多くのクライアントが GET に変えるため、その場で応答する。
+                response = await call_next(request)
+            response.set_cookie(
+                TOKEN_COOKIE,
+                state.token,
+                httponly=True,
+                samesite="strict",
+                path="/",
+            )
+            return response
+        return await call_next(request)
+
+    @app.middleware("http")
     async def _read_only_guard(request: Request, call_next):
         """serve --read-only 時は POST/PUT/PATCH/DELETE を 403（UX W4 / P58）。"""
         if getattr(state, "read_only", False) and request.method in (
@@ -162,11 +194,6 @@ def create_app(
     if static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    def _check_token(request: Request, token_q: str | None) -> None:
-        supplied = token_q or request.headers.get("x-docsweep-token")
-        if not supplied or not secrets.compare_digest(supplied, state.token):
-            raise HTTPException(status_code=403, detail="invalid or missing token")
-
     # 旧 dashboard（/, /list, /fragment）は plan_consolidate-to-board で廃止し、
     # テンプレ・ヘルパも plan_legacy-stack-retirement で物理撤去済み（注入・health は看板に統合）。
 
@@ -180,7 +207,7 @@ def create_app(
 
     @app.get("/preview", response_class=HTMLResponse)
     def preview(request: Request, token: str = Query(default=""), path: str = Query(default="")):
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None:
             raise HTTPException(status_code=403, detail="path outside scan roots")
@@ -209,7 +236,7 @@ def create_app(
         action: str = Form(...),
         to: str | None = Form(default=None),
     ):
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None:
             raise HTTPException(status_code=403, detail="path outside scan roots")
@@ -226,7 +253,7 @@ def create_app(
     @app.post("/api/open")
     def api_open(request: Request, token: str = Form(default=""), path: str = Form(...)):
         """既定アプリで開く（補助・従）。冪等な閲覧操作のみ・ルート配下限定。"""
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None or not resolved.is_file():
             raise HTTPException(status_code=403, detail="path outside scan roots")
@@ -236,7 +263,7 @@ def create_app(
     @app.post("/api/reveal")
     def api_reveal(request: Request, token: str = Form(default=""), path: str = Form(...)):
         """ファイルの置き場フォルダを OS のファイルマネージャで開く（補助・従）。ルート配下限定。"""
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None or not resolved.is_file():
             raise HTTPException(status_code=403, detail="path outside scan roots")
@@ -246,7 +273,7 @@ def create_app(
     @app.post("/api/sweep")
     def api_sweep(request: Request, token: str = Form(default=""), dry_run: bool = Form(default=False)):
         """done/discarded を archive へ。watching は触らない。"""
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         moved = auto_sweep(state.config, dry_run=dry_run)
         # CLI sweep と同様、実移送後は横断 INDEX を再生成して陳腐化させない。
         if not dry_run and state.config.roots:
@@ -269,7 +296,7 @@ def create_app(
         """
         from .config_write import update_global_roots
 
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         if op not in ("add", "remove"):
             raise HTTPException(status_code=400, detail="op must be add or remove")
         if op == "add" and not allow_root_mutation:
@@ -328,7 +355,7 @@ def create_app(
         """画面右上 ⏻ ボタン用。uvicorn を graceful 停止する。
         cmd_serve から起動した実体だけが state.server を持つ。テスト等で
         単体生成された FastAPI では server が無いため 503 を返す。"""
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         if state.server is None:
             raise HTTPException(status_code=503, detail="server is not stoppable in this context")
         # uvicorn.Server はメインループ内でこのフラグを毎周見てから抜ける。
@@ -355,7 +382,7 @@ def create_app(
         dry_run: bool = Form(default=False),
     ):
         """運用ルールを注入。dry_run=True は「何が書かれるか」のプレビューを返す（書き込まない）。"""
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         if scope == "global":
             if agent not in ("claude", "codex"):
                 raise HTTPException(status_code=400, detail="unknown agent")
@@ -387,7 +414,7 @@ def create_app(
         dry_run: bool = Form(default=False),
     ):
         """注入した管理ブロックを剥がす（手書きは温存）。dry_run=True は除去対象の確認のみ。"""
-        _check_token(request, token)
+        check_token(request, token, status_code=403, detail="invalid or missing token")
         if scope == "global":
             if agent not in ("claude", "codex"):
                 raise HTTPException(status_code=400, detail="unknown agent")

@@ -7,7 +7,8 @@
   <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/board.css">
 </head>
-<body data-token="{{ token }}" data-lang="{{ lang }}">
+<body data-token="{{ token }}" data-lang="{{ lang }}"
+      hx-headers='{"x-docsweep-token": {{ token|tojson }}}'>
 
 <header class="topbar">
   <div class="brand">
