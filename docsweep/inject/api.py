@@ -11,8 +11,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import shlex
 import subprocess
@@ -23,13 +21,23 @@ from pathlib import Path
 
 import yaml
 
-from .config import DEFAULT_DUE_OFFSET_DAYS, GLOBAL_CONFIG_PATH
-from .presets import Preset, get_preset
-from .states import StateModel
+from ..config import DEFAULT_DUE_OFFSET_DAYS, GLOBAL_CONFIG_PATH
+from ..presets import Preset, get_preset
+from ..states import StateModel
+from .agent_claude import _agent_uses_central
+from .agent_codex import _warn_if_shadowed, resolve_global_target
+from .blocks import (
+    MARK_END,
+    MARK_START,
+    _block_hash,
+    _find_all_blocks,
+    _find_block,
+    _inner_of,
+    _strip_managed_blocks,
+    _wrap,
+)
+from .manifest import MANIFEST_PATH, load_manifest, save_manifest
 
-MARK_START = "<!-- docsweep:managed:start -->"
-MARK_END = "<!-- docsweep:managed:end -->"
-MANIFEST_PATH = Path.home() / ".docsweep" / "injected.json"
 DEFAULT_TARGETS = ("CLAUDE.md", "AGENTS.md")
 
 # グローバル注入をサポートする AI ツール。注入先パスは固定せず、各ツールの契約に従って動的解決する
@@ -64,48 +72,6 @@ def docsweep_command(*args: str) -> str:
     return _shell_command([exe, "-m", "docsweep", *args])
 
 
-def _codex_home() -> Path:
-    """Codex のホーム。CODEX_HOME を尊重し、無ければ ~/.codex（公式仕様準拠）。"""
-    return Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
-
-
-def resolve_global_target(agent: str = "claude", target: str | Path | None = None) -> Path:
-    """グローバル注入先の絶対パスを解決する（明示 target 優先、無ければ agent ごとの契約で決定）。
-
-    - claude: ``~/.claude/CLAUDE.md``（単一・常に読まれる）
-    - codex : ``$CODEX_HOME/AGENTS.md``（既定 ``~/.codex/AGENTS.md``）。
-      なお Codex は同階層に ``AGENTS.override.md`` があるとそちらを優先し AGENTS.md を無視するため、
-      注入時に override の有無を検査して警告する（``_warn_if_shadowed``）。
-    """
-    if target:
-        return Path(target).expanduser().resolve()
-    if agent == "claude":
-        return (Path.home() / ".claude" / "CLAUDE.md").resolve()
-    if agent == "codex":
-        return (_codex_home() / "AGENTS.md").resolve()
-    raise ValueError(f"未知の agent: {agent}（claude / codex、または --global-target で明示）")
-
-
-def _agent_uses_central(agent: str | None) -> bool:
-    """中央 guidance.md を @import で参照する agent か（Claude のみ。Codex 等はインライン展開で参照しない）。"""
-    return agent == "claude"
-
-
-def _warn_if_shadowed(path: Path, result: InjectResult | EjectResult, agent: str = "codex") -> None:
-    """Codex 系で同階層に AGENTS.override.md があると、注入先が読まれない旨を警告する。
-
-    Claude は override の概念が無いので対象外。Codex は override を最優先し AGENTS.md/フォールバック
-    （TEAM_GUIDE.md 等）を無視するため、注入先名を問わず override の存在で警告する。
-    """
-    if _agent_uses_central(agent):  # claude は対象外
-        return
-    if path.name != "AGENTS.override.md" and (path.parent / "AGENTS.override.md").is_file():
-        result.warnings.append(
-            f"同階層に AGENTS.override.md があります。Codex はこちらを優先し {path.name} を読みません。"
-            " 導線を効かせるには override 側に取り込むか、--global-target で override を指定してください。"
-        )
-
-
 @dataclass
 class InjectResult:
     project: str
@@ -113,10 +79,6 @@ class InjectResult:
     skipped: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     yaml_path: str | None = None
-
-
-def _block_hash(inner: str) -> str:
-    return hashlib.sha256(inner.strip().encode("utf-8")).hexdigest()[:16]
 
 
 def _managed_note(eject_cmd: str, lang: str = "ja") -> str:
@@ -396,78 +358,6 @@ def _global_inner(agent: str, lang: str) -> str:
     )
 
 
-def _wrap(inner: str) -> str:
-    return f"{MARK_START}\n{inner.rstrip()}\n{MARK_END}"
-
-
-def _find_block(text: str) -> tuple[int, int] | None:
-    spans = _find_all_blocks(text)
-    return spans[0] if spans else None
-
-
-def _find_all_blocks(text: str) -> list[tuple[int, int]]:
-    """管理ブロック（START..END）を全て列挙する。
-
-    END を START の後ろから探すことで、ユーザー本文に END マーカー文字列が紛れていても
-    誤判定しない。複数ブロックがあっても 2 個目以降を取りこぼさない。
-    """
-    spans: list[tuple[int, int]] = []
-    i = 0
-    while True:
-        s = text.find(MARK_START, i)
-        if s == -1:
-            break
-        e = text.find(MARK_END, s + len(MARK_START))
-        if e == -1:
-            break
-        end = e + len(MARK_END)
-        spans.append((s, end))
-        i = end
-    return spans
-
-
-def _inner_of(text: str, span: tuple[int, int]) -> str:
-    seg = text[span[0]:span[1]]
-    return seg[len(MARK_START):-len(MARK_END)].strip()
-
-
-def load_manifest() -> dict:
-    if not MANIFEST_PATH.is_file():
-        return {"projects": {}}
-    try:
-        return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"projects": {}}
-
-
-def save_manifest(data: dict) -> None:
-    """``injected.json`` を **tmp → os.replace** でアトミックに書く。
-
-    直書きだと inject/eject 中のプロセス停止で truncate 状態のファイルが残り、
-    次回 ``load_manifest`` が JSONDecodeError → 空 dict にフォールバックする。
-    その瞬間に全プロジェクトの注入履歴（block ハッシュ・preset_version）が事実上失われ、
-    以後の再注入で手編集検出（``.bak``）が効かなくなる。
-    """
-    import os
-    import tempfile
-
-    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(data, ensure_ascii=False, indent=2)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{MANIFEST_PATH.name}.", suffix=".tmp", dir=str(MANIFEST_PATH.parent)
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-            fh.write(payload)
-        os.replace(tmp_name, str(MANIFEST_PATH))
-    except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
-
-
 def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -510,37 +400,6 @@ def _write_managed_file(
         path.write_text(new_text, encoding="utf-8")
     result.written.append(rel)
     (manifest_entry.setdefault("blocks", {}))[rel] = _block_hash(inner)
-
-
-def _strip_managed_blocks(
-    path: Path, prev_hash: str | None, result: "EjectResult", *, dry_run: bool
-) -> bool:
-    """ファイルから全管理ブロックを除去する。手編集は .bak 退避。除去したら True。
-
-    project / global の eject で共有（除去ロジックを 1 か所に集約しドリフトを防ぐ）。
-    """
-    if not path.is_file():
-        return False
-    text = path.read_text(encoding="utf-8", errors="replace")
-    spans = _find_all_blocks(text)
-    if not spans:
-        return False
-    # 手編集検出（先頭ブロック基準）。
-    if prev_hash and _block_hash(_inner_of(text, spans[0])) != prev_hash:
-        result.warnings.append(f"{path.name}: 手編集を検出。.bak を作成しました。")
-        if not dry_run:
-            path.with_suffix(path.suffix + ".bak").write_text(text, encoding="utf-8")
-    # 全ブロックと直前の余分な空行を末尾側から除去（オフセットずれ防止）。
-    new_text = text
-    for sp in reversed(spans):
-        before = new_text[:sp[0]].rstrip("\n")
-        after = new_text[sp[1]:].lstrip("\n")
-        new_text = before + ("\n\n" if before and after else "") + after
-    new_text = new_text.rstrip("\n")
-    new_text = new_text + "\n" if new_text else ""
-    if not dry_run:
-        path.write_text(new_text, encoding="utf-8")
-    return True
 
 
 def inject(
