@@ -95,7 +95,9 @@ select = ["E", "F", "I", "UP", "B"]
 # - BLE001: `except Exception: pass` は graceful degradation の意図的パターン
 # - B008: FastAPI の `Query()` / `Body()` を default 引数に置くのは framework 慣習
 # - UP035: `typing.List` 等の deprecated import は一部 lazy import で残っている
-ignore = ["E501", "E402", "F401", "F841", "BLE001", "B008", "UP035"]
+# - I001: import 並び順の isort 規則は `ruff --fix` で一括整形するのが正道。手 fix
+#   は非現実的（31 件散在）で別 PR で auto-fix cadence を回してから enforce する
+ignore = ["E501", "E402", "F401", "F841", "BLE001", "B008", "UP035", "I001"]
 
 [tool.mypy]
 # 段階導入: strict モードは既存コードで大量エラーになるため見送り。

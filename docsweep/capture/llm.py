@@ -38,7 +38,7 @@ class MockLLM:
 
     def extract(self, request: LLMRequest) -> list[Draft]:
         drafts: list[Draft] = []
-        for i, line in enumerate(request.conversation.splitlines()[:20]):
+        for _i, line in enumerate(request.conversation.splitlines()[:20]):
             stripped = line.strip()
             if not stripped:
                 continue

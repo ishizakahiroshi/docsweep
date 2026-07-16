@@ -52,7 +52,7 @@ def cmd_review_week(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print(f"review-week")
+        print("review-week")
         print(f"  watching: {payload['watching_count']}")
         print(f"  planned≥90d: {payload['old_planned_count']}")
         print(f"  conflict: {payload['conflict_count']}")
