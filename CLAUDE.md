@@ -86,6 +86,23 @@ AI 作業共通ルールは、各利用者のグローバル AI 設定に従う
 - このリポジトリでの適用注: `pyinstaller` / `pip install -e .` もビルド・パッケージング扱い
   （ユーザー指示があるまで実行しない）。`pytest` / `ruff` / `mypy` 等の正しさ確認は対象外。
 
+## 開発者向け git hook（推奨）
+
+`.githooks/pre-push` が用意されている。push 前に自動で `pytest -q` を走らせて失敗を
+止めるためのフック。2026-07-16 v0.3.0 release で「ローカル pytest せず push → リモート
+CI で 5 連続失敗」の cascade があった教訓から追加。
+
+**有効化**（clone 後 1 回だけ）:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+- pytest 未導入や python 不在の環境では自動 skip（既存 clone に影響なし）
+- 緊急時は `git push --no-verify` で回避可
+- `git config` は per-clone の設定なので、リポに commit されない。clone した各自が
+  上記コマンドを 1 回だけ実行する。
+
 ## 公開・配布の方針
 
 - 秘匿情報が無ければ全公開（ツール本体 + テンプレ + 規約ドキュメントをセットで）。
