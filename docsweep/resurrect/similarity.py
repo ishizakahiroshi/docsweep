@@ -30,7 +30,7 @@ def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     """単純 cosine（numpy 無依存）。"""
     if not vec_a or not vec_b or len(vec_a) != len(vec_b):
         return 0.0
-    dot = sum(x * y for x, y in zip(vec_a, vec_b))
+    dot = sum(x * y for x, y in zip(vec_a, vec_b, strict=False))
     na = sum(x * x for x in vec_a) ** 0.5
     nb = sum(y * y for y in vec_b) ** 0.5
     if na == 0 or nb == 0:
