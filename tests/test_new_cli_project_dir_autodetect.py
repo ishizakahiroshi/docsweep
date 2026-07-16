@@ -45,5 +45,9 @@ def test_new_with_explicit_project_dir_still_wins(tmp_path: Path, monkeypatch):
     rc = main(["new", "bugfix", "explicit-topic", "--no-due", "--project-dir", str(other)])
     assert rc == 0
 
-    generated = list(other.glob("bugfix_explicit-topic_*.md"))
+    # templates_gen._placement_dir は docs/local/ が無いプロジェクトでも自動的に
+    # docs/local/ を新設して配置する（ルート直下に md をばら撒かない・家規約）。
+    generated = list((other / "docs" / "local").glob("bugfix_explicit-topic_*.md"))
     assert len(generated) == 1
+    # フォールバック（project_dir 直下）に落ちていないこと。
+    assert not list(other.glob("bugfix_explicit-topic_*.md"))
