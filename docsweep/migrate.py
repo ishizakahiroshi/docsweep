@@ -23,13 +23,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
 from .config import Config
-from .detect import _FRONTMATTER_RE, detect_status
+from .detect import detect_status
 from .engine import run_scan
+from .services.frontmatter import read_frontmatter, read_frontmatter_text
 
-# 書き換え用の厳密版（detect の _FRONTMATTER_RE は閉じフェンス後の空行まで \s* で飲み込むため、
+# 書き換え用の厳密版（共通 reader は閉じフェンス後の空行まで \s* で飲み込むため、
 # 再構築に使うと本文側の空行が失われる。行内空白のみ許容し、本文をバイト位置で温存する）。
 _FRONTMATTER_SPLIT_RE = re.compile(r"^---[ \t]*\n(.*?\n)---[ \t]*\n", re.DOTALL)
 
@@ -78,16 +77,13 @@ def _build_frontmatter_block(*, doc_type: str, status: str, today: str) -> str:
     return f"---\n{lines}\n---\n"
 
 
-def _parse_frontmatter_keys(text: str) -> set[str] | None:
+def _parse_frontmatter_keys(text: str, path: Path) -> set[str] | None:
     """先頭 frontmatter のトップレベルキー集合を返す。無い/壊れている場合は None。"""
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
+    _data, body = read_frontmatter_text(text)
+    if body == text:
         return None
-    try:
-        data = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError:
-        return None
-    if not isinstance(data, dict):
+    data = read_frontmatter(path)
+    if data is None:
         return None
     return {str(k) for k in data.keys()}
 
@@ -162,9 +158,10 @@ def plan_migration(config: Config, *, project: str | None = None) -> MigrateResu
                 skipped_reason=f"読み取り失敗: {e}",
             ))
             continue
-        keys = _parse_frontmatter_keys(text)
+        keys = _parse_frontmatter_keys(text, path)
         status = _state_to_status(rec.state)
-        if keys is None and _FRONTMATTER_RE.match(text):
+        _data, body = read_frontmatter_text(text)
+        if keys is None and body != text:
             result.skipped.append(MigratePlan(
                 path=rec.path, doc_type=rec.type, status=rec.state or "?",
                 skipped_reason="frontmatter を解析できません（YAML 不正）",
@@ -207,7 +204,7 @@ def apply_migration(
 
         if plan.mode == "upgrade":
             # 二重チェック（plan 後に手で frontmatter が完成された/壊れたケースは触らない）。
-            keys = _parse_frontmatter_keys(text)
+            keys = _parse_frontmatter_keys(text, path)
             if keys is None or all(k in keys for k in _OKF_KEYS):
                 plan.skipped_reason = "frontmatter が変化しています（再検出・スキップ）"
                 result.skipped.append(plan)
@@ -229,7 +226,8 @@ def apply_migration(
             continue
 
         # 二重チェック（plan 後にユーザーが手で frontmatter を入れたケース）。
-        if _FRONTMATTER_RE.match(text):
+        _data, body = read_frontmatter_text(text)
+        if body != text:
             plan.skipped_reason = "既に frontmatter があります（再検出）"
             result.skipped.append(plan)
             continue

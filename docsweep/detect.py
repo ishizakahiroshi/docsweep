@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 import yaml
 
 from .config import TypeDef
+from .services.frontmatter import read_frontmatter_text
 from .states import StateModel
 
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _H1_RE = re.compile(r"^#\s+(.*)$", re.MULTILINE)
 _H1_LABEL_RE = re.compile(r"^\[([^\]]+)\]\s*(.*)$")
 # fenced code block の開始/終了マーカー（``` か ~~~ が 3 個以上・先頭インデント許容）。
@@ -89,16 +89,16 @@ def _parse_frontmatter_dict(text: str) -> dict | None:
     related/last_reviewed/docsweep_policy）の取り込みは 1 回パースしたものを共有する方が素直
     なので、共有ヘルパとして導入する。
     """
+    data, body = read_frontmatter_text(text)
+    if body != text:
+        return data
+
     yaml_body: str | None = None
-    m = _FRONTMATTER_RE.match(text)
-    if m:
-        yaml_body = m.group(1)
-    else:
-        # HTML の docsweep-meta コメントは先頭 4KB 以内に置く運用（生成テンプレ側で保証）。
-        head = text[:4000]
-        hm = _HTML_META_RE.search(head)
-        if hm:
-            yaml_body = hm.group(1)
+    # HTML の docsweep-meta コメントは先頭 4KB 以内に置く運用（生成テンプレ側で保証）。
+    head = text[:4000]
+    hm = _HTML_META_RE.search(head)
+    if hm:
+        yaml_body = hm.group(1)
     if yaml_body is None:
         return None
     try:

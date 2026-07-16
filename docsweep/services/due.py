@@ -13,17 +13,9 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
-from ..atomic import update_line
-from ..detect import _FRONTMATTER_RE
 from ..state import increment_postpone
+from .frontmatter import read_frontmatter_text, update_frontmatter_field
 
-# frontmatter ブロック内で `due:` 行を捉える正規表現。
-# `due:\n`（値なし）でも 1 行として掴めるように値部分は `.*` で任意許容にする。
-# 以前は `\S.*` を要求していたため、空 `due:` が残った md に対し `_replace_or_insert_due` が
-# else 分岐に落ちて重複 `due:` 行を末尾追加していた（PyYAML の last-wins 依存になり fragile）。
-# 空白は `\s` ではなく `[ \t]` に絞る（`\s` は `\n` を含み、MULTILINE でも直後の改行を
-# 貪欲に取り込んでしまうため group 1 に `\n` が混入する）。
-_DUE_LINE_RE = re.compile(r"^([ \t]*due[ \t]*:[ \t]*)(.*)$", re.MULTILINE)
 _RELATIVE_RE = re.compile(r"^\s*\+\s*(\d+)\s*([dwmy])\s*$", re.IGNORECASE)
 _ABSOLUTE_RE = re.compile(r"^\s*(\d{4}-\d{2}-\d{2})\s*$")
 # plan_activity-summary.md C1: --since/--until は過去方向（-3d 等）も受けるため符号付き。
@@ -102,39 +94,12 @@ def resolve_relative_offset(spec: str, *, today: date | None = None) -> date:
 
 def _read_current_due(text: str) -> str | None:
     """frontmatter から現在の due 値を抽出（無ければ / 空値なら None）。"""
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
+    data, _body = read_frontmatter_text(text)
+    raw = data.get("due")
+    if raw is None:
         return None
-    inner = m.group(1)
-    dm = _DUE_LINE_RE.search(inner)
-    if not dm:
-        return None
-    # 新しい regex は空値の `due:` にもヒットするので、値部分（group 2）が空なら None を返す。
-    value = (dm.group(2) or "").strip()
+    value = str(raw).strip()
     return value or None
-
-
-def _replace_or_insert_due(text: str, new_due: str) -> str:
-    """frontmatter 内の ``due:`` 行を置換、無ければ frontmatter を新設・追記する。
-
-    既存 frontmatter があれば末尾に `due: <値>` を追加。frontmatter 自体が無ければ
-    `---\\ndue: <値>\\n---\\n` を最先頭に挿入する。
-    """
-    fm = _FRONTMATTER_RE.match(text)
-    if fm:
-        inner = fm.group(1)
-        if _DUE_LINE_RE.search(inner):
-            new_inner = _DUE_LINE_RE.sub(rf"\g<1>{new_due}", inner, count=1)
-        else:
-            # frontmatter 末尾に追加（既存行末の改行有無を保つ）。
-            sep = "" if inner.endswith("\n") or not inner else "\n"
-            new_inner = f"{inner}{sep}due: {new_due}\n"
-        # _FRONTMATTER_RE は終端 `---\n` まで含むので、内側を差し替えて再構築する。
-        head = "---\n"
-        tail = "\n---\n" if not new_inner.endswith("\n") else "---\n"
-        return head + new_inner + tail + text[fm.end():]
-    # frontmatter 無し → 先頭に挿入。
-    return f"---\ndue: {new_due}\n---\n{text}"
 
 
 def update_due(
@@ -162,10 +127,10 @@ def update_due(
     text_before = Path(abs_path).read_text(encoding="utf-8", newline="")
     old_due = _read_current_due(text_before)
 
-    def _xform(text: str) -> str:
-        return _replace_or_insert_due(text, new_due)
-
-    new_mtime = update_line(Path(abs_path), transform=_xform, expected_mtime=expected_mtime)
+    updated = update_frontmatter_field(
+        Path(abs_path), "due", new_due, expected_mtime=expected_mtime
+    )
+    new_mtime = updated.new_mtime
     count = increment_postpone(
         Path(project_root), Path(abs_path),
         from_due=old_due, to_due=new_due, reason=reason,
