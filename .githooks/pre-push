@@ -1,0 +1,44 @@
+#!/bin/sh
+# docsweep 開発者向け pre-push フック — push 前に pytest 全走行して失敗を止める。
+#
+# 目的: 2026-07-16 の v0.3.0 release cascade（初回 CI で 5 連続失敗）の教訓。
+#   ローカルで pytest を走らせずに push すると、リモート CI で latent bug が一気に発火する。
+#   push 前に自動で pytest -q を走らせて、失敗なら push をブロックする（緊急時は --no-verify で回避可）。
+#
+# 有効化: リポジトリを clone した直後に 1 度だけ以下を実行:
+#   git config core.hooksPath .githooks
+#
+# 対応: docs/local/plan_audit-recommendations-phase2_2026-07-16.md 続きの CI 予防策。
+
+set -e
+
+# pytest が入っていない環境（本 hook 無関係の別プロジェクト clone 直後等）はスキップ。
+if ! command -v python >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+    echo "[pre-push] python が見つかりません。skip します。"
+    exit 0
+fi
+
+# Python 実行ファイルを解決（Windows は python.exe が優先・POSIX は python3 優先）。
+if command -v python >/dev/null 2>&1; then
+    PY=python
+else
+    PY=python3
+fi
+
+# pytest 未導入なら skip（`pip install -e .[dev]` を促す WARN のみ）。
+if ! "$PY" -c "import pytest" 2>/dev/null; then
+    echo "[pre-push] pytest 未導入のため skip します。"
+    echo "[pre-push]   有効化には: pip install -e '.[dev]'"
+    exit 0
+fi
+
+echo "[pre-push] pytest -q を実行中（push 前検証）..."
+if ! "$PY" -m pytest -q; then
+    echo ""
+    echo "[pre-push] pytest が失敗しました。push を中止します。"
+    echo "[pre-push] 修正して再 push するか、緊急時は --no-verify で回避してください。"
+    exit 1
+fi
+
+echo "[pre-push] pytest OK。push を許可します。"
+exit 0
