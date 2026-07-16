@@ -114,7 +114,7 @@ def update_status(
     new_label = f"[{new_label_token}]"
 
     # 旧ラベル抽出（書き換え前の text を読む）。
-    text_before = Path(abs_path).read_text(encoding="utf-8", newline="")
+    text_before = Path(abs_path).open("r", encoding="utf-8", newline="").read()
     old_token, _title = _current_h1(text_before)
     old_state = sm.match(old_token) if old_token else None
     old_state_key = old_state.key if old_state else None

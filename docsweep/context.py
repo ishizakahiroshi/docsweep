@@ -22,7 +22,7 @@ from .services.frontmatter import read_frontmatter_text
 
 def _read_text(path: str) -> str:
     try:
-        return Path(path).read_text(encoding="utf-8", newline="")
+        return Path(path).open("r", encoding="utf-8", newline="").read()
     except (OSError, UnicodeDecodeError):
         return ""
 

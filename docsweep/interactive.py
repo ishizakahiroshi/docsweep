@@ -106,7 +106,7 @@ def _update_frontmatter_status(path: Path, new_status: str) -> bool:
     無事更新したら True、frontmatter が無い / status 行が無い場合は False。
     """
     try:
-        text = path.read_text(encoding="utf-8", newline="")
+        text = path.open("r", encoding="utf-8", newline="").read()
     except (OSError, UnicodeDecodeError):
         return False
     # 先頭 frontmatter ブロックの中の ``status:`` 行だけ置換する。

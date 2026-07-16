@@ -1,7 +1,8 @@
 """`docsweep new <type> <topic>` のテンプレ即生成。
 
 規約（templates/CLAUDE.md）の必須セクション・H1 ラベルに沿った雛形を出す。
-配置先は docs/local/ があればそこ、無ければ docs/ 直下。
+配置先は docs/local/ があればそこ、docs/ だけあれば docs/ 直下、
+どちらも無ければ docs/local/ を新規作成して配置（プロジェクトルート直下には置かない）。
 
 新規生成時に frontmatter `due:` を初日から入れる（親 plan kanban-board-write-ops の §C4 §C2）。
 オフセット日数は ``Config.due_default_offset_days``（``.docsweep.yaml`` の ``due:`` ブロック）で可変。
@@ -33,7 +34,9 @@ def _placement_dir(project_dir: Path) -> Path:
     docs = project_dir / "docs"
     if docs.is_dir():
         return docs
-    return project_dir
+    # どちらも無い新規リポでは家標準の docs/local/ を新設する（ルート直下に
+    # md をばら撒かない）。実ディレクトリ作成は呼び出し側の mkdir に任せる。
+    return local
 
 
 def _okf_frontmatter(

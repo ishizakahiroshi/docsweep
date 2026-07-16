@@ -317,7 +317,7 @@ def relabel_file(path: Path, new_label: str, config: Config) -> bool:
     """
     try:
         # newline="" で読み込み、CRLF/LF を文字列にそのまま保持する（読み書きとも変換しない）。
-        text = path.read_text(encoding="utf-8", newline="")
+        text = path.open("r", encoding="utf-8", newline="").read()
     except UnicodeDecodeError:
         return False
     # マスクは長さを保つので、マスク版で得た start/end を原文 text にそのまま使える。
