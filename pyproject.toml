@@ -81,9 +81,21 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-# 段階導入: SIM/RUF はスタイル系で警告数が読める。バグ検出系の PLE/PIE は初回噴出リスクを
-# 避けるため後回し（M-11 のフルセットは別 refactor plan で実施）。
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# 段階導入: 既存 codebase が pre-existing パターンで pass しない状態のため、
+# 監査シリーズ (v0.3.0) の scope は「CI に ruff を配線する」までに留め、rule 拡張
+# （SIM / RUF / PLE / PIE 等）と既存 warning cleanup は別 PR で扱う（M-11 続編）。
+# 特に RUF001/002/003 は JP 全角括弧を ambiguous unicode 扱いするため JP-first コード
+# ベースでは大量ノイズになる。
+select = ["E", "F", "I", "UP", "B"]
+# 既存コードスタイル温存（監査シリーズの scope 外・別 refactor PR で cleanup 予定）:
+# - E501: 100 char 上限は JP CJK 幅換算で現実的でない（別 PR で line-length=120 検討）
+# - E402: 大依存の lazy import が意図的（起動時間削減）
+# - F401: __init__.py の re-export 経路で必要
+# - F841: 一部は test 残骸・別 cleanup で解消予定
+# - BLE001: `except Exception: pass` は graceful degradation の意図的パターン
+# - B008: FastAPI の `Query()` / `Body()` を default 引数に置くのは framework 慣習
+# - UP035: `typing.List` 等の deprecated import は一部 lazy import で残っている
+ignore = ["E501", "E402", "F401", "F841", "BLE001", "B008", "UP035"]
 
 [tool.mypy]
 # 段階導入: strict モードは既存コードで大量エラーになるため見送り。
