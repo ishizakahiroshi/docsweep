@@ -5,23 +5,121 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-16
+
+2026-07-16 の ai-audit-prompts / ultracode 監査（52 findings 検出）と、その進言事項 15 件を
+全消化した「監査シリーズ完結版」。critical / high の security fix、Cookie 認証への移行、
+`cli.py` / `inject.py` の分割 refactor を含む minor bump。互換性維持: URL クエリ認証は
+hybrid 経路として残る（v0.4.x で廃止予定）。
+
 ### Security
 
-- Web UI 認証を HttpOnly / SameSite=Strict Cookie と `x-docsweep-token` ヘッダへ移行。
-  初回の `?token=` 付き URL は Cookie へ交換後に token 無し URL へ redirect する。
-  URL クエリ認証は v0.2.x の互換経路として残し、v0.3.0 で廃止予定。
+- **[critical]** capture 経路（`POST /api/capture/save` と MCP `capture_save`）の任意ファイル
+  書き込みを塞いだ。`save_drafts` に `target_dir` のスキャンルート境界チェックと
+  `suggested_filename` の basename 化・`.md` 拡張子検証を導入し、`../evil.md` 系の
+  トラバーサルと絶対パス書き込みを拒否する（`CaptureScopeError`）。**トークン漏洩時に
+  スタートアップ / 認証情報 / cron 等へ任意書き込みできた実質 RCE 経路を除去**。
+- **[medium]** capture 画面（`server/templates/capture.html`）の innerHTML 経路で
+  `d.kind` / `d.suggested_filename` を `escapeHtml` 未通しだった箇所を修正（XSS 除去）。
+- Web UI 認証を **HttpOnly / SameSite=Strict Cookie と `x-docsweep-token` ヘッダへ移行**。
+  初回の `?token=` 付き URL は Cookie へ交換後に token 無し URL へ redirect する
+  hybrid モード（URL クエリ認証は v0.4.x で完全廃止予定・本版はその告知フェーズ）。
+- `POST /api/config/roots` を `--allow-root-mutation` 起動フラグで守るようになった。
+  未指定なら 403、指定時も `/`・`C:\`・HOME 直下の追加は allowlist で常時拒否
+  （トークン漏洩時のスキャン範囲拡張＝任意 .md 読取／書換の連鎖を防ぐ）。
+- `docsweep/server/sanitize.py` の stdlib HTMLParser フォールバック（88 行）を削除し、
+  `nh3` を `web` extras の必須依存に。パーサ実装差に依存した bypass 余地を除去。
 
 ### Added
 
+- **CI ワークフロー**（`.github/workflows/ci.yml`）を新設。Python 3.10 / 3.12 マトリクスで
+  `pytest` / `ruff check` / `mypy` を回す。mypy は段階導入のため `continue-on-error` で
+  警告扱い（既存コードでの初回真っ赤を回避）。
+- `--allow-root-mutation` CLI フラグ（上記 Security の項参照）。
+- `[project.optional-dependencies].all-lite` extras 新設。`resurrect`（torch/CUDA を
+  引きずる GB 級）を除いた実用最小構成（`web,review,mcp,watch`）。大半のユーザーは
+  こちらで足りる想定。
+- `services/frontmatter.py` に `read_frontmatter(path)` / `read_frontmatter_text(text)` の
+  read API を追加。既存 9 モジュールに散っていた `_FRONTMATTER_RE` 直接利用を services
+  内に集約するための基盤（下記 Refactor 参照）。
+- `services/frontmatter.py` に `FrontmatterBlockStyleError` を追加し、手書き block-style
+  list（`tags:\n  - a\n  - b`）を検出したら書き換えを拒否（フロー記法前提の 1 行置換で
+  継続行が孤立し YAML パースが壊れる事故を予防）。
 - `migrate-frontmatter` を「素の md を OKF 形式に整えるフォーマッタ」へ一般化。従来は
   frontmatter が 1 行でもあると無条件スキップだったが、OKF キー（type/status/tags/owner/
   review_status/related/last_reviewed）が欠けている md へ**不足キーだけを追記**する
   mode=`upgrade` を追加（`due:` だけの部分 frontmatter 等が対象。既存キーの値・行は不変・
-  H1 温存の不変条件は維持）。JSON 出力とCLI 表示に `mode` を追加。
+  H1 温存の不変条件は維持）。JSON 出力と CLI 表示に `mode` を追加。
 - inject の導線（グローバル / プロジェクト）に「新規 md の作成（OKF frontmatter 必須）」節を追加
   （`GUIDANCE_VERSION` 3 → 4）。AI が `docsweep new` を通さず手書きすると `due:` だけの
   最小 frontmatter になり OKF フィールドが欠落する穴を、docsweep 自身の注入ルールで塞ぐ
   （特定の AI ツールに依存しない）。反映には `docsweep inject --global` の再実行が必要。
+- pytest を `--strict-markers --strict-config` で厳格化。未宣言 marker と設定ミスを即エラー化。
+- `[tool.mypy]` セクション追加（`ignore_missing_imports = true` / `warn_unused_ignores = true`）。
+- `[tool.ruff.lint].select` を `E,F,I,UP,B,SIM,RUF` に拡張（バグ検出系 PLE/PIE は次版で
+  段階導入予定）。
+
+### Fixed
+
+以下は 2026-07-16 監査で確定した finding のうち、最小修正で対応可能なもの 12 件。
+
+- `engine.relabel_file` を `write_atomic` 経由へ寄せて、atomic.py の宣言（「全ての書き込み
+  API はこのヘルパ経由で MD を更新する」）と整合。バックアップと原子的差し替えが効くように
+  なり、Web UI 編集中の md を CLI/MCP 側から書き換える race が壊れにくくなる。（A-01）
+- `config.load_config` が `postpone_warn_threshold` に文字列や null が入った YAML を読ませ
+  られると `ValueError` で全コマンドが起動不能になっていたのを、`_safe_int` フォールバック
+  に修正（既定値 3 / 5 へ落とす）。（A-02）
+- `docsweep auto-triage --apply` が対象 JSON の欠損や破損で生の traceback を吐いていたのを、
+  `FileNotFoundError` / `JSONDecodeError` / `UnicodeDecodeError` を捕捉して exit 2 に修正。
+  （A-03）
+- 空 `due:` 行（値なし）を含む md への `update_due` で `due:` キーが重複挿入され YAML
+  パーサ依存の last-wins になっていたのを、`_DUE_LINE_RE` を `[ \t]` 空白限定に修正して
+  1 本置換に。（B-01）
+- `inject.save_manifest` を tmp → `os.replace` のアトミック書き込みに変更。inject/eject 中の
+  プロセス停止で `injected.json` が truncate → 全プロジェクトの注入履歴（block ハッシュ・
+  preset_version）が事実上失われる事故を防止。（B-04）
+- `graph` の node id で複数プロジェクトの同名 md（例: 各プロジェクトの `plan_v0.1.md`）が
+  basename 衝突していたのを、**衝突時のみ** `project/basename` の複合キーに昇格させる部分
+  互換方式で修正（衝突なしの通常ケースは basename のまま・後方互換）。（C-02）
+- `brief` の `yesterday_done` が age_days 降順（＝古い順）になっていたのを mtime 降順
+  （＝新しい順）に修正。24h ウィンドウ内での自然な並び順に。（C-03）
+- `timeline._resolve_date` が `rec.mtime` None のレコード 1 件で TypeError → timeline 全体が
+  落ちていたのを、`("", "unknown")` フォールバックに修正。（C-04）
+- 対話 `triage --review` を Ctrl+C で中断すると蓄積した判定が全ロスしていたのを、
+  `KeyboardInterrupt` を捕捉してここまでの pairs を dispatch するよう修正
+  （EOFError と対称の挙動に）。（C-05）
+- `atomic.backup` のファイル名 suffix を `time.time()` → `time.time_ns()` に上げ、同一秒内
+  2 回書きで前世代を上書きする問題を修正。（A-05）
+
+### Changed / Refactor
+
+- `docsweep/cli.py`（2311 行）を `docsweep/cli/` パッケージに分割。`cli/parser.py`
+  （argparse 定義）と `cli/commands/*.py`（読取系 / 書込系 / 特殊系）に責務分離。
+  公開エントリ `docsweep.cli:main` と既存 `from docsweep.cli import ...` は `__init__.py`
+  の re-export で完全互換。（M-06）
+- `docsweep/inject.py`（828 行）を `docsweep/inject/` パッケージに分割。`blocks.py` /
+  `manifest.py` / `agent_claude.py` / `agent_codex.py` / `api.py` の 5 モジュールへ責務分離。
+  公開 API（`inject` / `eject` / `inject_global` / `eject_global` / `MANIFEST_PATH` / etc）は
+  `__init__.py` から re-export され後方互換 100%。（M-10）
+- **frontmatter 読み書き API を `services/frontmatter.py` に一本化**。9 モジュール
+  （`claim.py` / `context.py` / `related.py` / `migrate.py` / `timeline.py` / `fix_conflict.py` /
+  `services/due.py` 他）に散っていた `_FRONTMATTER_RE` 直接利用を services 内に集約。
+  `services/due._replace_or_insert_due` は廃し、`services/frontmatter.update_frontmatter_field`
+  に統合。9 箇所の drift（`migrate.py:32` が「厳密版が必要」と告白していた既知の負債）を
+  解消。（M-07 / M-08）
+
+### Tests
+
+- 97 テスト追加（既存 535 → 632）。内訳:
+  - `tests/test_audit_fixes_2026_07_16.py`（16 件）: 上記 Fixed の再現テスト
+  - `tests/test_server_routes_extras.py`（17 件）: `/graph` `/resurrect` `/brief` `/cross`
+    `/capture` の 200 / 401 / エラー系 smoke
+  - `tests/test_cli_smoke.py`（55 件）: 全 CLI サブコマンドの `--help` exit 0 smoke
+  - `tests/test_mcp_tools.py` に read 系 smoke 7 件追記
+    （`route_intent` / `doctor` / `day` / `list_projects` / `set_project_enabled` /
+    `inject_global` / `eject_global`）
+  - `tests/test_services_frontmatter.py` に block 記法検出テスト 2 件追記
+- Phase 2 (L-01/02/03/04/05) の追加分と合わせて最終 **650 テスト green**。
 
 ## [0.2.1] - 2026-07-04
 

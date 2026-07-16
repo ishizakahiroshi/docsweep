@@ -284,7 +284,7 @@ python -m docsweep eject  --global
 
 python -m docsweep list                                    # 注入済み（プロジェクト＋グローバル）一覧
 
-# Web UI（UX 主役・127.0.0.1・トークン付き URL）。注入/解除もダッシュボードから（プレビュー必須）
+# Web UI（UX 主役・127.0.0.1・初回だけ ?token= 付き URL、以降は Cookie で /board を直接開ける）。注入/解除もダッシュボードから（プレビュー必須）
 python -m docsweep serve --root ~/dev
 
 # MCP サーバー（AI エージェント面・stdio）
