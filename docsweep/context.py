@@ -17,6 +17,7 @@ from .config import Config
 from .engine import run_scan
 from .models import FileRecord
 from .related import backref_records, forward_records
+from .services.frontmatter import read_frontmatter_text
 
 
 def _read_text(path: str) -> str:
@@ -28,10 +29,8 @@ def _read_text(path: str) -> str:
 
 def _strip_frontmatter(text: str) -> str:
     """OKF frontmatter を取り除いた本文を返す（context へは本文だけ載せる）。"""
-    from .detect import _FRONTMATTER_RE
-
-    m = _FRONTMATTER_RE.match(text)
-    return text[m.end():] if m else text
+    _data, body = read_frontmatter_text(text)
+    return body
 
 
 def _parent_plan(target: FileRecord, records: list[FileRecord]) -> FileRecord | None:

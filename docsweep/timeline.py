@@ -17,27 +17,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
 from .config import Config
-from .detect import _FRONTMATTER_RE
 from .engine import run_scan
 from .models import FileRecord
+from .services.frontmatter import read_frontmatter
 
 
 def _frontmatter_data(path: str) -> dict:
-    try:
-        text = Path(path).read_text(encoding="utf-8", newline="")
-    except (OSError, UnicodeDecodeError):
-        return {}
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        return {}
-    try:
-        data = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError:
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_frontmatter(Path(path)) or {}
 
 
 def _git_last_date(path: str) -> str | None:

@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .config import Config
-from .detect import _parse_frontmatter_dict
 from .engine import scan_records
 from .interactive import _update_frontmatter_status
 from .models import Flag
+from .services.frontmatter import read_frontmatter
 from .services.status import update_status
 
 Prefer = Literal["h1", "frontmatter", "both"]
@@ -86,8 +86,7 @@ def fix_conflicts(
         h1_label = r.state_label
         fm_status = None
         try:
-            text = path.read_text(encoding="utf-8")
-            fm = _parse_frontmatter_dict(text) or {}
+            fm = read_frontmatter(path) or {}
             fm_status = fm.get("status")
         except Exception:  # noqa: BLE001
             fm_status = None

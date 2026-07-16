@@ -20,12 +20,15 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 from ..atomic import update_line
-from ..detect import _FRONTMATTER_RE
+
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 # 単純なスカラ / list / フィールド名のみ。任意キーは受けない（API 側で許可リスト管理）。
 ALLOWED_FIELDS: frozenset[str] = frozenset(
-    {"tags", "owner", "related", "review_status", "last_reviewed"}
+    {"tags", "owner", "related", "review_status", "last_reviewed", "due"}
 )
 LIST_FIELDS: frozenset[str] = frozenset({"tags", "related"})
 
@@ -44,6 +47,52 @@ class FrontmatterBlockStyleError(ValueError):
     継続行（``  - item``）を残したままキー行だけ書き換えると YAML パースが壊れる。
     そのような入力を受けたら破壊せず ValueError を投げてユーザーに気付かせる。
     """
+
+
+def read_frontmatter_text(text: str) -> tuple[dict, str]:
+    """テキスト先頭の YAML frontmatter と残りの本文を返す。
+
+    frontmatter が無い場合は ``({}, text)``、YAML が不正または mapping 以外の場合は
+    ``({}, body)`` を返す。後者では frontmatter の囲み自体は認識できているため、本文から
+    ブロックを分離した状態を維持する。
+    """
+    match = _FRONTMATTER_RE.match(text)
+    if match is None:
+        return {}, text
+    body = text[match.end():]
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return {}, body
+    if data is None:
+        return {}, body
+    if not isinstance(data, dict):
+        return {}, body
+    return data, body
+
+
+def read_frontmatter(path: Path) -> dict | None:
+    """ファイル先頭の YAML frontmatter を mapping として読む。
+
+    frontmatter が無い、ファイルを読めない、YAML が不正、または YAML のルートが mapping
+    でない場合は ``None`` を返す。
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    match = _FRONTMATTER_RE.match(text)
+    if match is None:
+        return None
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return None
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        return None
+    return data
 
 
 @dataclass
