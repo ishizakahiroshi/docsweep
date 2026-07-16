@@ -21,7 +21,8 @@ even when read by tools that don't have docsweep installed.
 
 docsweep adds only two conventions of its own:
 
-- **The type set is fixed to `plan` / `bugfix` / `pending`** (slightly stricter than OKF).
+- **The type set is fixed to `plan` / `bugfix` / `pending` / `manual_release`**
+  (slightly stricter than OKF).
   This constraint enables archive automation; arbitrary type values are treated as unmanaged.
 - **H1 status labels are kept alongside, not deprecated**. They preserve the human-facing value
   of seeing the state the moment you open the file, and files without frontmatter fall back to

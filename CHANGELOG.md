@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `manual_release-*.md` を内蔵の `manual_release` type として認識し、`[完了]` / `[廃止]`
+  に達したリリース記録を通常の `docsweep sweep` で自動 archive できるようにした。
+
 ## [0.3.0] - 2026-07-16
 
 2026-07-16 の ai-audit-prompts / ultracode 監査（52 findings 検出）と、その進言事項 15 件を

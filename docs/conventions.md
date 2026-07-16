@@ -22,13 +22,14 @@ docsweep は **H1 ステータスラベルを機械的に読み取り**、完了
 
 ---
 
-## 3 つのファイル種別
+## 4 つのファイル種別
 
 | 種別 | 役割 | ファイル名 | 状態の終点 |
 |---|---|---|---|
 | plan | 計画・調査・検討 | `plan_<topic>.md` | `[完了]` → archive |
 | bugfix | 障害対応の事後記録 | `bugfix_<topic>_YYYY-MM-DD.md` | `[完了]` → archive |
 | pending | 着手しない判断の保留 | `pending_<topic>.md` | 昇格 or 廃棄 |
+| manual_release | 手動リリースの実行記録 | `manual_release-<version>_YYYY-MM-DD.md` | `[完了]` → archive |
 
 種別をまたぐ昇格は一方向です:
 

@@ -18,7 +18,8 @@ md 冒頭の YAML frontmatter で `type` / `status` / `tags` / `owner` / `review
 
 docsweep 固有の追加規約は 2 点だけです:
 
-- **type 集合を `plan` / `bugfix` / `pending` に固定**（OKF より少し強い規約）。
+- **type 集合を `plan` / `bugfix` / `pending` / `manual_release` に固定**
+  （OKF より少し強い規約）。
   archive 自動化のための制約で、自由な type 値は管理対象外として扱います。
 - **H1 ステータスラベル運用は廃止せず併用**。md を開いた瞬間に状態が見える人間向け価値を
   残し、frontmatter が無いファイルは H1 ラベルへフォールバックします（後方互換 100%）。

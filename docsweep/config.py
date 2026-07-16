@@ -38,6 +38,7 @@ DEFAULT_TYPES: tuple[TypeDef, ...] = (
     TypeDef("plan", "plan_*.md", ("概要",), "概要", 90),
     TypeDef("bugfix", "bugfix_*.md", ("症状", "根本原因", "修正内容", "変更ファイル", "検証", "備忘"), "症状", 30),
     TypeDef("pending", "pending_*.md", ("概要", "保留理由", "着手条件"), "概要", 180),
+    TypeDef("manual_release", "manual_release-*.md", (), "", 180),
     # session-recap（振り返り）: docs/local に置く記録 md。archive_with_release で release 時に道連れ archive。
     TypeDef("recap", "recap_*.md", (), "", 180),
     # HTML 生成物（design-html / review-sheet skill から）。frontmatter を書けないので
