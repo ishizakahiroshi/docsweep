@@ -57,6 +57,7 @@ id_ed25519
 *.env
 secrets.*
 *secret*
+!docsweep/secrets_guard.py
 *credential*
 *token*
 .netrc
