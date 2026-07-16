@@ -9,7 +9,40 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
+
+from fastapi import HTTPException, Request
+
+
+TOKEN_COOKIE = "docsweep_token"
+TOKEN_HEADER = "x-docsweep-token"
+
+
+def check_token(
+    request: Request,
+    token_q: str | None,
+    *,
+    status_code: int = 401,
+    detail: str = "token required",
+) -> None:
+    """Cookie / header / query のいずれかに正しい token があれば認証する。
+
+    hybrid 移行中は不正な上位候補があっても下位候補を試す。たとえば古い Cookie が
+    残っていても、正しい初回 URL token で再認証できる。
+    """
+    expected = request.app.state.docsweep.token
+    candidates = (
+        request.cookies.get(TOKEN_COOKIE),
+        request.headers.get(TOKEN_HEADER),
+        token_q,
+    )
+    if any(
+        candidate is not None and secrets.compare_digest(candidate, expected)
+        for candidate in candidates
+    ):
+        return
+    raise HTTPException(status_code=status_code, detail=detail)
 
 
 def _is_under(child: Path, parent: Path) -> bool:

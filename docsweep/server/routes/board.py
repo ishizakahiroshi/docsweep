@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import secrets
 from datetime import date
 from pathlib import Path
 
@@ -26,19 +25,12 @@ from ...inject import list_injected
 from ...models import Flag
 from ...presets import DEFAULT_PRESET, PRESETS
 from ...state import get_postpone_count
+from ..security import check_token
 
 _DIR = Path(__file__).parent.parent
 TEMPLATES = Jinja2Templates(directory=str(_DIR / "templates"))
 
 router = APIRouter()
-
-
-def _check_token(request: Request, token_q: str | None) -> None:
-    """app.state.docsweep.token と照合（既存 _check_token と同等の振る舞い）。"""
-    state = request.app.state.docsweep
-    supplied = token_q or request.headers.get("x-docsweep-token")
-    if not supplied or not secrets.compare_digest(supplied, state.token):
-        raise HTTPException(status_code=403, detail="invalid or missing token")
 
 
 def _scope_lang(request: Request, lang: str | None) -> str:
@@ -401,7 +393,7 @@ def board(
     token: str = Query(default=""),
     lang: str | None = None,
 ):
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     from ..i18n import get_messages
 
     resolved_lang = _scope_lang(request, lang)
@@ -426,7 +418,7 @@ def board_fragment(
     lang: str | None = None,
 ):
     """htmx 用パーシャル（カラム本体だけを差し替える）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     from ..i18n import get_messages
 
     resolved_lang = _scope_lang(request, lang)
@@ -450,7 +442,7 @@ def board_triage_json(
     token: str = Query(default=""),
 ):
     """JSON 版（MCP / CLI 検証用に同じ表示データを返す）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     data = _board_data(request)
     return JSONResponse(
         {
@@ -470,7 +462,7 @@ def card_context(
     from ...context import collect_context, render_context
     from ..security import resolve_under_roots
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     resolved = resolve_under_roots(path, cfg.roots)
     if resolved is None:
@@ -513,7 +505,7 @@ def card_raw(
     """
     from ..security import resolve_under_roots
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     resolved = resolve_under_roots(path, cfg.roots)
     if resolved is None:
@@ -547,7 +539,7 @@ def card_detail(
     """
     from ..security import resolve_under_roots
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     state = request.app.state.docsweep
     cfg = state.config
     resolved = resolve_under_roots(path, cfg.roots)
@@ -599,7 +591,7 @@ def label_picker_partial(
     token: str = Query(default=""),
 ):
     """ラベル選択セグメント partial（keymap.js が fetch して body に貼る）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved_lang = _scope_lang(request, None)
     return TEMPLATES.TemplateResponse(
         request, "_label_picker.html",
@@ -627,7 +619,7 @@ def change_picker_partial(
     経緯: docs/local/kanban-card-ux-options/index.html — バッジクリック動線を廃し、
     下段 3 ボタン（変更▾ / 期日更新▾ / 廃止）に全操作を集約する方針。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved_lang = _scope_lang(request, None)
     return TEMPLATES.TemplateResponse(
         request, "_change_picker.html",
@@ -689,7 +681,7 @@ def settings_partial(
     token: str = Query(default=""),
 ):
     """⚙ 設定モーダルの中身（プロジェクト一覧 + グローバル inject タブ + presets）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     state = request.app.state.docsweep
     result = run_scan(state.config)
     return TEMPLATES.TemplateResponse(
@@ -713,7 +705,7 @@ def api_suggestions(
     """auto-triage 提案トレイ JSON（UX W2 / P35）。"""
     from ...auto_triage import suggest_transitions
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     result = suggest_transitions(cfg)
     return JSONResponse(result.to_dict())
@@ -731,7 +723,7 @@ def api_suggestions_apply(
     """提案 1 件を Accept（apply）する。"""
     from ...auto_triage import apply_suggestions
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     decisions = [{"path": path, "action": action, "to": to}]
     res = apply_suggestions(cfg, decisions, dry_run=dry_run)
@@ -748,7 +740,7 @@ def api_project_toggle(
     """プロジェクト ON/OFF（除外リスト）（UX W2 / P39）。"""
     from ...excluded import disable_project, enable_project, is_excluded
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     want_on = str(enabled).strip().lower() in ("1", "true", "yes", "on")
     if want_on:
         enable_project(root)
@@ -769,7 +761,7 @@ def api_set_profile(
     """看板の profile cookie を設定（UX W2 / P41）。"""
     from fastapi.responses import JSONResponse as JR
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     name = (profile or "all").strip() or "all"
     resp = JR({"profile": name})
     resp.set_cookie(
@@ -787,5 +779,5 @@ def due_picker_partial(
     token: str = Query(default=""),
 ):
     """期日変更ポップオーバー partial（keymap.js が fetch して body に貼る）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     return TEMPLATES.TemplateResponse(request, "_due_picker.html", {"T": _t(request)})

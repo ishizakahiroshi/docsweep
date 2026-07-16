@@ -23,7 +23,7 @@
   }
 
   async function loadPreviewHtml(path) {
-    const url = "/preview?token=" + encodeURIComponent(TOKEN) + "&path=" + encodeURIComponent(path);
+    const url = "/preview?path=" + encodeURIComponent(path);
     const res = await fetch(url, { headers: { "X-Docsweep-Token": TOKEN } });
     if (!res.ok) return null;
     return await res.text();
@@ -33,7 +33,7 @@
     // GET /api/cards/raw が生 MD と mtime を JSON で返す（読み取り専用・スコープ境界チェック付き）。
     // 編集 textarea にはここで取れた原文をそのまま入れる（HTML レンダリング後のテキストを使うと
     // 保存時に Markdown 構造が壊れるため）。
-    const url = "/api/cards/raw?token=" + encodeURIComponent(TOKEN) + "&path=" + encodeURIComponent(path);
+    const url = "/api/cards/raw?path=" + encodeURIComponent(path);
     const res = await fetch(url, { headers: { "X-Docsweep-Token": TOKEN } });
     if (!res.ok) return null;
     return await res.json().catch(() => null);
@@ -42,7 +42,7 @@
   async function loadDetail(path) {
     // OKF 詳細（tags/owner/related/review_status/last_reviewed + 逆参照）を取りに行く。
     // frontmatter 無しファイルでも 200 で空値が返るので、UI は常に編集可能な状態で出す。
-    const url = "/api/cards/detail?token=" + encodeURIComponent(TOKEN) + "&path=" + encodeURIComponent(path);
+    const url = "/api/cards/detail?path=" + encodeURIComponent(path);
     const res = await fetch(url, { headers: { "X-Docsweep-Token": TOKEN } });
     if (!res.ok) return null;
     return await res.json().catch(() => null);

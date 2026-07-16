@@ -5,26 +5,19 @@ CLI ``docsweep resurrect`` と同じ ``find_candidates`` を呼ぶ。
 
 from __future__ import annotations
 
-import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from ...resurrect import find_candidates
+from ..security import check_token
 
 _DIR = Path(__file__).parent.parent
 TEMPLATES = Jinja2Templates(directory=str(_DIR / "templates"))
 
 router = APIRouter()
-
-
-def _check_token(request: Request, token_q: str | None) -> None:
-    state = request.app.state.docsweep
-    supplied = token_q or request.headers.get("x-docsweep-token")
-    if not supplied or not secrets.compare_digest(supplied, state.token):
-        raise HTTPException(status_code=401, detail="token required")
 
 
 @router.get("/api/resurrect")
@@ -35,7 +28,7 @@ def api_resurrect(
     no_embedding: bool = Query(default=False),
     top_k: int = Query(default=1, alias="topK"),
 ) -> JSONResponse:
-    _check_token(request, token)
+    check_token(request, token)
     state = request.app.state.docsweep
     result = find_candidates(
         state.config,
@@ -53,7 +46,7 @@ def page_resurrect(
     threshold: float = Query(default=0.5),
     no_embedding: bool = Query(default=False),
 ) -> HTMLResponse:
-    _check_token(request, token)
+    check_token(request, token)
     state = request.app.state.docsweep
     result = find_candidates(
         state.config, threshold=threshold, use_embedding=not no_embedding,

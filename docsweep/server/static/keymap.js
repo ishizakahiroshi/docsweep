@@ -42,7 +42,7 @@
     if (!dlg || !body) return;
     body.innerHTML = "<p class='settings-note'>" + DS_T("loading") + "</p>";
     dlg.showModal();
-    const res = await fetch("/api/suggestions?token=" + encodeURIComponent(TOKEN), {
+    const res = await fetch("/api/suggestions", {
       headers: headers(),
     });
     const json = await safeJson(res);
@@ -82,7 +82,7 @@
   async function refreshSettings() {
     const body = document.getElementById("settings-body");
     if (!body) return;
-    const res = await fetch("/board/_partial/settings?token=" + encodeURIComponent(TOKEN), {
+    const res = await fetch("/board/_partial/settings", {
       headers: { "X-Docsweep-Token": TOKEN },
     });
     if (!res.ok) {
@@ -378,8 +378,7 @@
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
   }
   async function copyWorkPack(path) {
-    const url = "/api/cards/context?token=" + encodeURIComponent(TOKEN)
-      + "&path=" + encodeURIComponent(path);
+    const url = "/api/cards/context?path=" + encodeURIComponent(path);
     try {
       const res = await fetch(url, { headers: headers() });
       const json = await safeJson(res);
@@ -432,7 +431,7 @@
   window.__docsweepHideToast = hideToast;
 
   async function reloadBoard() {
-    const res = await fetch("/board/fragment?token=" + encodeURIComponent(TOKEN), {
+    const res = await fetch("/board/fragment", {
       headers: { "X-Docsweep-Token": TOKEN },
     });
     if (!res.ok) return;
@@ -1111,7 +1110,7 @@
   }
 
   async function fetchPartial(url) {
-    const res = await fetch(url + "?token=" + encodeURIComponent(TOKEN), {
+    const res = await fetch(url, {
       headers: { "X-Docsweep-Token": TOKEN },
     });
     if (!res.ok) return null;
@@ -1150,11 +1149,10 @@
     //   plan / 未知 → [計画]/[実行中]/[様子見]/[保留]/[完了] の 5 択
     //   bugfix      → [実行中]/[様子見]/[保留]/[完了] の 4 択（active→in-progress 統合済み）
     //   pending     → [保留]/[計画] の 2 択
-    // fetchPartial は URL に "?token=..." を後付けする実装のため、
-    // type も渡したい本関数では直接 fetch して URL に両方を載せる。
+    // type を query に載せ、認証 token はヘッダで送る。
     closePicker();
     const t = card.dataset.type || "";
-    const params = new URLSearchParams({ token: TOKEN });
+    const params = new URLSearchParams();
     if (t) params.set("type", t);
     const res = await fetch("/board/_partial/change_picker?" + params.toString(), {
       headers: { "X-Docsweep-Token": TOKEN },

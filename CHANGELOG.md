@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### Security
+
+- Web UI 認証を HttpOnly / SameSite=Strict Cookie と `x-docsweep-token` ヘッダへ移行。
+  初回の `?token=` 付き URL は Cookie へ交換後に token 無し URL へ redirect する。
+  URL クエリ認証は v0.2.x の互換経路として残し、v0.3.0 で廃止予定。
+
 ### Added
 
 - `migrate-frontmatter` を「素の md を OKF 形式に整えるフォーマッタ」へ一般化。従来は

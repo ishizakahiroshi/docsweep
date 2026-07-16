@@ -71,6 +71,52 @@ def app_client(tmp_path: Path):
     return _make_client(tmp_path)
 
 
+# ---------------- hybrid authentication ----------------
+
+
+def test_hybrid_auth_cookie_only(app_client: TestClient):
+    app_client.cookies.set("docsweep_token", TOKEN)
+    assert app_client.get("/api/brief").status_code == 200
+
+
+def test_hybrid_auth_header_only(app_client: TestClient):
+    response = app_client.get(
+        "/api/brief", headers={"x-docsweep-token": TOKEN}
+    )
+    assert response.status_code == 200
+
+
+def test_hybrid_auth_query_only(app_client: TestClient):
+    response = app_client.get("/api/brief", params={"token": TOKEN})
+    assert response.status_code == 200
+    assert "token=" not in str(response.url)
+
+
+def test_hybrid_auth_missing_all(app_client: TestClient):
+    assert app_client.get("/api/brief").status_code == 401
+
+
+def test_hybrid_auth_invalid_cookie_falls_back_to_query(app_client: TestClient):
+    app_client.cookies.set("docsweep_token", "stale-token")
+    response = app_client.get("/api/brief", params={"token": TOKEN})
+    assert response.status_code == 200
+
+
+def test_hybrid_auth_initial_get_sets_strict_httponly_cookie(
+    app_client: TestClient,
+):
+    response = app_client.get(
+        "/board", params={"token": TOKEN}, follow_redirects=False
+    )
+    assert response.status_code == 302
+    assert "token=" not in response.headers["location"]
+    cookie = response.headers["set-cookie"]
+    assert f"docsweep_token={TOKEN}" in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=strict" in cookie
+    assert "Path=/" in cookie
+
+
 # ---------------- /api/graph ----------------
 
 

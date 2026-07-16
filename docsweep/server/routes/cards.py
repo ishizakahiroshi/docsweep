@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
@@ -27,16 +26,9 @@ from ...services.frontmatter import (
     update_frontmatter_field,
 )
 from ...services.status import StatusValidationError, update_status
-from ..security import resolve_under_roots
+from ..security import check_token, resolve_under_roots
 
 router = APIRouter()
-
-
-def _check_token(request: Request, token_q: str | None) -> None:
-    state = request.app.state.docsweep
-    supplied = token_q or request.headers.get("x-docsweep-token")
-    if not supplied or not secrets.compare_digest(supplied, state.token):
-        raise HTTPException(status_code=403, detail="invalid or missing token")
 
 
 def _resolve(request: Request, raw_path: str) -> Path:
@@ -98,7 +90,7 @@ def post_status(
     expected_mtime: str | None = Form(default=None),
 ):
     """H1 ラベル書き換え。`[完了]` / `[廃止]` 指定時は続けて archive 移送。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved = _resolve(request, path)
     cfg = request.app.state.docsweep.config
     project_root = _project_root_for(resolved, cfg.roots)
@@ -137,7 +129,7 @@ def post_due(
     expected_mtime: str | None = Form(default=None),
 ):
     """frontmatter `due:` 書き換え + postpone_count 自動インクリメント。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved = _resolve(request, path)
     cfg = request.app.state.docsweep.config
     project_root = _project_root_for(resolved, cfg.roots)
@@ -168,7 +160,7 @@ def post_content(
     expected_mtime: str | None = Form(default=None),
 ):
     """本文全置換（楽観ロック・mtime 不一致は 409）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved = _resolve(request, path)
     expected = _parse_mtime(expected_mtime)
     try:
@@ -188,7 +180,7 @@ def post_archive(
     dry_run: bool = Form(default=False),
 ):
     """`[完了]` / `[廃止]` 確定済みファイルを archive へ移送する閉じた口。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved = _resolve(request, path)
     cfg = request.app.state.docsweep.config
     res = archive_done(config=cfg, paths=[resolved.as_posix()], dry_run=dry_run)
@@ -230,7 +222,7 @@ def post_bulk_due(
     ``new_due`` の parse は全件共通なので、ここで失敗したら 400 で即返す。
     各 path の mtime conflict / validation 失敗は個別に ``failed[]`` へ。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     ok: list[dict] = []
     failed: list[dict] = []
@@ -273,7 +265,7 @@ def post_bulk_status(
     各 path のファイル種別×ラベル組み合わせ違反は services 層が validation で弾く
     → 個別に ``failed[]`` へ振り分け（bugfix は [計画] 不可、pending は [様子見]/[実行中] 不可など）。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     ok: list[dict] = []
     failed: list[dict] = []
@@ -325,7 +317,7 @@ def post_frontmatter(
     スカラ系は ``value`` をそのまま書き込む（空文字 → 値を空にして行は残す）。
     本文・H1 ラベル・他フィールドは触らない（C4 plan の後方互換 100% を担保）。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved = _resolve(request, path)
     expected = _parse_mtime(expected_mtime)
     if field not in ALLOWED_FIELDS:
@@ -355,7 +347,7 @@ def get_current_user(request: Request, token: str = Query(default="")):
     解決順は ``services.frontmatter.current_owner`` 参照（git config → OS ログイン）。
     C2 で ``docsweep config user.name`` が来たら本ハンドラもそちらを最優先にする。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     cwd = Path(cfg.roots[0]) if cfg.roots else None
     return JSONResponse({"name": current_owner(cwd=cwd)})
@@ -374,7 +366,7 @@ def post_claim(
     C2 の `docsweep claim` と同じファイルを書き換える（Web UI と CLI で動作を揃える）。
     git 未導入環境でも OS ログイン名でフォールバックして動く。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved = _resolve(request, path)
     expected = _parse_mtime(expected_mtime)
     cfg = request.app.state.docsweep.config
@@ -403,7 +395,7 @@ def post_undo(
     Undo 対象は最新の未復元 batch_id のみ。restore エントリが moves.jsonl に追記され、
     二重 Undo を防ぐ。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     res = undo_last_batch(config=cfg)
     return JSONResponse(res.to_dict())
@@ -420,7 +412,7 @@ def post_bulk_archive(
 
     スコープ外パスは ``failed_validation[]`` に分けて返す（services の skipped[] とは別枠）。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     valid: list[str] = []
     failed_validation: list[dict] = []
