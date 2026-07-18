@@ -103,9 +103,12 @@ def test_save_drafts_partial_write_prevented_on_bad_filename(tmp_path: Path):
 # ---------- A-01: relabel_file が atomic を迂回する ----------
 
 
-def test_relabel_file_takes_backup(tmp_path: Path):
-    """relabel_file 経由の書換で atomic の backup が取られる（write_atomic 経由の確認）。"""
-    from docsweep.atomic import backup_dir_for
+def test_relabel_file_goes_through_atomic(tmp_path: Path):
+    """relabel_file が atomic 経由で書き換わる（H1 ラベル置換が反映される）。
+
+    以前は backup ディレクトリの存在で「atomic 経由か」を間接検証していたが、
+    v0.4 で backup 機構を撤去したため、書き換え結果と ``.docsweep/`` 非生成で確認する。
+    """
     from docsweep.config import load_config
     from docsweep.engine import relabel_file
 
@@ -118,10 +121,8 @@ def test_relabel_file_takes_backup(tmp_path: Path):
     cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
     assert relabel_file(md, "[完了]", cfg) is True
     assert md.read_text(encoding="utf-8").startswith("# [完了] x")
-    # backup ディレクトリに元テキストのコピーが出来ている
-    bd = backup_dir_for(md)
-    assert bd.is_dir()
-    assert any(p.name.startswith("plan_x.md.") for p in bd.iterdir())
+    # backup 撤去後の回帰防止: .docsweep/ が勝手に作られないこと
+    assert not (proj / ".docsweep").exists()
 
 
 # ---------- A-02: config int() 剥き出しで load_config が落ちる ----------
