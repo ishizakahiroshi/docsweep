@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-18
+
+v0.3.0 patch。`.docsweep/backup/` 経由で `docs/local/*.md`（家宣言 private）が
+公開リポの origin/main に意図せず到達する漏洩事故が実際に発生した（many-ai-cli /
+offline-md-editor-viewer / PlainSheet / ShotTTL）ため、書き込み前 backup 機構を
+根本から撤去して漏洩経路そのものを消した。同時に `manual_release-*.md` を sweep 対象
+type として正式認識した。削除したのは全て内部ヘルパで CLI/MCP の外向き API は無変更。
+
 ### Added
 
 - `manual_release-*.md` を内蔵の `manual_release` type として認識し、`[完了]` / `[廃止]`
