@@ -124,17 +124,17 @@ def test_archive_done_only_moves_never_deletes(tmp_path: Path):
 def test_atomic_unlink_is_only_for_tempfile_cleanup():
     """``atomic.py`` の unlink 使用は tempfile クリーンアップに限定されることを目視確認。
 
-    AST レベルでは検出できないため、ソース文字列で「except 直後の片付け」コンテキストか
-    「30 日超バックアップの掃除（_cleanup_backups）」のみであることを確認する。
-    services / MCP からは atomic を経由しても物理削除されない（write は move/replace のみ）。
+    AST レベルでは検出できないため、ソース文字列で ``tempfile`` コンテキストに限定される
+    ことを確認する。services / MCP からは atomic を経由しても物理削除されない
+    （write は move/replace のみ）。v0.4 で backup 機構を撤去したため、`_cleanup_backups`
+    は allowed_contexts から外した。
     """
     src = (PKG_DIR / "atomic.py").read_text(encoding="utf-8")
     # unlink の登場行を抜き出す。
     lines = src.splitlines()
     unlink_lines = [(i, line) for i, line in enumerate(lines) if "unlink" in line]
-    # 各登場箇所が backup cleanup or tempfile 後始末コンテキスト内にあること。
-    # 簡易ヒューリスティック: 同関数内に "tempfile" / "_cleanup_backups" / "_cleanup" のいずれかが出現する。
-    allowed_contexts = ("tempfile", "_cleanup_backups", "BACKUP_RETENTION_SECONDS")
+    # 各登場箇所が tempfile 後始末コンテキスト内にあること。
+    allowed_contexts = ("tempfile",)
     full = src
     for _, line in unlink_lines:
         # 「unlink を呼ぶ箇所」が unkown context だったら fail。
