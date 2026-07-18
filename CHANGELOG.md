@@ -10,18 +10,21 @@
 - `manual_release-*.md` を内蔵の `manual_release` type として認識し、`[完了]` / `[廃止]`
   に達したリリース記録を通常の `docsweep sweep` で自動 archive できるようにした。
 
-### Removed
+### Fixed
 
-- **`atomic.backup()` 機構ごと撤去した**。書き込み前に `.docsweep/backup/<name>.<ts>` へ md
-  丸コピーを 30 日保持する挙動を廃止し、`take_backup` 引数・`backup_dir_for` /
-  `_ensure_gitignored` / `_cleanup_backups` および関連定数（`BACKUP_DIR_NAME` /
-  `BACKUP_RETENTION_SECONDS` / `GITIGNORE_MARK` / `GITIGNORE_RULE`）を削除。
+- **`.docsweep/backup/` 経由の docs/local 漏洩を根本対処**。書き込み前に
+  `.docsweep/backup/<name>.<ts>` へ md 丸コピーを 30 日保持する `atomic.backup()` 機構を
+  丸ごと撤去し、`take_backup` 引数・`backup_dir_for` / `_ensure_gitignored` /
+  `_cleanup_backups` および関連定数（`BACKUP_DIR_NAME` / `BACKUP_RETENTION_SECONDS` /
+  `GITIGNORE_MARK` / `GITIGNORE_RULE`）を削除。
   背景: 実質 99% の書き込みは `update_line` 経由の 1 行差分（H1 ラベル `[完了]` 化・
   `due:` 差替）で、その世代を md 全文で残すのは過剰。加えて `.docsweep/backup/` を
   gitignore し忘れた公開リポで `docs/local/*.md`（非公開ポリシー宣言済み）が意図せず
   push される事故が実際に発生した（many-ai-cli / offline-md-editor-viewer など）。
   復元は git 側の履歴に一本化し、docsweep はプロジェクト空間内に何も生成しない。
-  破壊的変更だが 0.x なので minor bump（0.4.0）に留める。
+  外部利用者向け API（CLI サブコマンド / MCP tool）は無変更、削除したのは全て内部
+  ヘルパのため **v0.3.1（patch）** に留める。既存ユーザーは各プロジェクトの
+  `.docsweep/backup/` を手動削除して構わない（`state.json` は温存）。
 
 ## [0.3.0] - 2026-07-16
 
