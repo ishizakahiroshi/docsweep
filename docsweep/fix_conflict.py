@@ -38,17 +38,43 @@ class ConflictFix:
 @dataclass
 class ConflictFixResult:
     items: list[ConflictFix]
+    unmatched: list[str]
 
     def to_dict(self) -> dict[str, Any]:
-        return {"items": [i.to_dict() for i in self.items]}
+        return {
+            "items": [i.to_dict() for i in self.items],
+            "unmatched": self.unmatched,
+        }
 
 
-def list_conflicts(config: Config) -> list[dict]:
-    records = scan_records(config)
+def _in_config_scope(path: str, config: Config) -> bool:
+    """索引由来のレコードも現在の ``--root`` 範囲に限定する。"""
+    try:
+        candidate = Path(path).resolve()
+    except (OSError, ValueError, RuntimeError):
+        return False
+    for root in config.roots:
+        try:
+            candidate.relative_to(Path(root).resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _conflict_rows(config: Config, paths: list[str] | None = None) -> tuple[list[dict], list[str]]:
+    records = [r for r in scan_records(config) if _in_config_scope(r.path, config)]
+    want = {_norm_path(p): p for p in paths or []} if paths else None
+    matched_keys: set[str] = set()
     out = []
     for r in records:
         if Flag.CONFLICT.value not in (r.flags or []):
             continue
+        if want is not None:
+            key = _norm_path(r.path)
+            if key not in want:
+                continue
+            matched_keys.add(key)
         out.append({
             "path": r.path,
             "project": r.project,
@@ -57,7 +83,14 @@ def list_conflicts(config: Config) -> list[dict]:
             "state_source": r.state_source,
             "title": r.title,
         })
-    return out
+    unmatched = [orig for key, orig in want.items() if key not in matched_keys] if want else []
+    return out, unmatched
+
+
+def list_conflicts(config: Config, *, paths: list[str] | None = None) -> list[dict]:
+    """現在のスコープ内にある conflict を列挙する。"""
+    rows, _ = _conflict_rows(config, paths)
+    return rows
 
 
 def _norm_path(p: str) -> str:
@@ -90,7 +123,7 @@ def fix_conflicts(
     ``_norm_path`` で吸収）。1 件も conflict に一致しなかった指定は stderr に警告を
     出す — 黙って「修理対象なし」で終わると誤指定に気づけないため。
     """
-    records = scan_records(config)
+    records = [r for r in scan_records(config) if _in_config_scope(r.path, config)]
     # 正規化キー -> ユーザーが指定した元の表記（警告で元の表記を見せるため）
     want: dict[str, str] | None = None
     if paths:
@@ -182,15 +215,14 @@ def fix_conflicts(
             except Exception as e:  # noqa: BLE001
                 items.append(ConflictFix(path=r.path, fixed=False, detail=str(e)))
 
-    if want is not None:
-        unmatched = [orig for key, orig in want.items() if key not in matched_keys]
-        if unmatched:
-            print(
-                f"warning: --path の指定 {len(unmatched)} 件は conflict 一覧に一致しませんでした"
-                "（パス誤り、またはそのファイルに frontmatter ↔ H1 の食い違いが無い）:",
-                file=sys.stderr,
-            )
-            for orig in unmatched:
-                print(f"  - {orig}", file=sys.stderr)
+    unmatched = [orig for key, orig in want.items() if key not in matched_keys] if want else []
+    if unmatched:
+        print(
+            f"warning: --path の指定 {len(unmatched)} 件は conflict 一覧に一致しませんでした"
+            "（パス誤り、またはそのファイルに frontmatter ↔ H1 の食い違いが無い）:",
+            file=sys.stderr,
+        )
+        for orig in unmatched:
+            print(f"  - {orig}", file=sys.stderr)
 
-    return ConflictFixResult(items=items)
+    return ConflictFixResult(items=items, unmatched=unmatched)

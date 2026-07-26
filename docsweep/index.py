@@ -325,13 +325,18 @@ def delete_file(conn: sqlite3.Connection, project_id: str, rel_path: str) -> Non
     )
 
 
-def known_files(conn: sqlite3.Connection, project_id: str) -> dict[str, tuple[float | None, str | None]]:
-    """project_id の既知ファイル (rel_path -> (mtime, body_sha)) を返す。差分判定に使う。"""
+def known_files(
+    conn: sqlite3.Connection, project_id: str,
+) -> dict[str, tuple[float | None, str | None, str | None, str | None, str | None]]:
+    """既知ファイルを返す（mtime/body_sha/flags/actions/abs_path）。差分判定に使う。"""
     rows = conn.execute(
-        "SELECT rel_path, mtime, body_sha FROM files WHERE project_id=?",
+        "SELECT rel_path, mtime, body_sha, flags, allowed_actions, abs_path FROM files WHERE project_id=?",
         (project_id,),
     ).fetchall()
-    return {r["rel_path"]: (r["mtime"], r["body_sha"]) for r in rows}
+    return {
+        r["rel_path"]: (r["mtime"], r["body_sha"], r["flags"], r["allowed_actions"], r["abs_path"])
+        for r in rows
+    }
 
 
 def list_projects(conn: sqlite3.Connection) -> list[sqlite3.Row]:

@@ -154,6 +154,32 @@ def detect_project_root(
     return found
 
 
+def detect_project_for_path(
+    path: Path, config: Config, *, scope_roots: list[Path] | None = None,
+) -> Path | None:
+    """``path`` が属する設定済みプロジェクトルートを返す。
+
+    索引作成時と brief/activity の cwd 判定で同じ project_id を使うための共通入口。
+    設定されたスキャン範囲外は ``None`` とし、無関係な親リポジトリを project と誤認しない。
+    """
+    candidate = path.resolve()
+    roots: list[Path] = []
+    for raw_root in scope_roots if scope_roots is not None else config.roots:
+        root = Path(raw_root).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        roots.append(root)
+    if not roots:
+        return None
+
+    # 入れ子の root がある場合は、もっとも近い（長い）方を境界にする。
+    root = max(roots, key=lambda p: len(p.parts))
+    start_dir = candidate if candidate.is_dir() else candidate.parent
+    return detect_project_root(start_dir, root, config.project_markers, {})
+
+
 def _build_doc(
     fpath: Path, root: Path, config: Config, type_def: TypeDef | None, project_root: Path
 ) -> ScannedDoc | None:
@@ -415,7 +441,9 @@ def sync_index(
             seen_abs.add(rec.path)
             # classify を呼んで flags / allowed_actions を FileRecord に充填
             classify(doc, config)
-            project_root = Path(rec.project_root) if rec.project_root else root
+            project_root = detect_project_for_path(Path(rec.path), config, scope_roots=roots)
+            if project_root is None:
+                project_root = Path(rec.project_root) if rec.project_root else root
             project_id = rec.project or project_root.name
             entry = groups.get(project_id)
             if entry is None:
@@ -431,57 +459,70 @@ def sync_index(
             for r in conn.execute("SELECT project_id, root_path FROM projects").fetchall()
         }
         current_ids = set(groups)
+        # connect() は autocommit なので、rebuild の DELETE と再投入を明示的に
+        # 同じ transaction に載せる。途中例外時は rollback され、旧索引を保持する。
+        conn.execute("BEGIN")
+        try:
+            if full:
+                # 全再構築: files を空にする（tags/related は ON DELETE CASCADE で連鎖）
+                conn.execute("DELETE FROM files")
 
-        if full:
-            # 全再構築: files を空にする（tags/related は ON DELETE CASCADE で連鎖）
-            conn.execute("DELETE FROM files")
-            conn.commit()
+            # --prune-projects は今回の search_paths が実際にカバーする project だけを対象に
+            # する。範囲外の project は一時的な絞り込みかもしれないため消さない。
+            pruned_ids: set[str] = set()
+            if prune_projects:
+                for orphan, root_path in existing_projects.items():
+                    if orphan in current_ids or not root_path or not _is_within(Path(root_path), roots):
+                        continue
+                    file_count = conn.execute(
+                        "SELECT COUNT(*) FROM files WHERE project_id=?", (orphan,)
+                    ).fetchone()[0]
+                    conn.execute("DELETE FROM projects WHERE project_id=?", (orphan,))
+                    pruned_ids.add(orphan)
+                    stats.projects_removed += 1
+                    stats.files_deleted += int(file_count)
 
-        # C4: 孤児プロジェクト掃除 — DB にあるが今回の走査で 1 件も見つからなかった
-        # project を CASCADE 削除。files / tags / related は連鎖削除される。
-        pruned_ids: set[str] = set()
-        if prune_projects:
-            pruned_ids = set(existing_projects) - current_ids
-            for orphan in pruned_ids:
-                conn.execute("DELETE FROM projects WHERE project_id=?", (orphan,))
-                stats.projects_removed += 1
-            if pruned_ids:
-                conn.commit()
+            for project_id, (project_root, docs) in groups.items():
+                db.upsert_project(
+                    conn, project_id, project_root.as_posix(),
+                    _project_remote_url(project_root), now_iso,
+                )
+                stats.projects += 1
 
-        for project_id, (project_root, docs) in groups.items():
-            db.upsert_project(
-                conn, project_id, project_root.as_posix(),
-                _project_remote_url(project_root), now_iso,
-            )
-            stats.projects += 1
+                existing = db.known_files(conn, project_id)
+                seen_rel: set[str] = set()
 
-            existing = db.known_files(conn, project_id)
-            seen_rel: set[str] = set()
+                for doc in docs:
+                    rec = doc.record
+                    rel_path = _rel_for_index(rec.path, project_root)
+                    seen_rel.add(rel_path)
+                    stats.files_total += 1
 
-            for doc in docs:
-                rec = doc.record
-                rel_path = _rel_for_index(rec.path, project_root)
-                seen_rel.add(rel_path)
-                stats.files_total += 1
+                    mtime = rec.mtime
+                    flags = _json.dumps(rec.flags, ensure_ascii=False)
+                    allowed_actions = _json.dumps(rec.allowed_actions, ensure_ascii=False)
+                    # 差分判定: 本文と mtime が不変でも、時間依存の classify 結果は更新する。
+                    prev = existing.get(rel_path)
+                    if not full and prev and prev[0] is not None and abs(prev[0] - mtime) < 1e-6:
+                        if prev[2] != flags or prev[3] != allowed_actions:
+                            conn.execute(
+                                "UPDATE files SET flags=?, allowed_actions=? WHERE project_id=? AND rel_path=?",
+                                (flags, allowed_actions, project_id, rel_path),
+                            )
+                        stats.files_unchanged += 1
+                        continue
 
-                mtime = rec.mtime
-                # 差分判定: 既知 mtime と一致なら skip
-                prev = existing.get(rel_path)
-                if not full and prev and prev[0] is not None and abs(prev[0] - mtime) < 1e-6:
-                    stats.files_unchanged += 1
-                    continue
+                    sha = _body_sha(doc.text)
+                    if not full and prev and prev[1] == sha:
+                        # mtime 変わっても body 未変化（touch のみ等）→ mtime と classify 結果だけ更新
+                        conn.execute(
+                            "UPDATE files SET mtime=?, flags=?, allowed_actions=? WHERE project_id=? AND rel_path=?",
+                            (mtime, flags, allowed_actions, project_id, rel_path),
+                        )
+                        stats.files_unchanged += 1
+                        continue
 
-                sha = _body_sha(doc.text)
-                if not full and prev and prev[1] == sha:
-                    # mtime 変わっても body 未変化（touch のみ等）→ mtime だけ更新
-                    conn.execute(
-                        "UPDATE files SET mtime=? WHERE project_id=? AND rel_path=?",
-                        (mtime, project_id, rel_path),
-                    )
-                    stats.files_unchanged += 1
-                    continue
-
-                file_id = db.upsert_file(
+                    file_id = db.upsert_file(
                     conn,
                     project_id=project_id,
                     rel_path=rel_path,
@@ -497,8 +538,8 @@ def sync_index(
                     summary=rec.summary,
                     state_label=rec.state_label,
                     state_source=rec.state_source,
-                    flags=_json.dumps(rec.flags, ensure_ascii=False),
-                    allowed_actions=_json.dumps(rec.allowed_actions, ensure_ascii=False),
+                    flags=flags,
+                    allowed_actions=allowed_actions,
                     due=rec.due,
                     due_parse_error=rec.due_parse_error,
                     archivable=rec.archivable,
@@ -506,41 +547,45 @@ def sync_index(
                     project_root=rec.project_root,
                     abs_path=rec.path,
                 )
-                db.replace_tags(conn, file_id, list(rec.tags or []))
-                db.replace_related(conn, file_id, list(rec.related or []))
+                    db.replace_tags(conn, file_id, list(rec.tags or []))
+                    db.replace_related(conn, file_id, list(rec.related or []))
 
-                if prev is None:
-                    stats.files_added += 1
-                else:
-                    stats.files_updated += 1
+                    if prev is None:
+                        stats.files_added += 1
+                    else:
+                        stats.files_updated += 1
 
-            # DB にあるが今回見つからなかったファイル = 削除済み
-            for stale_rel in set(existing.keys()) - seen_rel:
-                db.delete_file(conn, project_id, stale_rel)
-                stats.files_deleted += 1
+                # DB にあるが今回見つからなかったファイル = 削除済み
+                for stale_rel in set(existing.keys()) - seen_rel:
+                    db.delete_file(conn, project_id, stale_rel)
+                    stats.files_deleted += 1
 
-        # --- 2. 走査範囲内なのに 1 件も見つからなかった project の後始末 --------
-        # 該当するのは 2 種類:
-        #   a) 旧採番（スキャンルート単位）で登録された project 行。放置すると同じ md が
-        #      旧 project_id と新 project_id の両方に載り、triage が二重に出る
-        #   b) md を全部消した / archive へ移したリポ
-        # どちらもファイル行は実体を失っているので自動で消す。project 行そのものは
-        # 消さない（--prune-projects の担当・一時的な search_paths 変更で誤削除しない）。
-        cleaned: list[tuple[str, int]] = []
-        for project_id, root_path in existing_projects.items():
-            if project_id in current_ids or project_id in pruned_ids:
-                continue
-            if not root_path or not _is_within(Path(root_path), roots):
-                continue  # 走査範囲外＝今回は判断材料が無い。触らない（安全側）
-            removed = 0
-            for stale_rel in db.known_files(conn, project_id):
-                db.delete_file(conn, project_id, stale_rel)
-                removed += 1
-            if removed:
-                stats.files_deleted += removed
-                cleaned.append((project_id, removed))
+            # 旧採番の行だけを行単位で掃除する。0 件スキャンを理由に有効な project の
+            # 全ファイルを消すのは、ロックや一時 I/O エラーでの誤削除につながるため行わない。
+            cleaned: list[tuple[str, int]] = []
+            for project_id, root_path in existing_projects.items():
+                if project_id in current_ids or project_id in pruned_ids or not root_path:
+                    continue
+                if not _is_within(Path(root_path), roots):
+                    continue
+                removed = 0
+                for stale_rel, prev in db.known_files(conn, project_id).items():
+                    abs_path = prev[4]
+                    if not abs_path:
+                        continue
+                    actual_root = detect_project_for_path(Path(abs_path), config, scope_roots=roots)
+                    if actual_root is None or actual_root.name == project_id:
+                        continue
+                    db.delete_file(conn, project_id, stale_rel)
+                    removed += 1
+                if removed:
+                    stats.files_deleted += removed
+                    cleaned.append((project_id, removed))
 
-        conn.commit()
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     # 実際に掃除した時だけ 1 行出す。空になった project 行が残っているだけの状態で
     # 毎回鳴らすと、常時 stderr を汚すだけで行動につながらない。
@@ -548,8 +593,8 @@ def sync_index(
         detail = ", ".join(f"{pid}（{n} 件）" for pid, n in sorted(cleaned))
         print(
             f"warning: 実体を失った索引行を削除しました: {detail}"
-            " — 旧採番（スキャンルート単位）の残骸か、md を全部消した/archive へ移した"
-            "プロジェクトです。空になった project 行ごと消すなら"
+            " — project_id と実ファイルから再導出した project が食い違う旧採番の残骸です。"
+            "空になった project 行ごと消すなら"
             " `docsweep index-sync --prune-projects`",
             file=sys.stderr,
         )

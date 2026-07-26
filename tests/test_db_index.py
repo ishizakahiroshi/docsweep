@@ -163,19 +163,19 @@ def test_sync_index_detects_update(workspace: Path, tmp_path: Path) -> None:
     assert stats.files_added == 0
 
 
-def test_sync_index_detects_deletion(workspace: Path, tmp_path: Path) -> None:
+def test_sync_index_keeps_zero_document_project_without_prune(workspace: Path, tmp_path: Path) -> None:
+    """一時的に 0 件になっても既定同期は project 行・files を消さない。"""
     cfg = _config_with_search(workspace, tmp_path)
     db_file = tmp_path / "idx.db"
     sync_index(cfg, db_path_override=db_file)
 
     (workspace / "beta" / "docs" / "local" / "pending_x.md").unlink()
     stats = sync_index(cfg, db_path_override=db_file)
-    assert stats.files_deleted == 1
+    assert stats.files_deleted == 0
 
     with db.connect(db_file) as conn:
-        rows = conn.execute("SELECT rel_path FROM files").fetchall()
-        names = {r["rel_path"] for r in rows}
-        assert "docs/local/pending_x.md" not in names
+        rows = conn.execute("SELECT project_id, rel_path FROM files").fetchall()
+        assert ("beta", "docs/local/pending_x.md") in {(r["project_id"], r["rel_path"]) for r in rows}
 
 
 def test_sync_index_full_rebuild(workspace: Path, tmp_path: Path) -> None:
@@ -187,6 +187,86 @@ def test_sync_index_full_rebuild(workspace: Path, tmp_path: Path) -> None:
     assert stats.files_total == 3
     # full=True 時は files が空からスタートするので全部 added
     assert stats.files_added == 3
+
+
+def test_sync_index_refreshes_time_dependent_flags_without_rewriting_body(
+    workspace: Path, tmp_path: Path
+) -> None:
+    """mtime だけ古くなった文書も flags は更新し、差分同期の no-op 性を保つ。"""
+    cfg = _config_with_search(workspace, tmp_path)
+    db_file = tmp_path / "idx.db"
+    sync_index(cfg, db_path_override=db_file)
+    target = workspace / "alpha" / "docs" / "local" / "plan_one.md"
+    old = time.time() - 400 * 86400
+    import os
+    os.utime(target, (old, old))
+
+    stats = sync_index(cfg, db_path_override=db_file)
+    indexed = load_records_from_index(cfg, db_path_override=db_file)
+    from docsweep.engine import run_scan
+    fallback = run_scan(cfg).records
+
+    assert stats.files_unchanged == 3
+    assert stats.files_updated == 0
+    assert indexed is not None
+    indexed_target = next(r for r in indexed if Path(r.path).name == "plan_one.md")
+    fallback_target = next(r for r in fallback if Path(r.path).name == "plan_one.md")
+    assert indexed_target.flags == fallback_target.flags
+
+
+def test_full_rebuild_rolls_back_when_write_fails(workspace: Path, tmp_path: Path, monkeypatch) -> None:
+    """rebuild の再投入中に例外でも、DELETE を commit せず既存索引を保つ。"""
+    cfg = _config_with_search(workspace, tmp_path)
+    db_file = tmp_path / "idx.db"
+    sync_index(cfg, db_path_override=db_file)
+    with db.connect(db_file) as conn:
+        before = conn.execute("SELECT project_id, rel_path FROM files ORDER BY project_id, rel_path").fetchall()
+
+    original = db.upsert_file
+    calls = 0
+
+    def fail_during_rebuild(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("injected write failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(db, "upsert_file", fail_during_rebuild)
+    with pytest.raises(RuntimeError, match="injected write failure"):
+        sync_index(cfg, full=True, db_path_override=db_file)
+
+    with db.connect(db_file) as conn:
+        after = conn.execute("SELECT project_id, rel_path FROM files ORDER BY project_id, rel_path").fetchall()
+    assert [tuple(r) for r in after] == [tuple(r) for r in before]
+
+
+def test_scan_failure_before_write_preserves_existing_index(workspace: Path, tmp_path: Path, monkeypatch) -> None:
+    """2 本目の root 走査失敗でも、書き込み開始前なので索引を壊さない。"""
+    cfg = _config_with_search(workspace, tmp_path)
+    db_file = tmp_path / "idx.db"
+    sync_index(cfg, db_path_override=db_file)
+    with db.connect(db_file) as conn:
+        before_count = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+
+    cfg.search_paths = [str(workspace / "alpha"), str(workspace / "beta")]
+    from docsweep import scan as scan_module
+    original = scan_module.scan_root
+    calls = 0
+
+    def fail_second_root(root, config):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("injected scan failure")
+        return original(root, config)
+
+    monkeypatch.setattr(scan_module, "scan_root", fail_second_root)
+    with pytest.raises(RuntimeError, match="injected scan failure"):
+        sync_index(cfg, db_path_override=db_file)
+
+    with db.connect(db_file) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM files").fetchone()[0] == before_count
 
 
 # ===================================================================
@@ -532,6 +612,28 @@ def test_scan_records_project_filter_via_index(
     records = scan_records(cfg, project="alpha")
 
     assert {Path(r.path).name for r in records} == {"plan_one.md", "bugfix_a.md"}
+
+
+def test_brief_cwd_project_matches_index_and_fallback(
+    workspace: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """cwd の project_id は remote 名でなく marker から得たディレクトリ名に揃う。"""
+    from docsweep.brief.service import build_brief
+    from docsweep import index as index_module
+
+    cfg = _config_root_above_repos(workspace, tmp_path)
+    db_file = tmp_path / "idx.db"
+    sync_index(cfg, db_path_override=db_file)
+    monkeypatch.setenv("DOCSWEEP_INDEX_DB", str(db_file))
+    monkeypatch.chdir(workspace / "alpha" / "docs")
+
+    indexed = build_brief(cfg)
+    # 索引を使えない状態と同じ cwd 判定・件数になることを確認する。
+    monkeypatch.setattr(index_module, "load_records_from_index", lambda *args, **kwargs: None)
+    fallback = build_brief(cfg)
+
+    assert indexed.projects[0].project == "alpha"
+    assert indexed.projects[0].open_count == fallback.projects[0].open_count == 2
 
 
 def test_sync_index_cleans_up_legacy_root_scoped_rows(

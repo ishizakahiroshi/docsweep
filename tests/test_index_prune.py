@@ -45,7 +45,7 @@ def test_prune_disabled_by_default_keeps_orphans(
     monkeypatch.setenv("DOCSWEEP_INDEX_DB", str(db_file))
 
     # 両方走査して両 project を登録
-    cfg_all = _cfg(str(two_projects / "*"), tmp_path)
+    cfg_all = _cfg(str(two_projects), tmp_path)
     sync_index(cfg_all)
     with db.connect(db_file) as conn:
         ids = {r[0] for r in conn.execute("SELECT project_id FROM projects").fetchall()}
@@ -77,11 +77,12 @@ def test_prune_projects_removes_orphans_and_cascades_files(
         ).fetchone()[0]
     assert files_before > 0
 
-    # alpha のみで再 sync + prune
-    cfg_alpha_only = _cfg(str(two_projects / "alpha"), tmp_path)
-    stats = sync_index(cfg_alpha_only, prune_projects=True)
+    # beta が一時的に 0 件になった状態で、範囲を変えず prune
+    (two_projects / "beta" / "docs" / "local" / "plan_b.md").unlink()
+    stats = sync_index(cfg_all, prune_projects=True)
 
     assert stats.projects_removed == 1
+    assert stats.files_deleted == files_before
     with db.connect(db_file) as conn:
         ids = {r[0] for r in conn.execute("SELECT project_id FROM projects").fetchall()}
         files_beta = conn.execute(

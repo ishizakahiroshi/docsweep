@@ -15,18 +15,26 @@ from ..parser import _build_config
 
 def cmd_fix_conflict(args: argparse.Namespace) -> int:
     """conflict 修理（UX W2 / P37）。"""
-    from ...fix_conflict import fix_conflicts, list_conflicts
+    from ...fix_conflict import _conflict_rows, fix_conflicts
 
     cfg = _build_config(args)
     if getattr(args, "list", False):
-        rows = list_conflicts(cfg)
+        target_paths = getattr(args, "target_paths", None)
+        rows, unmatched = _conflict_rows(cfg, target_paths)
+        if unmatched:
+            print(
+                f"warning: --path の指定 {len(unmatched)} 件は conflict 一覧に一致しませんでした",
+                file=sys.stderr,
+            )
         if getattr(args, "json", False):
-            print(json.dumps({"conflicts": rows}, ensure_ascii=False, indent=2))
+            print(json.dumps({"conflicts": rows, "unmatched": unmatched}, ensure_ascii=False, indent=2))
         else:
             if not rows:
                 print("conflict なし")
             for r in rows:
                 print(f"{r.get('state_label')} {r.get('path')} (source={r.get('state_source')})")
+        # --path の不一致は JSON の unmatched で機械可読に返す。既存 CLI の「対象 0 件は
+        # 成功」規約を維持し、終了コードだけで空結果と誤指定を混同させない。
         return 0
     res = fix_conflicts(
         cfg,

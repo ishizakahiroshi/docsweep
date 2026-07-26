@@ -18,6 +18,7 @@ from pathlib import Path
 
 from ..config import Config
 from ..engine import scan_records
+from ..scan import detect_project_for_path
 from ..models import FileRecord, Flag
 from .score import ScoreBreakdown, score_record, tiebreak_key
 
@@ -171,36 +172,14 @@ def _resolve_target_projects(
 def _detect_cwd_project(config: Config) -> str | None:
     """現在ディレクトリが含まれるプロジェクトを推測する（``cwd プロジェクト`` 既定）。
 
-    まず ``config.roots`` 配下に cwd が含まれていれば、その root の name を返す。
-    git remote が使える場合はそちら優先。失敗時は None（呼び出し側で他のフォールバック）。
+    索引作成と同じ project marker の遡り規則を使う。範囲外なら None（呼び出し側で
+    他のフォールバック）。
     """
     import os
-    import subprocess
 
     cwd = Path(os.getcwd()).resolve()
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(cwd), "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=2,
-        )
-        if result.returncode == 0:
-            url = result.stdout.strip()
-            if url:
-                tail = url.rstrip("/").split("/")[-1]
-                if tail.endswith(".git"):
-                    tail = tail[:-4]
-                if tail:
-                    return tail
-    except (OSError, subprocess.SubprocessError):
-        pass
-
-    for root in config.roots:
-        try:
-            cwd.relative_to(Path(root).resolve())
-            return Path(root).name
-        except ValueError:
-            continue
-    return None
+    project_root = detect_project_for_path(cwd, config)
+    return project_root.name if project_root is not None else None
 
 
 def build_brief(

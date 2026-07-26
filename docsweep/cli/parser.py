@@ -112,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_index_sync.add_argument("--json", action="store_true", help="統計を JSON で出力")
     p_index_sync.add_argument(
         "--prune-projects", action="store_true",
-        help="search_paths から外れた孤児 projects を CASCADE 削除（既定 OFF・安全側）"
+        help="今回の search_paths 範囲内で 0 件になった projects を CASCADE 削除（既定 OFF）"
     )
 
     p_index_rebuild = sub.add_parser(
@@ -123,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_index_rebuild.add_argument("--json", action="store_true", help="統計を JSON で出力")
     p_index_rebuild.add_argument(
         "--prune-projects", action="store_true",
-        help="search_paths から外れた孤児 projects を CASCADE 削除（既定 OFF・安全側）"
+        help="今回の search_paths 範囲内で 0 件になった projects を CASCADE 削除（既定 OFF）"
     )
     p_index_rebuild.add_argument(
         "--no-vacuum", action="store_true",

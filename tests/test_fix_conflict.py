@@ -168,3 +168,42 @@ def test_cli_path_option_filters_end_to_end(workspace: Path) -> None:
     assert rc == 0
     assert _h1(a).startswith("# [完了]")
     assert _h1(b).startswith("# [計画]")
+
+
+def test_list_path_is_filtered_and_json_reports_unmatched(workspace: Path, capsys) -> None:
+    """--list でも --path を守り、誤指定は JSON で機械可読に返す。"""
+    a = workspace / "proj" / "docs" / "local" / "plan_a.md"
+    missing = workspace / "proj" / "docs" / "local" / "missing.md"
+
+    rc = main([
+        "fix-conflict", "--root", str(workspace), "--list", "--json",
+        "--path", str(a), "--path", str(missing),
+    ])
+
+    import json
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert [Path(row["path"]).name for row in payload["conflicts"]] == ["plan_a.md"]
+    assert payload["unmatched"] == [str(missing)]
+
+
+def test_index_records_are_limited_to_requested_root(tmp_path: Path, monkeypatch) -> None:
+    """索引が全 project を持っていても --root 外の conflict は修理しない。"""
+    from docsweep.scan import sync_index
+
+    root = tmp_path / "dev"
+    a = _write(root / "alpha" / "pyproject.toml", "[project]\nname='alpha'\n").parent
+    b = _write(root / "beta" / "pyproject.toml", "[project]\nname='beta'\n").parent
+    a_doc = _write(a / "docs" / "local" / "plan_a.md", CONFLICT_MD.format(title="a"))
+    b_doc = _write(b / "docs" / "local" / "plan_b.md", CONFLICT_MD.format(title="b"))
+    cfg_all = _cfg(root)
+    cfg_all.search_paths = [str(root)]
+    db_file = tmp_path / "idx.db"
+    sync_index(cfg_all, db_path_override=db_file)
+    monkeypatch.setenv("DOCSWEEP_INDEX_DB", str(db_file))
+
+    res = fix_conflicts(_cfg(a), prefer="frontmatter")
+
+    assert [Path(item.path).name for item in res.items] == ["plan_a.md"]
+    assert _h1(a_doc).startswith("# [完了]")
+    assert _h1(b_doc).startswith("# [計画]")
