@@ -31,7 +31,8 @@ def cmd_fix_conflict(args: argparse.Namespace) -> int:
     res = fix_conflicts(
         cfg,
         prefer=getattr(args, "prefer", "h1") or "h1",
-        paths=getattr(args, "paths", None),
+        # ``--path`` の dest は positional のスキャンルート（args.paths）と分けてある。
+        paths=getattr(args, "target_paths", None),
         dry_run=bool(getattr(args, "dry_run", False)),
     )
     if getattr(args, "json", False):

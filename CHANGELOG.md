@@ -5,6 +5,45 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **索引の project 単位をスキャンルートからリポジトリ（project_root）へ揃えた。**
+  索引経由の `WHERE project_id = ?` はスキャンルート名で、索引なしフォールバックは
+  `FileRecord.project`（= リポ名）で絞っており、**同じ `--project <リポ名>` が経路に
+  よって別の列と比較されていた**。索引が有効だと `docsweep triage --project mer` が
+  エラーも警告も出さずに 0 件を返し、「残作業なし」と誤読する状態だった。
+  併せて `projects.root_path` は project_root、`files.rel_path` は project_root 相対に
+  なる。副作用として、basename が同じスキャンルート（`C:/dev` と `C:/Users/x/dev`）が
+  同一 project_id に潰れて互いの登録を消し合う問題も解消した（実測で
+  `files_added: 639 / files_deleted: 639 / files_unchanged: 0` だった差分同期が、
+  `files_unchanged: 641` の真の no-op になった）。処理順次第で索引が空のまま終わり得た
+  危険もなくなる。
+  **本修正の適用後は `docsweep index-rebuild` を 1 度実行することを推奨**（旧採番の
+  ファイル行は次回の `index-sync` でも自動的に掃除されるが、rebuild の方が確実）。
+  掃除した時は stderr に 1 行だけ通知する。空になった project 行は自動削除せず、
+  従来どおり `docsweep index-sync --prune-projects` に委ねる。
+  `--prune-projects` の現行 ID 算出もスキャンルート単位から「今回の走査で見つかった
+  全 project」へ追従させた（直し忘れると生きている project が孤児と誤判定されて
+  CASCADE 削除される）。
+- `index-sync` / `index-rebuild` の全走査を DB 書き込みより前に完了させるようにした。
+  `index-rebuild` は `DELETE FROM files` の直後に走査ループへ入っていたため、走査中に
+  落ちると索引が不完全なまま残っていた（下記 junction 問題で実際に壊れた）。
+- **`docsweep fix-conflict --path` が効いていなかったのを修正。** `--path` の dest が
+  `_add_scope_args` の positional `paths`（スキャンルート）と衝突し、positional 側の
+  既定値 `[]` が `append` の結果を潰していたため、**1 件だけ指定したつもりで全 conflict が
+  処理対象になっていた**（`--prefer` の向きが合わない conflict まで巻き込むと、完了済み
+  plan が未着手へ戻る誤修正になる）。dest を分離し、併せて渡されたパスを
+  `resolve().as_posix()` で正規化して Windows のバックスラッシュ表記でも一致するようにし、
+  1 件も一致しなかった指定は stderr に警告するようにした（黙って「対象なし」で終わると
+  誤指定に気づけない）。
+- `index-sync` / `index-rebuild` が、スキャンルート配下に junction / symlink があると
+  `ValueError: '...' is not in the subpath of '...'` で中断していたのを修正。
+  `FileRecord.path` は `resolve()` 済みのためリンク先がルート外の実体パスに解決され、
+  `relative_to(root)` が失敗していた。ルート相対が取れない場合は実体の絶対パスを
+  `rel_path` の識別子に使う（表示・移送に使う絶対パスは従来どおり `abs_path` 列を参照する
+  ため実害はない）。`index-rebuild` は `DELETE FROM files` の直後にこのループへ入るので、
+  中断すると索引が不完全なまま残っていた。
+
 ## [0.3.1] - 2026-07-18
 
 v0.3.0 patch。`.docsweep/backup/` 経由で `docs/local/*.md`（家宣言 private）が

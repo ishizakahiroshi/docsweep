@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -59,6 +60,23 @@ def list_conflicts(config: Config) -> list[dict]:
     return out
 
 
+def _norm_path(p: str) -> str:
+    """パス比較用の正規化キーを返す。
+
+    ``FileRecord.path`` は ``resolve()`` 済みのスラッシュ区切り posix 絶対パスだが、
+    Windows のユーザーが ``--path`` に渡すのはバックスラッシュ区切りや相対パスが自然。
+    両辺を同じ ``resolve().as_posix()`` に通して表記ゆれを吸収する（Windows では
+    ``resolve()`` が実ファイルの大文字小文字も正規化する）。
+
+    存在しないパスや解決できないパスでも例外にせず、素の posix 表記へ落とす
+    （不一致は呼び出し側が警告として報告する）。
+    """
+    try:
+        return Path(p).expanduser().resolve().as_posix()
+    except (OSError, ValueError, RuntimeError):
+        return Path(p).as_posix()
+
+
 def fix_conflicts(
     config: Config,
     *,
@@ -66,17 +84,31 @@ def fix_conflicts(
     paths: list[str] | None = None,
     dry_run: bool = False,
 ) -> ConflictFixResult:
-    """conflict フラグ付きファイルを修理する。"""
+    """conflict フラグ付きファイルを修理する。
+
+    ``paths`` を渡すと、そこに含まれるファイルだけを対象にする（表記ゆれは
+    ``_norm_path`` で吸収）。1 件も conflict に一致しなかった指定は stderr に警告を
+    出す — 黙って「修理対象なし」で終わると誤指定に気づけないため。
+    """
     records = scan_records(config)
-    want = set(paths) if paths else None
+    # 正規化キー -> ユーザーが指定した元の表記（警告で元の表記を見せるため）
+    want: dict[str, str] | None = None
+    if paths:
+        want = {}
+        for p in paths:
+            want.setdefault(_norm_path(p), p)
+    matched_keys: set[str] = set()
     items: list[ConflictFix] = []
     prefer_h1 = prefer in ("h1", "both")
 
     for r in records:
         if Flag.CONFLICT.value not in (r.flags or []):
             continue
-        if want is not None and r.path not in want:
-            continue
+        if want is not None:
+            key = _norm_path(r.path)
+            if key not in want:
+                continue
+            matched_keys.add(key)
 
         path = Path(r.path)
         if not path.is_file():
@@ -149,5 +181,16 @@ def fix_conflicts(
                 ))
             except Exception as e:  # noqa: BLE001
                 items.append(ConflictFix(path=r.path, fixed=False, detail=str(e)))
+
+    if want is not None:
+        unmatched = [orig for key, orig in want.items() if key not in matched_keys]
+        if unmatched:
+            print(
+                f"warning: --path の指定 {len(unmatched)} 件は conflict 一覧に一致しませんでした"
+                "（パス誤り、またはそのファイルに frontmatter ↔ H1 の食い違いが無い）:",
+                file=sys.stderr,
+            )
+            for orig in unmatched:
+                print(f"  - {orig}", file=sys.stderr)
 
     return ConflictFixResult(items=items)

@@ -499,7 +499,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--prefer", choices=("h1", "frontmatter", "both"), default="h1",
         help="どちらを正とするか（both=h1 と同じ）",
     )
-    p_fix_conflict.add_argument("--path", action="append", dest="paths", help="対象 path（複数可）")
+    # dest は positional の ``paths``（_add_scope_args のスキャンルート）と分ける。
+    # 同名にすると positional 側の既定値 [] が append 結果を潰し、--path で絞ったつもりでも
+    # 全 conflict が処理対象になっていた（完了済み plan を巻き戻す誤修正の原因）。
+    # さらに _build_config が ``paths`` をスキャンルート扱いするため、dest を共有したままだと
+    # 指定した md ファイルがスキャンルートに混入する。
+    p_fix_conflict.add_argument(
+        "--path", action="append", dest="target_paths", metavar="PATH",
+        help="対象 path（複数可）",
+    )
     p_fix_conflict.add_argument("--list", action="store_true", help="conflict 一覧のみ")
     p_fix_conflict.add_argument("--dry-run", action="store_true")
     p_fix_conflict.add_argument("--json", action="store_true")

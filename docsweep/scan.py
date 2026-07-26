@@ -245,29 +245,33 @@ class SyncStats:
     projects_removed: int = 0
 
 
-def _resolve_project_id(root: Path) -> tuple[str, str | None]:
-    """プロジェクト識別子と remote_url を返す。
+def _project_remote_url(project_root: Path) -> str | None:
+    """``git remote get-url origin`` の URL を返す（取れなければ None）。
 
-    優先順: ``git remote get-url origin`` の repo 名（.git を除く最後の segment）→ ディレクトリ名。
-    git remote が無い／git でない場合は単にディレクトリ名を ID とする。
+    ``projects.remote_url`` を埋めるためだけの補助。**project_id の採番には使わない**
+    — 索引の project 単位は ``FileRecord.project``（= ``project_root.name``）に揃えてある。
+    索引なしフォールバック経路（``r.project == project``）と同じ意味論にしないと、
+    ``--project <リポ名>`` が索引の有無で別物を指してしまうため。
+
+    ``.git`` を持たないディレクトリでは git を呼ばない。呼ぶと ``git -C`` が上位へ
+    遡って親リポジトリの remote を拾い、monorepo 内のサブプロジェクトに親の URL が
+    付いてしまう。
     """
+    if not (project_root / ".git").exists():
+        return None
+
     import subprocess
 
     try:
         result = subprocess.run(
-            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            ["git", "-C", str(project_root), "remote", "get-url", "origin"],
             capture_output=True, text=True, timeout=3,
         )
         if result.returncode == 0:
-            url = result.stdout.strip()
-            if url:
-                tail = url.rstrip("/").split("/")[-1]
-                if tail.endswith(".git"):
-                    tail = tail[:-4]
-                return (tail or root.name, url)
+            return result.stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
         pass
-    return (root.name, None)
+    return None
 
 
 def _expand_search_paths(config: Config) -> list[Path]:
@@ -317,6 +321,44 @@ def _body_sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
 
+def _rel_for_index(abs_path: str, root: Path) -> str:
+    """索引に入れる rel_path を求める（``root`` は原則プロジェクトルート）。
+
+    ``FileRecord.path`` は ``fpath.resolve()`` 済みなので、root 配下に junction /
+    symlink があるとリンク先の実体パス（root の外）に解決される。例えば
+    ``C:/dev/kb`` が別ドライブ配下への junction だと ``relative_to(C:/dev)`` は
+    ValueError になり、以前は sync_index がその場で落ちて索引が不完全なまま
+    残っていた。
+
+    root 相対が取れない場合は実体の絶対パスをそのまま識別子に使う。
+    ``UNIQUE(project_id, rel_path)`` の一意性は保たれ、表示や移送に使う絶対パスは
+    別列 ``abs_path`` が持つため実害はない。同名 basename のリポが 2 つ同じ
+    project_id に落ちた場合も、片方はこのフォールバックで絶対パス識別子になり
+    互いを上書きしない。
+    """
+    p = Path(abs_path)
+    try:
+        return p.relative_to(root).as_posix()
+    except ValueError:
+        return p.as_posix()
+
+
+def _is_within(path: Path, roots: list[Path]) -> bool:
+    """``path`` が ``roots`` のいずれかの配下（または一致）かを返す。
+
+    「今回のスキャンがそのプロジェクトを実際にカバーしたか」の判定に使う。
+    カバーされていたのに 1 件も見つからなければ、そのプロジェクトの索引行は
+    すべて消えたものとして削除できる。判定できない場合は False（＝消さない安全側）。
+    """
+    for r in roots:
+        try:
+            path.relative_to(r)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def sync_index(
     config: Config,
     *,
@@ -326,17 +368,31 @@ def sync_index(
 ) -> SyncStats:
     """``search_paths`` 配下を走査し SQLite 索引へ差分同期する。
 
+    索引の project 単位は **スキャンルートではなくプロジェクトルート（リポジトリ）**。
+    ``projects.project_id`` には ``FileRecord.project``（= ``project_root.name``）を、
+    ``projects.root_path`` には ``project_root`` を入れ、``files.rel_path`` は
+    project_root 相対にする。理由は 2 つ:
+
+    1. 索引経由の ``WHERE project_id = ?`` と、索引なしフォールバックの
+       ``r.project == project`` が同じ意味論になる。以前は前者がスキャンルート単位
+       だったため、索引が有効だと ``--project <リポ名>`` がエラーも警告も無く 0 件を
+       返していた（「残作業なし」と誤読する事故）。
+    2. basename が同じスキャンルート（``C:/dev`` と ``C:/Users/x/dev``）が同じ
+       project_id に潰れ、``known_files`` → 未検出分削除の流れで互いの登録を消し合う
+       事故が消える（差分同期が毎回全件書き直しになり、処理順次第で索引が空になり得た）。
+
     Args:
         config: ロード済み Config
         full: True で全件再構築（DB の files を一旦 truncate してから挿入）
         db_path_override: テスト用に DB パスを上書き
-        prune_projects: True で「DB にあるが今回の search_paths 展開結果に無い projects」を
+        prune_projects: True で「DB にあるが今回の走査で見つからなかった projects」を
             CASCADE 削除する。既定 False（一時的な search_paths 変更で誤削除しないよう保護）。
 
     Returns:
         SyncStats — 同期件数の集計
     """
     import json as _json
+    import sys
     from datetime import datetime, timezone
 
     from . import index as db
@@ -345,43 +401,66 @@ def sync_index(
     stats = SyncStats()
     roots = _expand_search_paths(config)
 
+    # --- 1. 走査（DB を触る前に完了させる）--------------------------------------
+    # project_root ごとにまとめ直す。DB 書き込みより前に全走査を終えるのは、
+    # full=True の ``DELETE FROM files`` 直後に走査で落ちると索引が空のまま残るため
+    # （junction で ValueError を投げて実際に壊した実績がある）。
+    groups: dict[str, tuple[Path, list[ScannedDoc]]] = {}
+    seen_abs: set[str] = set()
+    for root in roots:
+        for doc in scan_root(root, config):
+            rec = doc.record
+            if rec.path in seen_abs:
+                continue  # スキャンルートが入れ子でも同じファイルを二重登録しない
+            seen_abs.add(rec.path)
+            # classify を呼んで flags / allowed_actions を FileRecord に充填
+            classify(doc, config)
+            project_root = Path(rec.project_root) if rec.project_root else root
+            project_id = rec.project or project_root.name
+            entry = groups.get(project_id)
+            if entry is None:
+                groups[project_id] = (project_root, [doc])
+            else:
+                entry[1].append(doc)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     with db.connect(db_path_override) as conn:
+        existing_projects: dict[str, str] = {
+            r["project_id"]: (r["root_path"] or "")
+            for r in conn.execute("SELECT project_id, root_path FROM projects").fetchall()
+        }
+        current_ids = set(groups)
+
         if full:
-            # 全再構築: files を空にする（projects と tags/related は ON DELETE CASCADE で連鎖）
+            # 全再構築: files を空にする（tags/related は ON DELETE CASCADE で連鎖）
             conn.execute("DELETE FROM files")
             conn.commit()
 
-        # C4: 孤児プロジェクト掃除 — DB にあるが今回 search_paths から外れた project を CASCADE 削除。
-        # files / tags / related は ON DELETE CASCADE で連鎖削除される。
+        # C4: 孤児プロジェクト掃除 — DB にあるが今回の走査で 1 件も見つからなかった
+        # project を CASCADE 削除。files / tags / related は連鎖削除される。
+        pruned_ids: set[str] = set()
         if prune_projects:
-            current_ids = {_resolve_project_id(root)[0] for root in roots}
-            existing_ids = {
-                r["project_id"]
-                for r in conn.execute("SELECT project_id FROM projects").fetchall()
-            }
-            orphan_ids = existing_ids - current_ids
-            for orphan in orphan_ids:
+            pruned_ids = set(existing_projects) - current_ids
+            for orphan in pruned_ids:
                 conn.execute("DELETE FROM projects WHERE project_id=?", (orphan,))
                 stats.projects_removed += 1
-            if orphan_ids:
+            if pruned_ids:
                 conn.commit()
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-
-        for root in roots:
-            project_id, remote_url = _resolve_project_id(root)
-            db.upsert_project(conn, project_id, str(root), remote_url, now_iso)
+        for project_id, (project_root, docs) in groups.items():
+            db.upsert_project(
+                conn, project_id, project_root.as_posix(),
+                _project_remote_url(project_root), now_iso,
+            )
             stats.projects += 1
 
             existing = db.known_files(conn, project_id)
             seen_rel: set[str] = set()
 
-            docs = scan_root(root, config)
             for doc in docs:
-                # classify を呼んで flags / allowed_actions を FileRecord に充填
-                classify(doc, config)
                 rec = doc.record
-                rel_path = Path(rec.path).relative_to(root).as_posix()
+                rel_path = _rel_for_index(rec.path, project_root)
                 seen_rel.add(rel_path)
                 stats.files_total += 1
 
@@ -440,6 +519,39 @@ def sync_index(
                 db.delete_file(conn, project_id, stale_rel)
                 stats.files_deleted += 1
 
+        # --- 2. 走査範囲内なのに 1 件も見つからなかった project の後始末 --------
+        # 該当するのは 2 種類:
+        #   a) 旧採番（スキャンルート単位）で登録された project 行。放置すると同じ md が
+        #      旧 project_id と新 project_id の両方に載り、triage が二重に出る
+        #   b) md を全部消した / archive へ移したリポ
+        # どちらもファイル行は実体を失っているので自動で消す。project 行そのものは
+        # 消さない（--prune-projects の担当・一時的な search_paths 変更で誤削除しない）。
+        cleaned: list[tuple[str, int]] = []
+        for project_id, root_path in existing_projects.items():
+            if project_id in current_ids or project_id in pruned_ids:
+                continue
+            if not root_path or not _is_within(Path(root_path), roots):
+                continue  # 走査範囲外＝今回は判断材料が無い。触らない（安全側）
+            removed = 0
+            for stale_rel in db.known_files(conn, project_id):
+                db.delete_file(conn, project_id, stale_rel)
+                removed += 1
+            if removed:
+                stats.files_deleted += removed
+                cleaned.append((project_id, removed))
+
         conn.commit()
+
+    # 実際に掃除した時だけ 1 行出す。空になった project 行が残っているだけの状態で
+    # 毎回鳴らすと、常時 stderr を汚すだけで行動につながらない。
+    if cleaned:
+        detail = ", ".join(f"{pid}（{n} 件）" for pid, n in sorted(cleaned))
+        print(
+            f"warning: 実体を失った索引行を削除しました: {detail}"
+            " — 旧採番（スキャンルート単位）の残骸か、md を全部消した/archive へ移した"
+            "プロジェクトです。空になった project 行ごと消すなら"
+            " `docsweep index-sync --prune-projects`",
+            file=sys.stderr,
+        )
 
     return stats
