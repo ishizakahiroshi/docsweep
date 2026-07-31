@@ -13,9 +13,9 @@
 # プロジェクト .docsweep.yaml で上書きするケースは稀。
 # projects:
 #   search_paths:
-#     - C:/dev/github/public/*
-#     - C:/dev/github/private/*
-#     - C:/dev/work/*
+#     - D:/dev/github/public/*
+#     - D:/dev/github/private/*
+#     - D:/dev/work/*
 #   exclude:
 #     - "**/node_modules/**"
 #     - "**/archive-vault/**"

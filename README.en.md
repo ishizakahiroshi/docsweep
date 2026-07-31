@@ -104,7 +104,7 @@ pip install 'docsweep[all]'
 
 # Launch (always works regardless of PATH)
 python -m docsweep triage
-python -m docsweep serve --root C:\dev
+python -m docsweep serve --root D:\dev
 python -m docsweep mcp
 
 # MCP registration example (~\.claude\mcp.json) — an absolute path stays stable across Python switches

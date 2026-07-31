@@ -98,7 +98,7 @@ pip install 'docsweep[all]'
 
 # 起動（PATH を気にせず常に動く形）
 python -m docsweep triage
-python -m docsweep serve --root C:\dev
+python -m docsweep serve --root D:\dev
 python -m docsweep mcp
 
 # MCP 登録例（~\.claude\mcp.json）— 絶対パスにすると Python 切替時も安定

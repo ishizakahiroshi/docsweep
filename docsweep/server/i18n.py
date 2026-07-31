@@ -192,8 +192,8 @@ MESSAGES: dict[str, dict[str, str]] = {
     "settings_roots_add": {"ja": "追加", "en": "Add"},
     "settings_roots_last": {"ja": "最後の 1 個は削除できません", "en": "The last root cannot be removed"},
     "settings_roots_placeholder": {
-        "ja": "絶対パス（例: C:/dev/github/public または C:/dev/my-project）",
-        "en": "Absolute path (e.g. C:/dev/github/public or C:/dev/my-project)",
+        "ja": "絶対パス（例: D:/dev/github/public または D:/dev/my-project）",
+        "en": "Absolute path (e.g. D:/dev/github/public or D:/dev/my-project)",
     },
     "settings_global_heading": {
         "ja": "グローバル運用ルール導線（全プロジェクトで効く）",

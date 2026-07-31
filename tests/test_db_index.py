@@ -672,8 +672,8 @@ def test_sync_index_cleans_up_legacy_root_scoped_rows(
 def test_rel_for_index_outside_root_falls_back_to_abs() -> None:
     """junction / symlink 先が root の外に解決されても落ちず、絶対パスを識別子にする。
 
-    実際に起きた事象: ``C:/dev/kb`` が ``C:/Users/<user>/Nextcloud2/...`` への
-    junction だったため ``FileRecord.path``（resolve 済み）が root=``C:/dev`` の
+    実際に起きた事象: ``D:/dev/kb`` が ``C:/Users/<user>/Nextcloud2/...`` への
+    junction だったため ``FileRecord.path``（resolve 済み）が root=``D:/dev`` の
     外を指し、``relative_to`` の ValueError で sync_index が全再構築の途中で
     落ちて索引が不完全なまま残った。
     """
