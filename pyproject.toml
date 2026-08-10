@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docsweep"
-version = "0.3.1"
+version = "0.4.0"
 description = "Sweep, triage and archive AI coding agents' plan/bugfix/pending Markdown across projects."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,8 +39,10 @@ review = [
     "questionary>=2.0",
 ]
 # MCP stdio サーバー
+# 下限は 1.28.1。1.28.1 未満には CVE-2026-59950 があり、`>=1.0` のままだと
+# 脆弱な版が install され得た（2026-07-21 監査 F-06）。
 mcp = [
-    "mcp>=1.0",
+    "mcp>=1.28.1",
 ]
 # index-watch 用ファイル監視（任意・``docsweep watch`` だけが依存する）
 watch = [

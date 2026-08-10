@@ -65,7 +65,7 @@ docsweep-okf-2026-08-09.zip
     "source": "bundled:0.2",
     "sha256": "..."
   },
-  "docsweep_version": "0.3.1",
+  "docsweep_version": "0.4.0",
   "generated_at": "2026-08-09T12:34:56+09:00",
   "include_archive": false,
   "status_vocabulary": {

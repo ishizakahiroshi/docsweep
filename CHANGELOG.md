@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-10
+
+### アップグレード時の注意
+
+- **本版の適用後に `docsweep index-rebuild` を 1 度実行することを推奨。** 索引の project 単位を
+  スキャンルートからリポジトリ（project_root）へ揃えたため、旧採番のファイル行が残る。
+  次回の `index-sync` でも自動的に掃除されるが、rebuild の方が確実。
+- `docsweep[mcp]` を使っている場合、`mcp` の下限が `1.28.1` に上がる（CVE-2026-59950 対応）。
+  古い版に固定している環境では解決に失敗し得るので、依存の pin を見直すこと。
+
 ### Added
 
 - OKF v0.2 profile 駆動の frontmatter 状態分離を追加。標準 `status`（`draft` / `stable` /
@@ -23,6 +33,12 @@
 
 ### Changed
 
+- **cytoscape.js 3.30.0 を同梱し、graph ページの CDN 依存を解消した。** これまで graph ページだけが
+  実行時に unpkg から取得しており、オフライン環境で描画できず、利用のたびに外部サーバーへ
+  アクセスが渡っていた。さらに本体の CSP は `script-src 'self'` なので、**CSP を強制する
+  ブラウザでは外部 script がそもそも読み込めず graph ページが機能していなかった**。
+  `docsweep/server/static/cytoscape.min.js` として同梱し、MIT License 全文と SHA-256 を
+  `NOTICES.md` に記載した。Web UI の「このアプリについて」も CDN 節を廃して同梱一覧へ統合した。
 - profile のルールを Python ソースから分離し、`docsweep/okf_profiles/<version>.json` で管理する。
   ローカル JSON や commit 固定の GitHub Raw URL を利用できるため、ルール更新だけなら
   docsweep の実装 Release を必要としない。旧形式の廃止時期は別途告知する。
@@ -33,8 +49,52 @@
   H1 と `docsweep_state`（旧形式では `status`）を同期する。relabel は archive を暗黙実行しない。
 - `inject` / `init` / shipped templates / README の AI 導線を設定済み work queue 前提へ同期した。
 
+### Security
+
+- **`docsweep[mcp]` の下限を `mcp>=1.28.1` に引き上げた。** 従来の `mcp>=1.0` では
+  CVE-2026-59950（fix: 1.28.1）を含む版が install され得た（2026-07-21 監査 F-06）。
+
 ### Fixed
 
+- **`.gitignore` が `docs/local/`（末尾スラッシュ）のとき、新規プロジェクトの 1 本目が
+  「private work queue が Git ignore されていません」で作れなかったのを修正した。**
+  `git check-ignore` は実在しないパスをディレクトリと判断できないため、queue が未作成の
+  初回だけディレクトリ限定パターンに一致しなかった。docsweep 自身のテンプレートと
+  ドキュメントが `docs/local/` 表記なので、手順どおり設定した利用者が必ず踏む経路だった。
+  末尾スラッシュ付きでも問い合わせるようにした。
+- **`fix-conflict --prefer h1` が H1 の値を書き戻せていなかったのを修正した。** 書き戻す値に
+  「frontmatter > H1 > filename」で解決済みの state を使っていたため、frontmatter がある
+  conflict では **frontmatter 自身の値を自分に書き戻すだけ**になり、`[ok]` を報告しながら
+  1 文字も直らなかった（0.3.1 で直したのは `--path` の絞り込み側だけで、この本体は残っていた）。
+  H1 の値を本文から取り直すようにし、既に同値なら書き込まないようにした。
+- **frontmatter を 1 フィールド書き換えるたびに、本文との間の空行が消えていたのを修正した。**
+  frontmatter を判定する正規表現の閉じ `---` の後ろが `\s*` で、直後の空行まで飲み込んでいた。
+  tracked な docs では relabel のたびによけいな差分が出ていた。
+- **現行の OpenAI API キー形式（`sk-proj-…` / `sk-svcacct-…`）を秘密情報スキャンが
+  検出できていなかったのを修正した。** 旧パターンが `sk-` の直後に英数 20 文字以上を
+  要求しており、途中に `-` が入る現行形式は 1 件も一致しなかった（`secret_policy: block`
+  でも素通りしていた）。併せて Slack / Google API key / Stripe の形式を追加し、
+  `PRIVATE KEY` ブロックの検出をアルゴリズム名の列挙から一般化した（DSA / PGP / ENCRYPTED を含む）。
+- **`secret_policy` に未知の値（設定の綴り違い等）を渡すと、block が黙って warn に
+  なっていたのを修正した。** `off` 以外は `block` として扱う（fail-closed）。無効化できるのは
+  明示的な `off` だけになった。
+- **private work queue の保護を互換 fallback で外すときに、黙って外していたのをやめた。**
+  `work_dir` / `work_policy` が未設定の既存利用者では private queue の検査結果が error から
+  取り除かれるが、その内容が警告としても残らず「保護されている」と誤解できる状態だった。
+  落とした検査結果は理由と明示方法つきで warning に残す。`export --okf` も同様に、
+  work_policy=private の queue を含めた場合は対象プロジェクト名つきで警告し、
+  除外した場合は件数を通知する（黙って含めない・黙って減らさない）。
+- **`work_dir` を junction / symlink でリポジトリ外へ逃がした構成で、その作業記録が
+  別プロジェクトの持ち物として登録されていたのを修正した。** `docs/local` をリンク化すると
+  `Path.resolve()` がリポジトリの外へ抜け、実体側から上へ辿っても project marker が見つからず、
+  `detect_project_root` の fallback が「スキャンルート直下の先頭セグメント」を project にしていた。
+  一方 cwd 判定は実体ディレクトリを見るので別名になり、**`docsweep brief` がエラーも警告も出さずに
+  0 件を返していた**（実測: 未完 65 件のリポジトリで 0 件。同じ配置の 20 リポジトリすべてが該当）。
+  `work_dir` は「そのプロジェクトの作業キュー」と宣言済みの設定なので、実体パスから宣言元
+  プロジェクトへ引き戻す対応表を作り、project 判定の入口で marker 走査より先に引くようにした。
+  同じ実体を 2 つのプロジェクトが `work_dir` として宣言している場合は、**黙って片方を採らず
+  対応表から外す**（どちらが正しいか機械には決められないため）。通常構成（`docs/local` が実体）の
+  挙動は変わらない。
 - **索引の project 単位をスキャンルートからリポジトリ（project_root）へ揃えた。**
   索引経由の `WHERE project_id = ?` はスキャンルート名で、索引なしフォールバックは
   `FileRecord.project`（= リポ名）で絞っており、**同じ `--project <リポ名>` が経路に
