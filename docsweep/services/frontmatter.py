@@ -42,9 +42,19 @@ ALLOWED_FIELDS: frozenset[str] = frozenset(
         "due",
         "status",
         "docsweep_state",
+        "work_id",
+        "ai_provenance_version",
+        "ai_author_agent",
+        "ai_author_runtime",
+        "ai_author_provider",
+        "ai_author_model_id",
+        "ai_author_model_display",
+        "ai_author_reasoning",
+        "ai_author_model_source",
+        "ai_execution_refs",
     }
 )
-LIST_FIELDS: frozenset[str] = frozenset({"tags", "related"})
+LIST_FIELDS: frozenset[str] = frozenset({"tags", "related", "ai_execution_refs"})
 
 # YAML キー名は単語＋アンダースコアに限定（インジェクション防止）。
 _FIELD_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")

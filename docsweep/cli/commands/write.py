@@ -291,6 +291,7 @@ def cmd_auto_triage(args: argparse.Namespace) -> int:
 
 
 def cmd_new(args: argparse.Namespace) -> int:
+    from ...provenance import AIMetadata, ProvenanceError, initialize_document
     from ...similar_guard import find_similar_open
     from ...templates_gen import new_doc, new_split_plans
     from ...work_queue import find_project_dir
@@ -323,6 +324,27 @@ def cmd_new(args: argparse.Namespace) -> int:
     except Exception:
         pass
     offsets: dict[str, int] = {} if getattr(args, "no_due", False) else cfg.due_default_offset_days
+    metadata = AIMetadata.resolve(
+        actor_default=cfg.provenance_actor_key,
+        agent=getattr(args, "ai_agent", None),
+        runtime=getattr(args, "ai_runtime", None),
+        provider=getattr(args, "ai_provider", None),
+        model_id=getattr(args, "ai_model_id", None),
+        model_display=getattr(args, "ai_model_display", None),
+        reasoning_profile=getattr(args, "ai_reasoning", None),
+        model_source=getattr(args, "ai_model_source", None),
+        actor_key=getattr(args, "actor_key", None),
+    )
+
+    def register_provenance(path: Path) -> dict | None:
+        if not cfg.provenance_enabled and cfg.provenance_manager != "repo":
+            return None
+        return initialize_document(
+            path,
+            project_dir=project_dir,
+            config=cfg,
+            metadata=metadata,
+        )
     split_n = int(getattr(args, "split", 0) or 0)
     if split_n > 0:
         if args.type != "plan":
@@ -342,8 +364,15 @@ def cmd_new(args: argparse.Namespace) -> int:
         except (PermissionError, ValueError) as exc:
             print(f"保存を中止しました: {exc}", file=sys.stderr)
             return 2
+        try:
+            provenance_results = [register_provenance(doc.path) for doc in created]
+        except ProvenanceError as exc:
+            print(f"provenance 登録に失敗しました: {exc}", file=sys.stderr)
+            return 2
         for d in created:
             print(f"生成しました: {d.path}" + (f" (due={d.due})" if d.due else ""))
+        if any(result and result.get("status") == "delegated" for result in provenance_results):
+            print("provenance: repo固有skillへ委譲しました（汎用台帳は未変更）")
         return 0
     try:
         doc = new_doc(
@@ -357,10 +386,18 @@ def cmd_new(args: argparse.Namespace) -> int:
     except (PermissionError, ValueError) as exc:
         print(f"保存を中止しました: {exc}", file=sys.stderr)
         return 2
+    try:
+        provenance_result = register_provenance(doc.path)
+    except ProvenanceError as exc:
+        print(f"provenance 登録に失敗しました: {exc}", file=sys.stderr)
+        return 2
     if doc.due:
         print(f"生成しました: {doc.path} (due={doc.due})")
     else:
         print(f"生成しました: {doc.path}")
+    if provenance_result and provenance_result.get("status") == "delegated":
+        skill = provenance_result.get("delegate_skill") or "repo固有skill"
+        print(f"provenance: {skill} へ委譲しました（汎用台帳は未変更）")
     return 0
 
 

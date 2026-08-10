@@ -25,6 +25,7 @@ DEFAULT_PROJECT_MARKERS = [".git", ".docsweep.yaml", "package.json", "pyproject.
 DEFAULT_WORK_DIR = "docs/local"
 WORK_POLICIES = frozenset({"private", "shared"})
 SECRET_POLICIES = frozenset({"block", "warn", "off"})
+PROVENANCE_MANAGERS = frozenset({"docsweep", "repo", "disabled"})
 
 
 @dataclass(frozen=True)
@@ -129,6 +130,16 @@ class Config:
     # 実 provider (openai / anthropic) は別 plan で対応。
     capture_llm_provider: str = "mock"
     capture_llm_model: str | None = None  # 将来用（モデル ID 指定）
+    # AI execution provenance。既定は opt-in で、個人の global config から有効化する。
+    # manager=repo は cpni のようにリポ固有台帳・validatorを正典にする明示的な委譲モード。
+    provenance_enabled: bool = False
+    provenance_manager: str = "disabled"
+    provenance_ledger: Path = field(
+        default_factory=lambda: GLOBAL_CONFIG_PATH.parent / "provenance" / "ai-executions.csv"
+    )
+    provenance_project_id: str | None = None
+    provenance_actor_key: str | None = None
+    provenance_delegate_skill: str | None = None
     # 由来トレース用（どのファイルから来たか）。
     sources: list[Path] = field(default_factory=list)
     # config 層の解決結果を write/archive 側が再利用するためのメタデータ。
@@ -471,6 +482,53 @@ def load_config(
         if layer.get("email"):
             user_email = str(layer["email"]).strip() or None
 
+    # AI provenance は global で opt-in し、project が manager / ledger 等を部分上書きする。
+    # ledger の相対パスは、値を書いた config ファイルのディレクトリを基準に解決する。
+    provenance_enabled = False
+    provenance_manager = "disabled"
+    provenance_ledger = global_path.parent / "provenance" / "ai-executions.csv"
+    provenance_project_id: str | None = None
+    provenance_actor_key: str | None = None
+    provenance_delegate_skill: str | None = None
+
+    def _safe_bool_setting(value: object, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "yes", "1", "on"}:
+                return True
+            if normalized in {"false", "no", "0", "off"}:
+                return False
+        return default
+
+    for layer, layer_base in (
+        (g.get("provenance") or {}, global_path.parent),
+        (project_cfg.get("provenance") or {}, project_dir or Path.cwd()),
+    ):
+        if not isinstance(layer, dict):
+            continue
+        if "enabled" in layer:
+            provenance_enabled = _safe_bool_setting(layer.get("enabled"), provenance_enabled)
+        if layer.get("manager"):
+            candidate = str(layer["manager"]).strip().lower()
+            if candidate in PROVENANCE_MANAGERS:
+                provenance_manager = candidate
+        if layer.get("ledger"):
+            candidate_path = Path(os.path.expanduser(str(layer["ledger"])))
+            provenance_ledger = (
+                candidate_path if candidate_path.is_absolute()
+                else (Path(layer_base) / candidate_path).resolve()
+            )
+        if "project_id" in layer:
+            provenance_project_id = str(layer.get("project_id") or "").strip() or None
+        if "actor_key" in layer:
+            provenance_actor_key = str(layer.get("actor_key") or "").strip() or None
+        if "delegate_skill" in layer:
+            provenance_delegate_skill = str(layer.get("delegate_skill") or "").strip() or None
+    if provenance_manager == "disabled":
+        provenance_enabled = False
+
     return Config(
         roots=roots,
         profiles=profiles_resolved,
@@ -495,6 +553,12 @@ def load_config(
         search_exclude=search_exclude,
         capture_llm_provider=capture_llm_provider,
         capture_llm_model=capture_llm_model,
+        provenance_enabled=provenance_enabled,
+        provenance_manager=provenance_manager,
+        provenance_ledger=provenance_ledger,
+        provenance_project_id=provenance_project_id,
+        provenance_actor_key=provenance_actor_key,
+        provenance_delegate_skill=provenance_delegate_skill,
         sources=sources,
         project_dir=project_dir.resolve() if project_dir is not None else None,
         archive_dir_explicit=("archive_dir" in g or "archive_dir" in project_cfg),

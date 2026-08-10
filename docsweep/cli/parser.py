@@ -294,6 +294,70 @@ def build_parser() -> argparse.ArgumentParser:
         "--split", type=int, default=0, metavar="N",
         help="親 plan + 子 N 本を一括生成し related 双方向と docsweep_parent を付ける（UX W3 / P26）",
     )
+    for flag, dest, help_text in (
+        ("--ai-agent", "ai_agent", "作成AI（codex/claude/grok等）"),
+        ("--ai-runtime", "ai_runtime", "実行環境（many-ai-cli/claude-code等）"),
+        ("--ai-provider", "ai_provider", "AI provider"),
+        ("--ai-model-id", "ai_model_id", "runtimeが報告したexact model ID"),
+        ("--ai-model-display", "ai_model_display", "UI等で確認したmodel表示名"),
+        ("--ai-reasoning", "ai_reasoning", "reasoning profile"),
+        ("--ai-model-source", "ai_model_source", "orchestrator/runtime/cli/ui/user-reported/unavailable"),
+        ("--actor-key", "actor_key", "AIを操作した人間の安定key"),
+    ):
+        p_new.add_argument(flag, dest=dest, help=help_text)
+
+    p_provenance = sub.add_parser(
+        "provenance",
+        help="作成AIとC単位の実装・レビュー・検証AIを記録・検査",
+    )
+    p_prov_sub = p_provenance.add_subparsers(dest="provenance_action", required=True)
+
+    def add_provenance_scope(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("--project-dir", help="対象project root（既定はcwdから自動検出）")
+        parser.add_argument("--config", help="グローバル config のパス")
+        parser.add_argument("--json", action="store_true", help="JSON出力")
+
+    def add_ai_metadata(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("--agent", help="codex/claude/grok等")
+        parser.add_argument("--runtime", help="many-ai-cli/claude-code等")
+        parser.add_argument("--provider", help="openai/anthropic/xai等")
+        parser.add_argument("--model-id", help="runtimeが報告したexact model ID")
+        parser.add_argument("--model-display", help="UI等で確認したmodel表示名")
+        parser.add_argument("--reasoning", help="reasoning profile")
+        parser.add_argument("--model-source", help="orchestrator/runtime/cli/ui/user-reported/unavailable")
+        parser.add_argument("--actor-key", help="AIを操作した人間の安定key")
+
+    p_prov_init = p_prov_sub.add_parser("init", help="既存MDへ作成AI provenanceを初期登録")
+    add_provenance_scope(p_prov_init)
+    add_ai_metadata(p_prov_init)
+    p_prov_init.add_argument("--path", required=True, help="対象work MD")
+
+    p_prov_start = p_prov_sub.add_parser("start", help="C単位のAI executionを開始")
+    add_provenance_scope(p_prov_start)
+    add_ai_metadata(p_prov_start)
+    p_prov_start.add_argument("--path", required=True, help="対象work MD")
+    p_prov_start.add_argument("--context", required=True, help="C1 または C1,C2。全体は not-applicable")
+    p_prov_start.add_argument(
+        "--role", required=True, choices=("implementation", "review", "verification")
+    )
+    p_prov_start.add_argument("--notes", default="", help="秘密を含まない短い注記")
+
+    p_prov_finish = p_prov_sub.add_parser("finish", help="started executionを終了")
+    add_provenance_scope(p_prov_finish)
+    p_prov_finish.add_argument("--execution", required=True, help="AIX execution ID")
+    p_prov_finish.add_argument(
+        "--result", required=True, choices=("completed", "partial", "failed", "cancelled")
+    )
+    p_prov_finish.add_argument("--evidence-refs", default="", help="証跡ID（セミコロン区切り）")
+    p_prov_finish.add_argument(
+        "--evidence-ref", action="append", default=[],
+        help="証跡IDを1件追加（複数回指定可。PowerShellではこちらを推奨）",
+    )
+    p_prov_finish.add_argument("--notes", help="既存notesを置換する短い注記")
+
+    p_prov_check = p_prov_sub.add_parser("check", help="MD・台帳・C参照の整合を検査")
+    add_provenance_scope(p_prov_check)
+    p_prov_check.add_argument("--path", required=True, help="対象work MD")
 
     p_review = sub.add_parser("review", help="対話チェックリストで選択分を archive へ一括移送")
     _add_scope_args(p_review)

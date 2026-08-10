@@ -389,6 +389,43 @@ Git ignore されていても設定済み queue を確認できます。秘密�
 初回は `python -m docsweep init` で既定設定を作り、各プロジェクトでは
 `python -m docsweep inject` の導線と `python -m docsweep new plan <topic>` を使います。
 
+### 作成AIとC単位の実行AI（opt-in）
+
+個人の `~/.docsweep/config.yaml` で provenance を有効にすると、新規work MDへ
+`work_id`、固定の `ai_author_*`、`ai_execution_refs` を追加し、実行本体はリポ外の
+個人台帳へ1実行1行で保存できます。
+
+```yaml
+provenance:
+  enabled: true
+  manager: docsweep
+  ledger: provenance/ai-executions.csv
+  actor_key: your-key
+```
+
+新規作成時は現在AIの取得可能なmetadataを明示します。exact model IDを取得できない場合は
+推測せず `unknown`、取得元は `unavailable` または実際の取得経路を指定します。
+
+```bash
+python -m docsweep new plan auth-refactor \
+  --ai-agent codex --ai-runtime codex-cli --ai-provider openai \
+  --ai-model-id unknown --ai-model-source unavailable
+```
+
+C単位の実装・レビュー・検証は作業前に開始し、返されたIDを終了時に閉じます。
+`context配分` 表には `AI実行` 列が追加され、詳細metadataは台帳だけに保持されます。
+
+```bash
+python -m docsweep provenance start --path docs/local/plan_auth-refactor.md \
+  --context C1 --role implementation --agent codex --runtime codex-cli \
+  --provider openai --model-id unknown --model-source unavailable --json
+python -m docsweep provenance finish --execution <AIX-ID> --result completed --json
+python -m docsweep provenance check --path docs/local/plan_auth-refactor.md --json
+```
+
+独自台帳を正典にするリポは `.docsweep.yaml` で `manager: repo` と `delegate_skill` を宣言します。
+この場合、汎用コマンドは委譲を返し、個人の汎用台帳へ二重記録しません。
+
 ## AI エージェント連携
 
 > **wings（v0.2 系）の方針**: 「全 AI 対応」を最優先し、自然言語起動の価値が高い **朝の入口 3 tool**

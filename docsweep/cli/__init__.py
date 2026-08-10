@@ -14,11 +14,12 @@ from .commands.memory import cmd_memory
 from .commands.ics import cmd_ics
 from .commands.inject import cmd_eject, cmd_inject
 from .commands.mcp import cmd_mcp
+from .commands.provenance import cmd_provenance
 from .commands.serve import cmd_serve
 from .commands.completion import cmd_completion
 from .commands.excluded import cmd_config, cmd_review, cmd_review_week
 
-_SUBCOMMANDS = {'scan', 'triage', 'apply', 'sweep', 'serve', 'promote', 'index', 'pending', 'index-sync', 'index-rebuild', 'index-watch', 'index-stats', 'index-vacuum', 'brief', 'cross', 'capture', 'linkcheck', 'auto-triage', 'graph', 'resurrect', 'report', 'summary', 'new', 'review', 'inject', 'eject', 'list', 'mcp', 'migrate-frontmatter', 'fix-related', 'show', 'stale', 'context', 'claim', 'config', 'timeline', 'find', 'completion', 'export', 'okf-check', 'okf-profiles', 'closeout-check', 'activity', 'doctor', 'init', 'undo', 'day', 'intent', 'fix-conflict', 'notify', 'project', 'review-week', 'history', 'cookbook', 'memory', 'ics'}
+_SUBCOMMANDS = {'scan', 'triage', 'apply', 'sweep', 'serve', 'promote', 'index', 'pending', 'index-sync', 'index-rebuild', 'index-watch', 'index-stats', 'index-vacuum', 'brief', 'cross', 'capture', 'linkcheck', 'auto-triage', 'graph', 'resurrect', 'report', 'summary', 'new', 'provenance', 'review', 'inject', 'eject', 'list', 'mcp', 'migrate-frontmatter', 'fix-related', 'show', 'stale', 'context', 'claim', 'config', 'timeline', 'find', 'completion', 'export', 'okf-check', 'okf-profiles', 'closeout-check', 'activity', 'doctor', 'init', 'undo', 'day', 'intent', 'fix-conflict', 'notify', 'project', 'review-week', 'history', 'cookbook', 'memory', 'ics'}
 
 _DISPATCH = {
     'scan': cmd_scan,
@@ -44,6 +45,7 @@ _DISPATCH = {
     'report': cmd_report,
     'summary': cmd_summary,
     'new': cmd_new,
+    'provenance': cmd_provenance,
     'review': cmd_review,
     'inject': cmd_inject,
     'eject': cmd_eject,

@@ -14,7 +14,7 @@ SUPPORTED_SHELLS: tuple[str, ...] = ("bash", "zsh", "pwsh")
 # 全サブコマンド集合（cli.py の build_parser と揃える）。
 _SUBCOMMANDS: tuple[str, ...] = (
     "scan", "triage", "apply", "sweep", "serve", "promote", "index", "pending",
-    "report", "summary", "new", "review", "inject", "eject", "list", "mcp",
+    "report", "summary", "new", "provenance", "review", "inject", "eject", "list", "mcp",
     "migrate-frontmatter", "fix-related", "show", "stale", "context", "claim",
     "config", "timeline", "find", "completion", "closeout-check",
 )

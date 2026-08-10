@@ -14,7 +14,13 @@ from pathlib import Path
 from docsweep.cli import main
 
 
+def _isolate_global_config(tmp_path: Path, monkeypatch) -> None:
+    """User-level opt-ins must not make CLI tests write to the real home ledger."""
+    monkeypatch.setattr("docsweep.config.GLOBAL_CONFIG_PATH", tmp_path / "empty-config.yaml")
+
+
 def test_new_without_project_dir_detects_git_root_from_subdir(tmp_path: Path, monkeypatch):
+    _isolate_global_config(tmp_path, monkeypatch)
     proj = tmp_path / "proj"
     proj.mkdir()
     (proj / ".git").mkdir()
@@ -33,6 +39,7 @@ def test_new_without_project_dir_detects_git_root_from_subdir(tmp_path: Path, mo
 
 
 def test_new_with_explicit_project_dir_still_wins(tmp_path: Path, monkeypatch):
+    _isolate_global_config(tmp_path, monkeypatch)
     proj = tmp_path / "proj"
     proj.mkdir()
     (proj / ".git").mkdir()

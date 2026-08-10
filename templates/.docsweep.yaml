@@ -13,6 +13,16 @@
 # work_policy: private   # private requires Git ignore and is excluded from export
 # secret_policy: block   # block high-confidence secrets; warn / off are explicit alternatives
 
+# --- AI author / execution provenance（個人globalでのopt-in推奨） ---
+# provenance:
+#   enabled: true
+#   manager: docsweep       # docsweep | repo | disabled
+#   ledger: provenance/ai-executions.csv  # 宣言したconfigファイルからの相対path
+#   project_id: sample      # 省略時はproject directory名
+#   actor_key: your-key
+#   # manager: repo のときだけ使用。汎用台帳へ書かずrepo固有skillへ委譲する。
+#   delegate_skill: repo-doc
+
 # --- SQLite 索引が走査するプロジェクトルート群（wings / C1） ---
 # 通常はグローバル ~/.docsweep/config.yaml に書く（横断索引のため）。
 # プロジェクト .docsweep.yaml で上書きするケースは稀。
