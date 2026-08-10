@@ -149,7 +149,7 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
     return docs
 
 
-def _iter_project_roots(root: Path, config: Config) -> "list[Path]":
+def _iter_project_roots(root: Path, config: Config) -> list[Path]:
     """スキャンルート配下の「project marker を持つディレクトリ」を列挙する。
 
     ファイルは読まずディレクトリだけを辿る（marker の ``exists()`` 判定のみ）。
