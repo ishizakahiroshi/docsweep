@@ -51,7 +51,7 @@ GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "6"
+GUIDANCE_VERSION = "7"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -302,6 +302,65 @@ def generate_okf_block(
     ])
 
 
+def generate_provenance_block(lang: str = "ja") -> str:
+    """AI作成者とC単位の実行者を記録する共通導線を生成する。
+
+    global guidance は特定repoの ``provenance.manager`` を固定できないため、AIに実効設定を
+    判定させる。repo管理ではdelegateへ委譲し、docsweep管理でだけ汎用台帳を更新することで
+    二重記録を防ぐ。global skillは任意の補助であり、CLIだけでも同じ境界を守れる文面にする。
+    """
+    start_cmd = docsweep_command(
+        "provenance",
+        "start",
+        "--path",
+        "<work-md>",
+        "--context",
+        "<C>",
+        "--role",
+        "<role>",
+        "--json",
+    )
+    finish_cmd = docsweep_command(
+        "provenance",
+        "finish",
+        "--execution",
+        "<AIX-ID>",
+        "--result",
+        "<result>",
+        "--json",
+    )
+    check_cmd = docsweep_command("provenance", "check", "--path", "<work-md>", "--json")
+    if lang == "en":
+        return "\n".join([
+            "### AI execution provenance",
+            "",
+            "Before creating a work MD or starting implementation, review, or verification for a C context,",
+            "read the effective `provenance` configuration from the project `.docsweep.yaml` and global config.",
+            "If the global `ai-execution-provenance` skill is installed, use it to resolve AI metadata and follow the same routing.",
+            "- `manager: repo`: follow only its `delegate_skill`; do not also write to the generic docsweep ledger.",
+            "- `manager: docsweep`: pass the `--ai-*` metadata options to `docsweep new`, then start the C execution before making changes",
+            f"  with `{start_cmd}` (`role` is `implementation`, `review`, or `verification`).",
+            f"  Close it with `{finish_cmd}`, adding repeatable `--evidence-ref` options when evidence exists.",
+            f"  Before claiming completion, run `{check_cmd}` and resolve any MD/ledger mismatch.",
+            "- Missing/disabled configuration: do not enable or rewrite it automatically; report the result from `provenance check`.",
+            "Never infer an exact model ID. When unavailable, record `unknown` with source `unavailable`.",
+        ])
+    return "\n".join([
+        "### AI実行 provenance（作成AI・C実行AIの記録）",
+        "",
+        "作業MDの新規作成、またはC単位の実装・レビュー・検証へ着手する前に、",
+        "プロジェクトの `.docsweep.yaml` とglobal configから有効な `provenance` 設定を確認する。",
+        "global `ai-execution-provenance` skill が導入済みなら、AI metadataの解決と同じ経路選択に使う。",
+        "- `manager: repo`: `delegate_skill` の手順だけに従い、汎用docsweep台帳へ二重記録しない。",
+        "- `manager: docsweep`: `docsweep new` に `--ai-*` metadataを付け、変更前にC実行を",
+        f"  `{start_cmd}` で開始する（`role` は `implementation` / `review` / `verification`）。",
+        f"  終了時は `{finish_cmd}` で閉じ、証跡がある場合は `--evidence-ref` を繰り返し指定する。",
+        f"  完了報告前に `{check_cmd}` を実行し、MDと台帳の不一致を解消する。",
+        "- 設定なし・無効: 勝手に有効化や設定変更をせず、`provenance check` の結果を報告する。",
+        "exact model IDは推測しない。取得できなければ `unknown`、sourceは `unavailable` と記録する。",
+    ])
+
+
 def generate_guidance_block(
     lang: str = "ja",
     *,
@@ -309,7 +368,7 @@ def generate_guidance_block(
     work_policy: str | None = None,
     secret_policy: str | None = None,
 ) -> str:
-    """セッション開始・親子 plan closeout・due ルール（プロジェクト非依存・グローバル注入可）。
+    """セッション開始・closeout・provenance・due ルール（プロジェクト非依存・グローバル注入可）。
 
     文言は常に同じなので、グローバル（~/.claude/CLAUDE.md 等）に一度入れれば全プロジェクトで効く。
     closeout / due ルールもプロジェクト非依存のためここに同梱する。
@@ -349,6 +408,8 @@ def generate_guidance_block(
                 secret_policy=secret_policy,
             ),
             "",
+            generate_provenance_block(lang),
+            "",
             generate_due_block(lang),
         ])
     return "\n".join([
@@ -380,6 +441,8 @@ def generate_guidance_block(
             work_policy=work_policy,
             secret_policy=secret_policy,
         ),
+        "",
+        generate_provenance_block(lang),
         "",
         generate_due_block(lang),
     ])
@@ -461,23 +524,31 @@ def _now() -> str:
 def _write_managed_file(
     path: Path, inner: str, manifest_entry: dict, result: InjectResult, *, dry_run: bool
 ) -> None:
-    new_block = _wrap(inner)
+    raw_block = _wrap(inner)
     rel = path.name
     prev_hash = (manifest_entry.get("blocks") or {}).get(rel)
 
     if path.is_file():
-        text = path.read_text(encoding="utf-8", errors="replace")
+        # ``Path.read_text`` / ``write_text`` は Windows で改行を暗黙変換する。
+        # managed block 外をバイト上も保持するため、既存改行を読み取り時に維持し、
+        # 新しい block だけ同じ改行へ合わせる。
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+            text = handle.read()
+        newline = "\r\n" if "\r\n" in text else "\n"
+        new_block = raw_block.replace("\n", newline)
         spans = _find_all_blocks(text)
         if spans:
             current_inner = _inner_of(text, spans[0])
+            current_hash = _block_hash(current_inner.replace("\r\n", "\n").replace("\r", "\n"))
+            expected_hash = _block_hash(inner)
             # 手編集検出: 前回注入と現在の（先頭）ブロックが食い違うなら .bak を取る。
-            if prev_hash and _block_hash(current_inner) != prev_hash:
+            if prev_hash and current_hash != prev_hash:
                 result.warnings.append(f"{rel}: 管理ブロックが手編集されています。.bak を作成しました。")
                 if not dry_run:
-                    path.with_suffix(path.suffix + ".bak").write_text(text, encoding="utf-8")
+                    path.with_suffix(path.suffix + ".bak").write_bytes(path.read_bytes())
             if len(spans) > 1:
                 result.warnings.append(f"{rel}: 管理ブロックが複数あります。1 つに統合しました。")
-            if len(spans) == 1 and _block_hash(current_inner) == _block_hash(inner):
+            if len(spans) == 1 and current_hash == expected_hash:
                 result.skipped.append(rel)  # 冪等: 変化なし
                 (manifest_entry.setdefault("blocks", {}))[rel] = _block_hash(inner)
                 return
@@ -487,13 +558,15 @@ def _write_managed_file(
                 new_text = new_text[:sp[0]] + new_text[sp[1]:]
             new_text = new_text[:spans[0][0]] + new_block + new_text[spans[0][1]:]
         else:
-            sep = "" if text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
-            new_text = text + sep + new_block + "\n"
+            sep = "" if text.endswith(newline * 2) else (newline if text.endswith(newline) else newline * 2)
+            new_text = text + sep + new_block + newline
     else:
-        new_text = new_block + "\n"
+        newline = os.linesep
+        new_text = raw_block.replace("\n", newline) + newline
 
     if not dry_run:
-        path.write_text(new_text, encoding="utf-8")
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(new_text)
     result.written.append(rel)
     (manifest_entry.setdefault("blocks", {}))[rel] = _block_hash(inner)
 

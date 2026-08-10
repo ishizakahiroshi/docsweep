@@ -350,6 +350,73 @@ def test_generate_guidance_closeout_contract_ja_en():
             assert fragment in text, fragment
 
 
+def test_generate_guidance_provenance_contract_ja_en():
+    """JA/EN guidance はrepo委譲とdocsweep台帳の境界を同じ意味で伝える。"""
+    from docsweep.inject import generate_guidance_block
+
+    ja = generate_guidance_block("ja")
+    en = generate_guidance_block("en")
+
+    for text, required in [
+        (
+            ja,
+            (
+                "AI実行 provenance",
+                "ai-execution-provenance",
+                "`manager: repo`",
+                "`delegate_skill`",
+                "二重記録しない",
+                "`manager: docsweep`",
+                "`--ai-*`",
+                "provenance start",
+                "provenance finish",
+                "--evidence-ref",
+                "provenance check",
+                "勝手に有効化や設定変更をせず",
+                "exact model IDは推測しない",
+                "`unknown`",
+                "`unavailable`",
+            ),
+        ),
+        (
+            en,
+            (
+                "AI execution provenance",
+                "ai-execution-provenance",
+                "`manager: repo`",
+                "`delegate_skill`",
+                "do not also write to the generic docsweep ledger",
+                "`manager: docsweep`",
+                "`--ai-*`",
+                "provenance start",
+                "provenance finish",
+                "--evidence-ref",
+                "provenance check",
+                "do not enable or rewrite it automatically",
+                "Never infer an exact model ID",
+                "`unknown`",
+                "`unavailable`",
+            ),
+        ),
+    ]:
+        for fragment in required:
+            assert fragment in text, fragment
+
+
+def test_preview_global_includes_provenance_for_claude_and_codex(tmp_path, monkeypatch):
+    """Claude中央guidanceとCodex inline guidanceの両方へprovenance導線を配る。"""
+    from docsweep import inject as I
+
+    monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "g.md")
+    claude = I.preview_global(agent="claude", target=tmp_path / "c" / "CLAUDE.md")
+    codex = I.preview_global(agent="codex", target=tmp_path / "x" / "AGENTS.md")
+
+    assert "AI実行 provenance" in claude["guidance"]
+    assert "manager: repo" in claude["guidance"]
+    assert "AI実行 provenance" in codex["blocks"][0]["text"]
+    assert "manager: repo" in codex["blocks"][0]["text"]
+
+
 def test_shipped_templates_document_closeout_order():
     """配布 template は skill が無くても read-only closeout の次手を説明する。"""
     root = Path(__file__).resolve().parents[1]
@@ -416,6 +483,22 @@ def test_inject_global_idempotent_preserves_unmanaged_content(tmp_path, manifest
     assert second.count(I.MARK_END) == 1
     assert "この前後は利用者の文章。" in second
     assert "AGENTS.md" in result.skipped
+
+
+@pytest.mark.parametrize("newline", [b"\n", b"\r\n"])
+def test_inject_global_preserves_unmanaged_line_endings(tmp_path, manifest, monkeypatch, newline):
+    """既存ファイルのmanaged block外はLF/CRLFのどちらでもバイト列を変えない。"""
+    from docsweep import inject as I
+
+    monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "g.md")
+    target = tmp_path / "codex" / "AGENTS.md"
+    target.parent.mkdir(parents=True)
+    unmanaged = newline.join((b"# Personal Codex", b"", b"Keep these bytes.")) + newline
+    target.write_bytes(unmanaged)
+
+    I.inject_global(agent="codex", target=target)
+
+    assert target.read_bytes().startswith(unmanaged)
 
 
 def test_inject_no_guidance_label_only(tmp_path, manifest):
