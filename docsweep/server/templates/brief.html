@@ -36,7 +36,7 @@
     {% if proj.today_pick.summary %}<div class="summary">{{ proj.today_pick.summary }}</div>{% endif %}
     <div class="meta">{{ proj.today_pick.rel }} · {{ proj.today_pick.age_days }}d</div>
     <div class="actions">
-      <button onclick="copyContext('{{ proj.today_pick.path|e }}')">{{ T.brief_copy_context }}</button>
+      <button type="button" data-action="copy-context" data-path="{{ proj.today_pick.path }}">{{ T.brief_copy_context }}</button>
     </div>
   </div>
   {% else %}
@@ -72,20 +72,7 @@
 </section>
 {% endfor %}
 
-<script>
-const TOKEN = {{ token|tojson }};
-const MSG_COPIED = {{ T.brief_copied|tojson }};
-const MSG_COPY_FAILED = {{ T.brief_copy_failed|tojson }};
-async function copyContext(path) {
-  // 簡易: クリップボード API で path を打ち込んで、後段で context CLI 実行を促す。
-  // 本格対応は別 endpoint (POST /api/brief/context) を作る予定。
-  try {
-    await navigator.clipboard.writeText(path);
-    alert(MSG_COPIED.replace('{path}', path));
-  } catch (e) {
-    alert(MSG_COPY_FAILED + e);
-  }
-}
-</script>
+<script type="application/json" id="page-data">{{ {"copied": T.brief_copied, "copyFailed": T.brief_copy_failed}|tojson }}</script>
+<script src="/static/brief.js"></script>
 </body>
 </html>

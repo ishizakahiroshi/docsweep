@@ -35,10 +35,10 @@
 
 - **cytoscape.js 3.30.0 を同梱し、graph ページの CDN 依存を解消した。** これまで graph ページだけが
   実行時に unpkg から取得しており、オフライン環境で描画できず、利用のたびに外部サーバーへ
-  アクセスが渡っていた。さらに本体の CSP は `script-src 'self'` なので、**CSP を強制する
-  ブラウザでは外部 script がそもそも読み込めず graph ページが機能していなかった**。
-  `docsweep/server/static/cytoscape.min.js` として同梱し、MIT License 全文と SHA-256 を
-  `NOTICES.md` に記載した。Web UI の「このアプリについて」も CDN 節を廃して同梱一覧へ統合した。
+  アクセスが渡っていた。`docsweep/server/static/cytoscape.min.js` として同梱し、MIT License 全文と
+  SHA-256 を `NOTICES.md` に記載した。Web UI の「このアプリについて」も CDN 節を廃して同梱一覧へ
+  統合した。なお **graph が描画されなかった原因は CDN 依存とは別**にもう 1 つあり、それは下記の
+  Fixed（inline script が CSP に拒否されていた件）で解消している。
 - profile のルールを Python ソースから分離し、`docsweep/okf_profiles/<version>.json` で管理する。
   ローカル JSON や commit 固定の GitHub Raw URL を利用できるため、ルール更新だけなら
   docsweep の実装 Release を必要としない。旧形式の廃止時期は別途告知する。
@@ -59,6 +59,15 @@
 
 ### Fixed
 
+- **Web UI の graph / brief / capture の 3 ページが、自分自身の CSP に拒否されて
+  機能していなかったのを修正した。** サーバーは全レスポンスに `script-src 'self'`
+  （`'unsafe-inline'` なし）を付けているのに、この 3 ページだけ処理を inline `<script>`
+  （brief は `onclick=` も）で書いていた。ブラウザは実行を拒否するが**画面には何のエラーも
+  出ない**ため、症状は「graph が真っ白」「brief のコピー ボタンが無反応」「capture が
+  生成ボタンを押しても何も起きない」という**黙った機能停止**だった。処理を
+  `/static/{graph,brief,capture}.js` へ出し、データは `<script type="application/json">`
+  （実行されないので CSP の対象外）と `data-*` 属性で渡す形に統一した。
+  template に inline script / inline イベント属性が入ったら落ちるテストを追加している。
 - **`.gitignore` が `docs/local/`（末尾スラッシュ）のとき、新規プロジェクトの 1 本目が
   「private work queue が Git ignore されていません」で作れなかったのを修正した。**
   `git check-ignore` は実在しないパスをディレクトリと判断できないため、queue が未作成の
