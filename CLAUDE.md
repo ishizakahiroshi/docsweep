@@ -77,6 +77,14 @@ docsweep/
 - **インタラクティブ UI は `--review` 専用**。`--auto` / `--json` は非対話を厳守
   （cron・CI・AI エージェント委譲向け。プロンプトを出さない）。
 
+## Web UI の不変条件（CSP）
+
+- **template に inline `<script>` / inline イベント属性（`onclick=` 等）を書かない**。
+  サーバーは全レスポンスに `script-src 'self'`（`'unsafe-inline'` なし）の CSP を付けるため、
+  inline は実行されず、**画面には何のエラーも出ないまま機能だけが死ぬ**。
+- 処理は `/static/*.js` へ置き、値は `<script type="application/json">`（非実行＝CSP 対象外）と
+  `data-*` 属性で渡す。`tests/test_offline_assets.py` が機械的に禁止している。
+
 ## AI 作業共通ルール
 
 ビルド・コミット禁止、secrets-scan 責務、plan/bugfix/pending md の作成ルール等の
@@ -108,3 +116,7 @@ git config core.hooksPath .githooks
 - 秘匿情報が無ければ全公開（ツール本体 + テンプレ + 規約ドキュメントをセットで）。
 - 配布の既定は **npm ではなく PyPI**（Python パッケージ）。詳細・npm 連携が絡む場合の
   運用は予約済みハンドル/トークンの状況に依存するため、公開作業前にユーザーへ確認する。
+- **リリースは手書きの手順ではなく、リリース用の共通手順に従って行う**
+  （作者環境ではグローバル AI 設定の `release` skill を起動し、Python パッケージなので
+  `pypi-publish` のタグ前チェックリストも通す）。release md にはそのリリース固有の引数・事情だけを書き、
+  **共通の前提チェックを md へ写経しない**（写経すると正本が 2 つになり、片方だけ古くなる）。
