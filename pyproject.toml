@@ -80,9 +80,11 @@ docsweep = "docsweep.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["docsweep"]
 
-# OKF rules are data, not Python source; keep bundled profiles in the wheel.
-[tool.hatch.build.targets.wheel.force-include]
-"docsweep/okf_profiles" = "docsweep/okf_profiles"
+# OKF rules are data, not Python source, but they live under `docsweep/` so the
+# `packages = ["docsweep"]` selection above already ships them. A `force-include`
+# for the same path makes hatchling add each file twice and abort the wheel build
+# with "A second file is being added to the wheel archive at the same path"
+# (v0.4.0 の初回タグで実際に build が落ちた). Do not re-add it.
 
 [tool.ruff]
 line-length = 100
