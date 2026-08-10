@@ -63,10 +63,25 @@ class FileRecord:
     owner: str | None = field(default=None)
     review_status: str | None = field(default=None)
     related: list[str] = field(default_factory=list)
+    docsweep_parent: str | None = field(default=None)
     last_reviewed: str | None = field(default=None)
+    # sweep 挙動の指示。既定 None = ``archive_with_release`` 相当（通常の archive 対象）。
+    # ``never_archive`` を指定するとリリース sweep / promote / apply_action(discard/promote)
+    # で archive 移送されない（可視化はする）。archive_with_release を明示指定した場合も
+    # None と同じ挙動（コード上は "既定" と同義）。
+    docsweep_policy: str | None = field(default=None)
+    # OKF v0.2 lifecycle (`okf_status`) と docsweep 作業状態を分離して保持する。
+    docsweep_state: str | None = field(default=None)
+    okf_status: str | None = field(default=None)
+    # 高信頼の秘密情報を含む可能性がある本文。API/UI では本文由来の title/summary を伏せる。
+    sensitive: bool = field(default=False)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        if self.sensitive:
+            data["title"] = "[sensitive]"
+            data["summary"] = "[sensitive]"
+        return data
 
     @property
     def path_obj(self) -> Path:

@@ -7,8 +7,8 @@ states / types は単一正本で、ここから検出・archive 可否・概要
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass, field, replace
+from pathlib import Path, PureWindowsPath
 
 import yaml
 
@@ -21,10 +21,15 @@ PROJECT_CONFIG_NAME = ".docsweep.yaml"
 # 決め打ちのフォルダ構成に依存せず、開発者が既に定義済みの実体で判定する。
 DEFAULT_PROJECT_MARKERS = [".git", ".docsweep.yaml", "package.json", "pyproject.toml"]
 
+# AI が作業文書を置く queue。既定値は従来の docs/local/ を維持する。
+DEFAULT_WORK_DIR = "docs/local"
+WORK_POLICIES = frozenset({"private", "shared"})
+SECRET_POLICIES = frozenset({"block", "warn", "off"})
+
 
 @dataclass(frozen=True)
 class TypeDef:
-    """ユーザー定義可能な種別（plan/bugfix/pending は内蔵デフォルト）。"""
+    """ユーザー定義可能な種別（標準の作業 type と legacy type は内蔵）。"""
 
     name: str
     pattern: str  # ファイル名グロブ（例 "plan_*.md"）
@@ -38,6 +43,18 @@ DEFAULT_TYPES: tuple[TypeDef, ...] = (
     TypeDef("plan", "plan_*.md", ("概要",), "概要", 90),
     TypeDef("bugfix", "bugfix_*.md", ("症状", "根本原因", "修正内容", "変更ファイル", "検証", "備忘"), "症状", 30),
     TypeDef("pending", "pending_*.md", ("概要", "保留理由", "着手条件"), "概要", 180),
+    # Legacy release records. New releases use plan_release-*; keep this type so historical
+    # manual_release-* files remain scannable and archivable during migration.
+    TypeDef("manual_release", "manual_release-*.md", (), "", 180),
+    # session-recap（振り返り）: docs/local に置く記録 md。archive_with_release で release 時に道連れ archive。
+    TypeDef("recap", "recap_*.md", (), "", 180),
+    # HTML 生成物（design-html / review-sheet skill から）。frontmatter を書けないので
+    # 先頭に <!--docsweep-meta ... --> を置いてもらう運用。命名は plan_/bugfix_ と対称:
+    # design_<topic>_YYYY-MM-DD.html / mockup_..._.html / review_..._.html / incident_..._.html
+    TypeDef("design", "design_*.html", (), "", 180),
+    TypeDef("mockup", "mockup_*.html", (), "", 180),
+    TypeDef("review-sheet", "review_*.html", (), "", 180),
+    TypeDef("incident", "incident_*.html", (), "", 60),
 )
 
 
@@ -75,6 +92,10 @@ class Config:
     roots: list[Path] = field(default_factory=list)
     profiles: dict[str, list[Path]] = field(default_factory=dict)
     archive_dir: str = "archive"
+    # 作業文書の配置先。相対値は project_dir 基準で解決する。
+    work_dir: str = DEFAULT_WORK_DIR
+    work_policy: str = "private"
+    secret_policy: str = "block"
     ignore: list[str] = field(default_factory=list)
     use_gitignore: bool = True
     types: list[TypeDef] = field(default_factory=lambda: list(DEFAULT_TYPES))
@@ -100,7 +121,7 @@ class Config:
     user_name: str | None = None
     user_email: str | None = None
     # C1 (wings): SQLite 索引が再帰走査するルート群のグロブパターン。
-    # 例: ["C:/dev/github/public/*", "C:/dev/github/private/*"]
+    # 例: ["D:/dev/github/public/*", "D:/dev/github/private/*"]
     # 未設定の場合は索引機能は ``roots`` をフォールバック走査する。
     search_paths: list[str] = field(default_factory=list)
     search_exclude: list[str] = field(default_factory=lambda: list(DEFAULT_SEARCH_EXCLUDE))
@@ -110,6 +131,12 @@ class Config:
     capture_llm_model: str | None = None  # 将来用（モデル ID 指定）
     # 由来トレース用（どのファイルから来たか）。
     sources: list[Path] = field(default_factory=list)
+    # config 層の解決結果を write/archive 側が再利用するためのメタデータ。
+    project_dir: Path | None = None
+    archive_dir_explicit: bool = False
+    work_dir_explicit: bool = False
+    work_policy_explicit: bool = False
+    loaded_from_config: bool = False
 
     def type_by_name(self, name: str) -> TypeDef | None:
         return next((t for t in self.types if t.name == name), None)
@@ -146,6 +173,100 @@ def project_archive_dir(project_dir: Path) -> str | None:
     cfg = _load_yaml(project_dir / PROJECT_CONFIG_NAME)
     v = cfg.get("archive_dir")
     return str(v) if v else None
+
+
+def archive_dir_for_project(project_dir: Path, config: Config) -> str:
+    """archive 先を決める。
+
+    明示された ``archive_dir`` は最優先で互換維持する。private work queue を明示した
+    新規設定では未指定の archive を queue 内へ連動させ、private 文書が公開側の
+    ``archive/`` へ抜ける経路を作らない。従来 config（work 設定なし）は ``archive/`` を維持する。
+    """
+    project_path = Path(project_dir)
+    project_cfg = _load_yaml(project_path / PROJECT_CONFIG_NAME)
+    explicit = project_cfg.get("archive_dir")
+    if explicit:
+        return str(explicit)
+    if config.archive_dir_explicit:
+        return config.archive_dir
+    work_dir, work_policy, _secret_policy = project_work_settings(project_path, config)
+    if work_policy == "private" and (
+        config.work_dir_explicit
+        or config.work_policy_explicit
+        or "work_dir" in project_cfg
+        or "work_policy" in project_cfg
+    ):
+        archive_root = work_dir.rstrip("/").rstrip("\\")
+        return f"{archive_root}/archive"
+    return config.archive_dir
+
+
+def resolve_work_dir(project_dir: Path, work_dir: str | None = None) -> Path:
+    """プロジェクト相対の作業 queue を絶対パスへ解決する。
+
+    ``work_dir`` は意図しないプロジェクト外書き込みを防ぐため、絶対パスと ``..`` に
+    よる脱出を受け付けない。ここではディレクトリを作成しない。
+    """
+    root = Path(os.path.abspath(os.path.normpath(os.fspath(project_dir))))
+    raw = str(work_dir or DEFAULT_WORK_DIR).strip() or DEFAULT_WORK_DIR
+    candidate = Path(os.path.expanduser(raw))
+    # ``C:relative`` is not absolute according to pathlib on Windows, but it is
+    # drive-qualified and would be resolved against the process drive rather
+    # than the project. Treat all Windows drive/UNC forms as invalid here.
+    windows_candidate = PureWindowsPath(raw)
+    if candidate.is_absolute() or windows_candidate.is_absolute() or windows_candidate.drive:
+        raise ValueError("work_dir はプロジェクト相対パスで指定してください")
+    target = Path(os.path.abspath(os.path.normpath(os.fspath(root / candidate))))
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("work_dir がプロジェクト外を指しています") from exc
+    return target
+
+
+def relative_work_dir(project_dir: Path, work_dir: str | None = None) -> str:
+    """inject / UI 表示用に、解決済み queue を POSIX 相対表記で返す。"""
+    root = Path(os.path.abspath(os.path.normpath(os.fspath(project_dir))))
+    return resolve_work_dir(root, work_dir).relative_to(root).as_posix()
+
+
+def project_work_settings(project_dir: Path, config: Config) -> tuple[str, str, str]:
+    """プロジェクト設定の work/secret 3 値だけを軽量に解決する。"""
+    raw = _load_yaml(Path(project_dir) / PROJECT_CONFIG_NAME)
+    work_dir = str(raw.get("work_dir") or config.work_dir or DEFAULT_WORK_DIR).strip()
+    raw_work_policy = str(raw.get("work_policy") or config.work_policy or "private").strip().lower()
+    raw_secret_policy = str(raw.get("secret_policy") or config.secret_policy or "block").strip().lower()
+    return (
+        work_dir or DEFAULT_WORK_DIR,
+        raw_work_policy if raw_work_policy in WORK_POLICIES else "private",
+        raw_secret_policy if raw_secret_policy in SECRET_POLICIES else "block",
+    )
+
+
+def config_for_project(config: Config, project_dir: Path) -> Config:
+    """横断処理で選ばれた project の queue 設定を Config に反映する。"""
+    work_dir, work_policy, secret_policy = project_work_settings(project_dir, config)
+    project_cfg = _load_yaml(Path(project_dir) / PROJECT_CONFIG_NAME)
+    return replace(
+        config,
+        work_dir=work_dir,
+        work_policy=work_policy,
+        secret_policy=secret_policy,
+        project_dir=Path(project_dir).resolve(),
+        work_dir_explicit=(config.work_dir_explicit or "work_dir" in project_cfg),
+        work_policy_explicit=(config.work_policy_explicit or "work_policy" in project_cfg),
+    )
+
+
+def privacy_enforced(config: Config) -> bool:
+    """private queue を保存前に強制する設定が明示されているか。"""
+    # load_config の空設定は旧利用者との互換 fallback として警告運用にする。
+    # 直接 Config を組み立てる service/API 利用者は明示的な安全既定を受ける。
+    return bool(
+        config.work_dir_explicit
+        or config.work_policy_explicit
+        or not config.loaded_from_config
+    )
 
 
 def _parse_types(raw: list | None) -> list[TypeDef] | None:
@@ -214,6 +335,13 @@ def load_config(
 
     merged = _merge(g, project_cfg)
 
+    raw_work_dir = merged.get("work_dir") or DEFAULT_WORK_DIR
+    work_dir = str(raw_work_dir).strip() or DEFAULT_WORK_DIR
+    raw_work_policy = str(merged.get("work_policy") or "private").strip().lower()
+    work_policy = raw_work_policy if raw_work_policy in WORK_POLICIES else "private"
+    raw_secret_policy = str(merged.get("secret_policy") or "block").strip().lower()
+    secret_policy = raw_secret_policy if raw_secret_policy in SECRET_POLICIES else "block"
+
     # roots の決定（優先順位: 位置引数 > profile > roots）。
     # 相対パスは「それを定義した config のあるディレクトリ」基準で解決する。プロジェクト
     # .docsweep.yaml の相対値は project_dir、グローバルの相対値は ~/.docsweep/ 基準。
@@ -251,8 +379,23 @@ def load_config(
     # 「プロジェクトが書いたキーだけ強い」として正確に表現する）。
     g_due = g.get("due") or {}
     p_due = project_cfg.get("due") or {}
-    due_warn = int(p_due.get("postpone_warn_threshold", g_due.get("postpone_warn_threshold", 3)))
-    due_alert = int(p_due.get("postpone_alert_threshold", g_due.get("postpone_alert_threshold", 5)))
+    # 直下の default_offset_days / stale_thresholds が try/except で保護しているのと同じく、
+    # ユーザー YAML に文字列や None が入っても load_config を落とさない。落とすと
+    # doctor / brief / scan など全コマンドが起動不能になる。
+    def _safe_int(value: object, default: int) -> int:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return default
+
+    due_warn = _safe_int(
+        p_due.get("postpone_warn_threshold", g_due.get("postpone_warn_threshold", 3)),
+        3,
+    )
+    due_alert = _safe_int(
+        p_due.get("postpone_alert_threshold", g_due.get("postpone_alert_threshold", 5)),
+        5,
+    )
     offsets: dict[str, int] = dict(DEFAULT_DUE_OFFSET_DAYS)
     for layer in (g_due.get("default_offset_days"), p_due.get("default_offset_days")):
         if isinstance(layer, dict):
@@ -332,6 +475,9 @@ def load_config(
         roots=roots,
         profiles=profiles_resolved,
         archive_dir=merged.get("archive_dir") or "archive",
+        work_dir=work_dir,
+        work_policy=work_policy,
+        secret_policy=secret_policy,
         ignore=list(merged.get("ignore") or []),
         use_gitignore=bool(merged.get("use_gitignore", True)),
         types=types,
@@ -350,6 +496,11 @@ def load_config(
         capture_llm_provider=capture_llm_provider,
         capture_llm_model=capture_llm_model,
         sources=sources,
+        project_dir=project_dir.resolve() if project_dir is not None else None,
+        archive_dir_explicit=("archive_dir" in g or "archive_dir" in project_cfg),
+        work_dir_explicit=("work_dir" in g or "work_dir" in project_cfg),
+        work_policy_explicit=("work_policy" in g or "work_policy" in project_cfg),
+        loaded_from_config=True,
     )
 
 

@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
@@ -17,6 +16,9 @@ from fastapi.templating import Jinja2Templates
 
 from ...capture import extract_drafts, save_drafts
 from ...capture.models import Draft
+from ...capture.service import CaptureScopeError
+from ...work_queue import resolve_work_target
+from ..security import check_token
 
 _DIR = Path(__file__).parent.parent
 TEMPLATES = Jinja2Templates(directory=str(_DIR / "templates"))
@@ -24,19 +26,12 @@ TEMPLATES = Jinja2Templates(directory=str(_DIR / "templates"))
 router = APIRouter()
 
 
-def _check_token(request: Request, token_q: str | None) -> None:
-    state = request.app.state.docsweep
-    supplied = token_q or request.headers.get("x-docsweep-token")
-    if not supplied or not secrets.compare_digest(supplied, state.token):
-        raise HTTPException(status_code=401, detail="token required")
-
-
 @router.get("/capture", response_class=HTMLResponse)
 def page_capture(
     request: Request,
     token: str | None = Query(default=None),
 ) -> HTMLResponse:
-    _check_token(request, token)
+    check_token(request, token)
     state = request.app.state.docsweep
     from ..i18n import get_messages, resolve_lang
 
@@ -53,20 +48,25 @@ def api_capture_extract(
     payload: dict = Body(default_factory=dict),
     token: str | None = Query(default=None),
 ) -> JSONResponse:
-    _check_token(request, token)
+    check_token(request, token)
     state = request.app.state.docsweep
     text = str(payload.get("text") or "")
     project = payload.get("project") or None
     use_llm = bool(payload.get("use_llm", False))
     max_drafts = int(payload.get("max_drafts", 5))
+    allow_sensitive = bool(payload.get("allow_sensitive", False))
 
     if not text.strip():
         raise HTTPException(status_code=400, detail="text is empty")
 
-    drafts = extract_drafts(
-        text, config=state.config, project=project,
-        max_drafts=max_drafts, use_llm=use_llm,
-    )
+    try:
+        drafts = extract_drafts(
+            text, config=state.config, project=project,
+            max_drafts=max_drafts, use_llm=use_llm,
+            allow_sensitive=allow_sensitive,
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return JSONResponse({
         "drafts": [d.to_dict() for d in drafts],
         "count": len(drafts),
@@ -79,11 +79,12 @@ def api_capture_save(
     payload: dict = Body(default_factory=dict),
     token: str | None = Query(default=None),
 ) -> JSONResponse:
-    _check_token(request, token)
+    check_token(request, token)
     state = request.app.state.docsweep
     drafts_raw = payload.get("drafts") or []
     project = payload.get("project") or None
     out_dir = payload.get("out_dir") or None
+    allow_sensitive = bool(payload.get("allow_sensitive", False))
 
     drafts: list[Draft] = []
     for d in drafts_raw:
@@ -98,14 +99,22 @@ def api_capture_save(
             tags=list(d.get("tags") or []),
         ))
 
-    if out_dir:
-        target = Path(out_dir)
-    elif state.config.roots:
-        target = Path(state.config.roots[0]) / "docs" / "local"
-    else:
-        target = Path.cwd() / "docs" / "local"
-
-    saved = save_drafts(drafts, config=state.config, target_dir=target)
+    try:
+        project_root, target = resolve_work_target(
+            state.config,
+            project=project,
+            explicit_dir=Path(out_dir) if out_dir else None,
+        )
+        saved = save_drafts(
+            drafts,
+            config=state.config,
+            target_dir=target,
+            project_dir=project_root,
+            allow_sensitive=allow_sensitive,
+        )
+    except (CaptureScopeError, PermissionError, ValueError) as e:
+        # 400 に落とす（403 でも良いが、入力の不正として 400 を選ぶ）。
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return JSONResponse({
         "saved": [str(p) for p in saved],
         "count": len(saved),

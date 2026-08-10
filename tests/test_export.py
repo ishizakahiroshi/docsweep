@@ -19,6 +19,9 @@ from docsweep.export import (
     OKF_TYPE_VOCABULARY,
     run_export,
 )
+from docsweep.okf import load_okf_profile
+from docsweep.okf_check import check_bundle
+from docsweep.export import _normalize_export_text
 
 
 def _write(p: Path, body: str) -> None:
@@ -84,8 +87,18 @@ def test_export_creates_zip_with_manifest(workspace: Path, tmp_path: Path):
     assert manifest["include_archive"] is False
 
 
-def test_export_preserves_frontmatter_bytes(workspace: Path, tmp_path: Path):
-    """frontmatter 込みで md が元のバイト列のまま zip に入る。"""
+def test_exported_zip_passes_read_only_okf_check(workspace: Path, tmp_path: Path):
+    out = tmp_path / "out.zip"
+    run_export(_cfg(workspace), out=out)
+
+    result = check_bundle(out, load_okf_profile())
+
+    assert result.ok
+    assert result.files_checked >= 4  # index.md plus the three work records
+
+
+def test_export_normalizes_legacy_frontmatter_without_touching_source(workspace: Path, tmp_path: Path):
+    """旧 frontmatter は Bundle 内だけ v0.2 へ正規化し、原本は変更しない。"""
     out = tmp_path / "out.zip"
     cfg = _cfg(workspace)
     run_export(cfg, out=out)
@@ -93,7 +106,11 @@ def test_export_preserves_frontmatter_bytes(workspace: Path, tmp_path: Path):
     with zipfile.ZipFile(out) as zf:
         match = [n for n in zf.namelist() if n.endswith("plan_alpha.md")]
         assert match, "plan_alpha.md が zip に入っていない"
-        assert zf.read(match[0]) == plan_src
+        exported = zf.read(match[0])
+        assert exported != plan_src
+        assert b"status: draft" in exported
+        assert b"docsweep_state: planned" in exported
+    assert (workspace / "demo" / "docs" / "local" / "plan_alpha.md").read_bytes() == plan_src
 
 
 def test_export_excludes_archive_by_default(workspace: Path, tmp_path: Path):
@@ -133,6 +150,29 @@ def test_export_status_vocabulary_converts_to_okf(workspace: Path, tmp_path: Pat
     assert "draft" in statuses or "done" in statuses or "deferred" in statuses
 
 
+def test_export_manifest_preserves_docsweep_parent_extension(tmp_path: Path):
+    project = tmp_path / "demo"
+    _write(
+        project / "docs" / "local" / "plan_parent.md",
+        "---\n"
+        "type: plan\nstatus: draft\ndocsweep_state: planned\n"
+        "related: []\n---\n# [計画] parent\n",
+    )
+    _write(
+        project / "docs" / "local" / "plan_parent_c1_x.md",
+        "---\n"
+        "type: plan\nstatus: draft\ndocsweep_state: planned\n"
+        "docsweep_parent: docs/local/plan_parent.md\n"
+        "related: [plan_parent.md]\n---\n# [計画] child\n",
+    )
+    out = tmp_path / "out.zip"
+    run_export(_cfg(tmp_path), out=out)
+    with zipfile.ZipFile(out) as zf:
+        manifest = json.loads(zf.read("okf-manifest.json").decode("utf-8"))
+    child = next(item for item in manifest["files"] if item["path"].endswith("plan_parent_c1_x.md"))
+    assert child["docsweep_parent"] == "docs/local/plan_parent.md"
+
+
 def test_export_project_filter(workspace: Path, tmp_path: Path):
     """--project で 1 プロジェクトに絞れる。"""
     out = tmp_path / "out.zip"
@@ -143,3 +183,51 @@ def test_export_project_filter(workspace: Path, tmp_path: Path):
     out2 = tmp_path / "empty.zip"
     result2 = run_export(cfg, out=out2, project="not-a-project")
     assert result2.file_count == 0
+
+
+def test_export_normalization_accepts_crlf_frontmatter():
+    normalized, changed = _normalize_export_text(
+        "---\r\ntype: plan\r\nstatus: planned\r\n---\r\n# [計画] x\r\n",
+        doc_type="plan",
+        state="planned",
+        profile=load_okf_profile(),
+    )
+    assert changed is True
+    assert normalized.count("---\r\n") == 2
+    assert "status: draft\r\n" in normalized
+    assert "docsweep_state: planned\r\n" in normalized
+
+
+def test_export_rejects_malformed_frontmatter(tmp_path: Path):
+    malformed = "---\ntype: [broken\n---\n# [計画] broken\n"
+    normalized_path = tmp_path / "broken.md"
+    normalized_path.write_text(malformed, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="YAML"):
+        _normalize_export_text(
+            malformed,
+            doc_type="plan",
+            state="planned",
+            profile=load_okf_profile(),
+        )
+
+
+def test_export_cli_reports_profile_errors_without_traceback(tmp_path: Path, capsys):
+    from docsweep import cli
+
+    out = tmp_path / "out.zip"
+    rc = cli.main(
+        [
+            "export",
+            "--root",
+            str(tmp_path),
+            "--okf-profile",
+            str(tmp_path / "missing-profile.json"),
+            "--out",
+            str(out),
+        ]
+    )
+
+    assert rc == 2
+    assert "traceback" not in capsys.readouterr().err.lower()
+    assert not out.exists()

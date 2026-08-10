@@ -39,13 +39,46 @@
   {"kind": "archive",   "op": "archive", "label": T.to_archive, "title": T.to_archive_title},
 ] %}
 
+<div class="filter-chips" id="filter-chips" role="group" aria-label="filters">
+  <button type="button" class="fchip on" data-filter="all">all</button>
+  <button type="button" class="fchip" data-filter="type:plan">plan</button>
+  <button type="button" class="fchip" data-filter="type:bugfix">bugfix</button>
+  <button type="button" class="fchip" data-filter="flag:overdue">overdue</button>
+  <button type="button" class="fchip" data-filter="flag:needs_decision">needs_decision</button>
+</div>
+
+{% if data.today_pick and data.today_pick.path %}
+<div class="today-pick-pin" id="today-pick-pin"
+     data-path="{{ data.today_pick.path }}"
+     role="region" aria-label="{{ T.today_pick_aria }}">
+  <div class="tp-label">{{ T.today_pick_label }}</div>
+  <div class="tp-body">
+    <span class="tp-state">{{ data.today_pick.state_label }}</span>
+    <strong class="tp-title">{{ data.today_pick.title or data.today_pick.name }}</strong>
+    {% if data.today_pick.score_total is not none %}
+      <span class="tp-score" title="score">{{ '%.2f'|format(data.today_pick.score_total) }}</span>
+    {% endif %}
+  </div>
+  {% if data.today_pick.summary %}
+    <div class="tp-summary">{{ data.today_pick.summary }}</div>
+  {% endif %}
+  <div class="tp-meta">{{ data.today_pick.project }} · {{ data.today_pick.rel or data.today_pick.name }}{% if data.today_pick.age_days is not none %} · {{ data.today_pick.age_days }}d{% endif %}</div>
+  <div class="tp-actions">
+    <button type="button" class="primary" data-action="open-today-pick" data-path="{{ data.today_pick.path }}">{{ T.today_pick_open }}</button>
+    <button type="button" data-action="copy-context" data-path="{{ data.today_pick.path }}">{{ T.work_pack_copy }}</button>
+  </div>
+</div>
+{% endif %}
+
 <div class="board-cols">
   <div class="col col-overdue" data-column="overdue" aria-label="{{ T.col_overdue_aria }}">
     <h2 class="col-head"><span class="col-emoji">🔴</span> {{ T.col_overdue }} <span class="col-count">{{ data.counts.overdue }}</span>
       {{ section_actions("overdue", OPS_DEFAULT) }}
     </h2>
     <ol class="col-cards">
-      {% for card in data.cols.overdue %}{% include "_card.html" %}{% endfor %}
+      {% for card in data.cols.overdue %}{% include "_card.html" %}{% else %}
+      <li class="col-empty">{{ T.empty_overdue }}</li>
+      {% endfor %}
     </ol>
   </div>
   <div class="col col-today" data-column="today" aria-label="{{ T.col_today_aria }}">
@@ -53,7 +86,9 @@
       {{ section_actions("today", OPS_DEFAULT) }}
     </h2>
     <ol class="col-cards">
-      {% for card in data.cols.today %}{% include "_card.html" %}{% endfor %}
+      {% for card in data.cols.today %}{% include "_card.html" %}{% else %}
+      <li class="col-empty">{{ T.empty_today }}</li>
+      {% endfor %}
     </ol>
   </div>
   <div class="col col-active" data-column="active" aria-label="{{ T.col_active_aria }}">
@@ -61,7 +96,9 @@
       {{ section_actions("active", OPS_DEFAULT) }}
     </h2>
     <ol class="col-cards">
-      {% for card in data.cols.active %}{% include "_card.html" %}{% endfor %}
+      {% for card in data.cols.active %}{% include "_card.html" %}{% else %}
+      <li class="col-empty">{{ T.empty_active }}</li>
+      {% endfor %}
     </ol>
   </div>
 </div>

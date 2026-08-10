@@ -81,6 +81,13 @@
           <td class="sp-preset">{{ p.preset or '—' }}</td>
           <td class="sp-version">{% if p.injected %}v{{ p.version or '?' }}{% else %}—{% endif %}</td>
           <td class="sp-actions">
+            <button type="button" class="{{ 'primary' if p.enabled else 'ghost' }}"
+                    data-action="settings-toggle-project"
+                    data-root="{{ p.root }}"
+                    data-enabled="{{ 'true' if p.enabled else 'false' }}"
+                    title="{{ T.settings_toggle_project }}">
+              {{ T.settings_project_on if p.enabled else T.settings_project_off }}
+            </button>
             {% if p.injected %}
               <button type="button" class="ghost" data-action="settings-eject" data-project="{{ p.root }}">eject</button>
             {% else %}
@@ -117,11 +124,6 @@
             <span class="settings-note">{{ T.about_oss_htmx }}</span>
           </a>
         </li>
-      </ul>
-    </section>
-    <section class="about-section">
-      <h4>{{ T.about_cdn_heading }}</h4>
-      <ul class="about-oss-list">
         <li class="about-oss-item">
           <a class="about-oss-link" href="https://github.com/cytoscape/cytoscape.js" target="_blank" rel="noopener noreferrer">
             <span class="about-oss-name">cytoscape.js 3.30.0</span>

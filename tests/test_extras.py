@@ -1,3 +1,4 @@
+import hashlib
 import time
 from pathlib import Path
 
@@ -28,6 +29,14 @@ def ws(tmp_path: Path) -> Path:
 
 def _cfg(root: Path):
     return load_config(explicit_roots=[str(root)], global_path=root / "no.yaml")
+
+
+def _snapshot(path: Path):
+    """dry-run の前後で内容・hash・mtime を比較するための小さな snapshot。"""
+    if not path.exists():
+        return None
+    data = path.read_bytes()
+    return hashlib.sha256(data).hexdigest(), path.stat().st_mtime_ns, data
 
 
 # ---- INDEX (C5) ----
@@ -264,15 +273,149 @@ def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     assert not gpath.exists()
 
 
+def _closeout_cmd_fragment() -> str:
+    """closeout-check の起動コマンドを、その OS の引用規則で組み立てた実物で得る。
+
+    POSIX の ``shlex.join`` は ``<parent-plan>`` をリダイレクトと解釈されないよう
+    ``'<parent-plan>'`` へ引用するが、Windows の ``list2cmdline`` は引用しない。
+    期待値を Windows 表記でベタ書きすると Linux の CI だけ落ちるので、同じ helper で作る。
+    """
+    from docsweep.inject import docsweep_command
+
+    cmd = docsweep_command("closeout-check", "--path", "<parent-plan>", "--json")
+    return cmd.split("-m docsweep ", 1)[1]
+
+
 def test_preview_global_central_only_for_claude(tmp_path, monkeypatch):
     """preview_global は中央ファイルの行を @import 参照する claude でだけ返す（Codex は出さない）。"""
     from docsweep import inject as I
 
     monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "g.md")
+    fragment = _closeout_cmd_fragment()
     claude = I.preview_global(agent="claude", target=tmp_path / "c" / "CLAUDE.md")
     assert claude["guidance"] and claude["guidance_path"]
+    assert fragment in claude["guidance"]
     codex = I.preview_global(agent="codex", target=tmp_path / "x" / "AGENTS.md")
     assert codex["guidance"] is None and codex["guidance_path"] is None
+    assert fragment in codex["blocks"][0]["text"]
+
+
+def test_generate_guidance_closeout_contract_ja_en():
+    """JA/EN の global guidance は closeout の安全境界を同じ意味で伝える。"""
+    from docsweep.inject import generate_guidance_block
+
+    ja = generate_guidance_block("ja")
+    en = generate_guidance_block("en")
+    closeout_cmd = _closeout_cmd_fragment()
+
+    for text, required in [
+        (
+            ja,
+            (
+                closeout_cmd,
+                "機械 blocker",
+                "手動確認",
+                "dirty worktree",
+                "明示承認前に H1 / `docsweep_state` を relabel しない",
+                "子 plan から親 plan",
+                "archive は別の dry-run と別承認",
+                "実装完了",
+                "静的検証済み",
+                "手動確認済み",
+                "watching",
+                "done",
+                "archive済み",
+            ),
+        ),
+        (
+            en,
+            (
+                closeout_cmd,
+                "machine blockers",
+                "manual checks",
+                "dirty-worktree overlap",
+                "explicit user approval",
+                "child plans to the parent",
+                "separate dry-run and a separate approval",
+                "implementation complete",
+                "static checks",
+                "manual checks",
+                "`watching`",
+                "`done`",
+                "archived",
+            ),
+        ),
+    ]:
+        for fragment in required:
+            assert fragment in text, fragment
+
+
+def test_shipped_templates_document_closeout_order():
+    """配布 template は skill が無くても read-only closeout の次手を説明する。"""
+    root = Path(__file__).resolve().parents[1]
+    claude = (root / "templates" / "CLAUDE.md").read_text(encoding="utf-8")
+    guide = (root / "templates" / "AGENT_GUIDE.md").read_text(encoding="utf-8")
+
+    assert "python -m docsweep closeout-check --path <parent-plan> --json" in claude
+    assert "子 plan から親 plan" in claude
+    assert "archive は別の `sweep --dry-run` と別承認" in claude
+    for fragment in (
+        "python -m docsweep closeout-check --path <parent-plan> --json",
+        "not_ready",
+        "manual_review_required",
+        "manual_checks",
+        "child plan から parent plan",
+        "python -m docsweep sweep --dry-run",
+    ):
+        assert fragment in guide, fragment
+
+
+def test_inject_global_dry_run_preserves_files_and_mtime(tmp_path, manifest, monkeypatch):
+    """Claude/Codex global dry-run は target・guidance・config・manifest を書き換えない。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "home_docsweep" / "guidance.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "fake_claude" / "CLAUDE.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("# 個人グローバル\n\n手書き領域。\n", encoding="utf-8")
+    gpath.parent.mkdir(parents=True)
+    gpath.write_text("既存 guidance。\n", encoding="utf-8")
+    I.GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    I.GLOBAL_CONFIG_PATH.write_text("roots:\n  - D:/dev\n", encoding="utf-8")
+
+    paths = (target, gpath, I.GLOBAL_CONFIG_PATH, I.MANIFEST_PATH)
+    before = {path: _snapshot(path) for path in paths}
+    I.inject_global(agent="claude", target=target, dry_run=True)
+    after = {path: _snapshot(path) for path in paths}
+
+    assert after == before
+    assert "手書き領域。" in target.read_text(encoding="utf-8")
+
+
+def test_inject_global_idempotent_preserves_unmanaged_content(tmp_path, manifest, monkeypatch):
+    """global 再注入は managed block を複製せず、非管理領域を保持する。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "codex" / "AGENTS.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("# 個人 Codex\n\nこの前後は利用者の文章。\n", encoding="utf-8")
+
+    I.inject_global(agent="codex", target=target)
+    first = target.read_text(encoding="utf-8")
+    first_guidance = gpath.read_text(encoding="utf-8") if gpath.exists() else None
+    result = I.inject_global(agent="codex", target=target)
+    second = target.read_text(encoding="utf-8")
+    second_guidance = gpath.read_text(encoding="utf-8") if gpath.exists() else None
+
+    assert second == first
+    assert second_guidance == first_guidance
+    assert second.count(I.MARK_START) == 1
+    assert second.count(I.MARK_END) == 1
+    assert "この前後は利用者の文章。" in second
+    assert "AGENTS.md" in result.skipped
 
 
 def test_inject_no_guidance_label_only(tmp_path, manifest):
@@ -375,11 +518,11 @@ def test_inject_global_keeps_existing_docsweep_config(tmp_path, manifest, monkey
     target.parent.mkdir(parents=True)
     # ユーザーが既に config を持っている状態を作る
     I.GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    I.GLOBAL_CONFIG_PATH.write_text("roots:\n  - C:/dev\n", encoding="utf-8")
+    I.GLOBAL_CONFIG_PATH.write_text("roots:\n  - D:/dev\n", encoding="utf-8")
 
     r = I.inject_global(agent="claude", target=target)
     body = I.GLOBAL_CONFIG_PATH.read_text(encoding="utf-8")
-    assert body == "roots:\n  - C:/dev\n"  # 完全に温存
+    assert body == "roots:\n  - D:/dev\n"  # 完全に温存
     assert not any("config.yaml" in w for w in r.warnings)  # 通知も出さない
 
 
@@ -642,3 +785,25 @@ def test_mcp_build_server_smoke(tmp_path):
     from docsweep.mcp_server import build_server
 
     assert build_server(load_config(global_path=tmp_path / "no.yaml")) is not None
+
+
+def test_scan_frontmatter_warning_printed_once_per_process(tmp_path, capsys):
+    """同一 (path, warning) の frontmatter 矛盾 warning はプロセス内 1 回だけ stderr へ出す。
+
+    Web UI は描画のたびに run_scan するため、毎回出すと同じ warning がログを埋める
+    （2026-07-03 serve 実測）。矛盾自体は needs_fix フラグで UI に出続ける。
+    """
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+
+    p = tmp_path / "a" / "plan_conflict.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        "---\nstatus: planned\n---\n# [様子見] 食い違い\n\n## 概要\n\nx\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    run_scan(cfg)
+    run_scan(cfg)  # 2 回目（Web UI の再描画相当）
+    err = capsys.readouterr().err
+    assert err.count("食い違います") == 1

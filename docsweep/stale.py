@@ -29,6 +29,7 @@ class StaleItem:
     threshold: int
     last_reviewed: str | None
     title: str | None
+    sensitive: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -39,7 +40,7 @@ class StaleItem:
             "days_over": self.days_over,
             "threshold": self.threshold,
             "last_reviewed": self.last_reviewed,
-            "title": self.title,
+            "title": "[sensitive]" if self.sensitive else self.title,
         }
 
 
@@ -88,6 +89,7 @@ def _evaluate(rec: FileRecord, thresholds: dict[str, int], today: date) -> Stale
         threshold=threshold,
         last_reviewed=rec.last_reviewed,
         title=rec.title,
+        sensitive=rec.sensitive,
     )
 
 

@@ -3,3 +3,7 @@
 # archive はリポルート直下ではなく gitignore 済みの docs/local/ 配下へ移送する。
 # ルート直下 archive/ は git 追跡対象になり、非公開の作業ログが公開リポに乗るため。
 archive_dir: docs/local/archive
+ignore:
+  - docs/obsidian
+  - "**/docs/obsidian"
+  - "**/docs/obsidian/**"

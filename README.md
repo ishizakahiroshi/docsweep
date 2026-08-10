@@ -8,24 +8,23 @@ AI コーディングツール（Claude Code / Codex 等）が生成する `plan
 H1 ステータスラベル（`[完了]` / `[計画]` / `[廃止]` 等）を機械的に読み取り、完了を各プロジェクトの
 `archive/` へ自動移送し、陳腐化を「要判断」フラグで可視化し、複数プロジェクトを横断 INDEX で一望できます。
 
-## OKF（Open Knowledge Format）互換
+## OKF（Open Knowledge Format）v0.2 対応
 
-docsweep は [OKF（Open Knowledge Format）](https://zenn.dev/knowledgesense/articles/14a874a9f423bb)
-の **frontmatter による type / status / related の機械可読化** を採用しています。
-md 冒頭の YAML frontmatter で `type` / `status` / `tags` / `owner` / `review_status` /
-`related` / `last_reviewed` を機械可読化し、docsweep を入れていない別ツールから読んでも
-意味が通る形式に揃えています。
+docsweep は [OKF v0.2 の公式仕様](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+に合わせ、Markdown frontmatter の `type` / `status` を機械可読に扱います。
+OKF の `status` は文書ライフサイクル（`draft` / `stable` / `deprecated`）なので、
+docsweep の作業状態（`planned` / `in-progress` / `watching` / `done` / `discarded` /
+`pending`）は拡張フィールド `docsweep_state` に分離しています。
 
-docsweep 固有の追加規約は 2 点だけです:
+`type` と追加フィールドは OKF の方針どおり閉じた登録簿にせず、docsweep が標準管理する
+`plan` / `bugfix` / `pending` 以外も壊さず保持します。`manual` / `reference` / `setup` は
+静的な知識文書として扱い、H1 ラベルは
+人間向け表示として併用し、旧形式の `status: planned` なども読み取り互換を維持します。
+既存ファイルを移行するときは `migrate-frontmatter --dry-run` で差分を確認してから
+`--apply` を実行してください。
 
-- **type 集合を `plan` / `bugfix` / `pending` に固定**（OKF より少し強い規約）。
-  archive 自動化のための制約で、自由な type 値は管理対象外として扱います。
-- **H1 ステータスラベル運用は廃止せず併用**。md を開いた瞬間に状態が見える人間向け価値を
-  残し、frontmatter が無いファイルは H1 ラベルへフォールバックします（後方互換 100%）。
-
-詳細な対応表は [docs/okf-mapping.md](docs/okf-mapping.md) を参照。
-「docsweep を抜けても md が腐らない」を実演する `docsweep export --okf` も提供しています
-（[docs/okf-export-format.md](docs/okf-export-format.md)）。
+詳細な対応表は [docs/okf-mapping.md](docs/okf-mapping.md)、Bundle の構造は
+[docs/okf-export-format.md](docs/okf-export-format.md) を参照してください。
 
 ## インストール
 
@@ -97,7 +96,7 @@ pip install 'docsweep[all]'
 
 # 起動（PATH を気にせず常に動く形）
 python -m docsweep triage
-python -m docsweep serve --root C:\dev
+python -m docsweep serve --root D:\dev
 python -m docsweep mcp
 
 # MCP 登録例（~\.claude\mcp.json）— 絶対パスにすると Python 切替時も安定
@@ -224,6 +223,9 @@ python -m docsweep capture --from file ./conv.md --save-all
 # plan の「変更予定ファイル」と実装実態の整合チェック
 python -m docsweep linkcheck --json
 
+# 親 plan と child plan の closeout 検査（read-only。状態変更・archive はしない）
+python -m docsweep closeout-check --path docs/local/plan_<parent>.md --to watching --json
+
 # 状態遷移を提案（ruleset / 将来 LLM 委譲）+ 一括適用
 python -m docsweep auto-triage --suggest > decisions.json
 python -m docsweep auto-triage --apply decisions.json --dry-run
@@ -265,11 +267,20 @@ python -m docsweep review
 # テンプレ即生成
 python -m docsweep new plan my-topic
 python -m docsweep new bugfix crash-on-start
+python -m docsweep new plan my-topic --split 3  # child に docsweep_parent を付ける
 
 # OKF 互換 zip でエクスポート（docsweep を抜けても md が腐らないことを実演する材料）
 python -m docsweep export --okf                          # ./docsweep-okf-<date>.zip
 python -m docsweep export --okf --out /tmp/snapshot.zip  # 出力先を明示
 python -m docsweep export --okf --include-archive        # archive/ 配下も含める
+
+# 任意 Bundle を read-only 検査（未知 type / 追加キー / 壊れた link は警告扱い）
+python -m docsweep okf-check ./bundle --json
+python -m docsweep okf-profiles
+
+# profile は既定では同梱 JSON。外部 profile は明示したときだけ取得する
+python -m docsweep export --okf --okf-profile ./okf-profile.json
+python -m docsweep okf-check ./bundle --okf-profile https://raw.githubusercontent.com/<org>/<repo>/<sha>/okf.json --okf-profile-sha256 <sha256>
 
 # 運用ルールを各プロジェクトへ注入／取り消し（CLAUDE.md=正本・AGENTS.md はそこを指すポインタ）
 python -m docsweep inject --project ./foo --preset claude-jp
@@ -284,18 +295,26 @@ python -m docsweep eject  --global
 
 python -m docsweep list                                    # 注入済み（プロジェクト＋グローバル）一覧
 
-# Web UI（UX 主役・127.0.0.1・トークン付き URL）。注入/解除もダッシュボードから（プレビュー必須）
+# Web UI（UX 主役・127.0.0.1・初回だけ ?token= 付き URL、以降は Cookie で /board を直接開ける）。注入/解除もダッシュボードから（プレビュー必須）
 python -m docsweep serve --root ~/dev
 
 # MCP サーバー（AI エージェント面・stdio）
 python -m docsweep mcp
 ```
 
+Web UI（看板）はこんな見た目です。
+
+![やり忘れ列](assets/screenshots/webui-todo.png)
+
+「完了」「廃止」になったカードは archive 候補列にまとまり、まとめて archive へ送れます。
+
+![archive 候補列](assets/screenshots/webui-archive.png)
+
 ## 状態モデル（一直線・単一正本）
 
 ```
 plan:    [保留] → [計画] → [実行中] → [様子見] → [完了]
-bugfix:           [対応中] → [様子見] → [完了]
+bugfix:           [実行中] → [様子見] → [完了]
          （どちらも、どの状態からでも [廃止] へ分岐できる）
 ```
 
@@ -350,6 +369,25 @@ profiles:
 ```bash
 python -m docsweep triage ~/dev/foo ~/projects/bar
 ```
+
+### 作業 queue と private ドキュメント
+
+`new` / `capture --save-all` / MCP `capture_save` は、同じプロジェクト相対 `work_dir` に保存します。
+未設定時の既定は `docs/local` で、プロジェクトに `docs/` があるかどうかで保存先は変わりません。
+
+```yaml
+work_dir: docs/local       # プロジェクト相対。例: docs/ai
+work_policy: private       # private は Git ignore / tracked 状態を保存前に検査
+secret_policy: block       # high-confidence secret は拒否。warn / off も選択可
+```
+
+解決順は CLI の `--work-dir` / `--work-policy` / `--secret-policy`、プロジェクト設定、
+グローバル設定の順です。private queue は `export` の既定対象から除外され、`brief` / `triage` は
+Git ignore されていても設定済み queue を確認できます。秘密情報の警告や JSON / UI の表示には本文・値の一部を含めません。
+必要な場合だけ `--allow-sensitive` を明示してください。
+
+初回は `python -m docsweep init` で既定設定を作り、各プロジェクトでは
+`python -m docsweep inject` の導線と `python -m docsweep new plan <topic>` を使います。
 
 ## AI エージェント連携
 

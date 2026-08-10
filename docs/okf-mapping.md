@@ -1,92 +1,126 @@
-# docsweep ↔ OKF（Open Knowledge Format）マッピング
+# docsweep ↔ OKF（Open Knowledge Format）v0.2 マッピング
 
-[OKF（Open Knowledge Format）](https://zenn.dev/knowledgesense/articles/14a874a9f423bb) は
-Google Cloud が 2026-06 に提案したベンダー非依存の Markdown ナレッジ表現形式です。
-docsweep は OKF の **frontmatter による type / status / related の機械可読化** の考え方を
-取り込みつつ、自動 archive 移送のために **type 集合と status 語彙を OKF より少しだけ強く固定**
-しています。本文書はその対応表です。
+[OKF v0.2 公式仕様](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+は、Markdown を中心にしたベンダー非依存のナレッジ形式です。docsweep はその必須条件と
+予約ファイルを尊重し、docsweep 固有の作業管理情報を producer extension として追加します。
 
-## 設計の立場
+## 基本方針
 
-docsweep は OKF の「ルール最小」思想に **完全準拠していません**。理由は 2 つ:
+- 通常の Markdown は YAML frontmatter を持ち、空でない `type` を必須とします。
+- OKF の `type` は自由な文字列です。`note` / `decision` / `meeting` など未知の値を
+  docsweep が読み取り検査で拒否することはありません。
+- `status` は OKF の文書ライフサイクルです。v0.2 の値は `draft` / `stable` /
+  `deprecated` です。
+- docsweep の作業状態は `docsweep_state` に分離します。H1 ラベルは人間向け表示として残します。
+- `index.md` / `log.md` は OKF の予約ファイルとして一般の concept と別に扱います。
+- `sources` / `generated` / `verified` / `stale_after` など、docsweep が意味を判定しない
+  追加フィールドは壊さず保持します。
 
-1. **archive 自動化のため**、type 集合（plan / bugfix / pending）と status 語彙を固定したい。
-   OKF はここを自由にしているが、それだと「何を `archive` 移送してよいか」が判定不能になる。
-2. **H1 ステータスラベル運用を廃止しない**。md を開いた瞬間に状態が見える価値は人間向けに残す。
-   frontmatter は併用（frontmatter があればそちらを優先、なければ H1 ラベルへフォールバック）。
+## Frontmatter の二軸
 
-つまり docsweep は **OKF 互換のサブセット**（OKF として読み込み可能だが、docsweep 規約として
-読むには追加制約あり）です。
+新規ファイルは次のようになります。
 
-## type 語彙のマッピング
+```markdown
+---
+type: plan
+status: draft
+docsweep_state: planned
+tags: []
+owner:
+review_status: draft
+related: []
+docsweep_parent: docs/local/parent.md
+last_reviewed: 2026-08-09
+due: 2026-08-16
+---
 
-| docsweep type | OKF 推奨対応値 | 説明 |
+# [計画] タイトル
+```
+
+| フィールド | 意味 | 扱い |
 |---|---|---|
-| `plan`    | `plan` | 計画 / 調査メモ / 検討メモ（着手前〜進行中の作業） |
-| `bugfix`  | `incident` | 障害対応の事後記録（症状 / 根本原因 / 修正内容） |
-| `pending` | `deferred` | 保留 / 将来対応（着手条件待ち） |
+| `type` | concept の種別 | OKF 必須。任意の非空文字列。docsweep は管理対象だけ archive 操作する |
+| `status` | 文書の lifecycle | OKF v0.2。`draft` / `stable` / `deprecated` |
+| `docsweep_state` | docsweep の作業状態 | docsweep 拡張。`planned` / `in-progress` / `watching` / `done` / `discarded` / `pending` |
+| `tags` | 検索用タグ | docsweep 拡張。自由 list |
+| `owner` | 作業担当者 | docsweep 拡張。`claim` が更新 |
+| `review_status` | docsweep の陳腐化判定用状態 | docsweep 拡張。`draft` / `review` / `published` |
+| `related` | 関連ファイル | docsweep 拡張。本文の Markdown link も OKF の関係表現として保持 |
+| `docsweep_parent` | 親 plan への方向付き参照 | docsweep 拡張。repo-relative path を 1 件だけ持ち、`related` の汎用関係とは別に親子を確定 |
+| `last_reviewed` | 最終レビュー日 | docsweep 拡張。`stale` が利用 |
+| `due` | 作業期限 | docsweep 拡張。看板と期限超過フラグが利用 |
 
-OKF 側の type 語彙は緩く、`note` / `decision` / `meeting` などの値も許容されますが、
-docsweep は **上記 3 つしか自動 archive 制御の対象に含めません**。それ以外の type を
-frontmatter に書いた md は docsweep スキャンの対象外として扱われます（破壊しないが管理もしない）。
+`status` が v0.2 lifecycle の値なら docsweep の作業状態として解釈しません。`H1 > filename`
+へフォールバックします。旧形式の `status: planned` などは legacy state として読み取り、
+新形式の `docsweep_state` がある場合はそれを最優先します。新旧フィールドや H1 が食い違う
+場合は自動修正せず warning / conflict として表示します。
 
-## status 語彙のマッピング
+## docsweep が管理する type
 
-docsweep 内部 state key → OKF 互換 status 値（`docsweep export --okf` の manifest が出す対応）:
+OKF 全体の type 語彙を制限するものではありません。docsweep の archive / due / triage
+自動化が標準の作業記録として理解する type は次の 3 種類です。
 
-| docsweep state | H1 ラベル | OKF 互換 status | 自動 archive |
+| docsweep type | 用途 | archive 操作 |
+|---|---|---|
+| `plan` | 計画・調査・検討 | 作業状態に応じて対象 |
+| `bugfix` | 障害・不具合の事後記録 | 作業状態に応じて対象 |
+| `pending` | 保留・将来対応 | 作業状態に応じて対象 |
+
+`manual` / `reference` / `setup` など、それ以外の type は `okf-check` では通過させ、
+docsweep の作業状態・期日・archive 管理の対象外とします。過去の `manual_release` は旧形式として
+読み取り互換を残しますが、新規のリリース MD は `plan_release-vX.Y.Z_*.md` とします。
+
+## docsweep state と lifecycle の export 対応
+
+export の manifest は、選択した profile の `docsweep_status_map` を使って lifecycle を示します。
+v0.2 の同梱 profile では次の対応です。
+
+| docsweep state | H1 ラベル | OKF `status` | 自動 archive |
 |---|---|---|---|
-| `planned`     | `[計画]`   | `draft`     | ✗ |
-| `in-progress` | `[実行中]` | `active`    | ✗ |
-| `watching`    | `[様子見]` | `active`    | ✗（寝かせを守る） |
-| `done`        | `[完了]`   | `done`      | ✓ |
-| `discarded`   | `[廃止]`   | `discarded` | ✓（隔離・復元可） |
-| `pending`     | `[保留]`   | `deferred`  | ✗ |
+| `planned` | `[計画]` | `draft` | ✗ |
+| `in-progress` | `[実行中]` | `draft` | ✗ |
+| `watching` | `[様子見]` | `draft` | ✗ |
+| `done` | `[完了]` | `stable` | ✓ |
+| `discarded` | `[廃止]` | `deprecated` | ✓ |
+| `pending` | `[保留]` | `draft` | ✗ |
 
-bugfix 専用ラベル `[対応中]` も内部 state は `in-progress` に正規化されるので、
-OKF 互換上は `active` 扱いです。
+この対応は docsweep の運用上の近似であり、`done` が OKF の `stable` と同一の意味になる
+という主張ではありません。Bundle 内の本文には `docsweep_state` も残ります。
 
-OKF 側は `draft` / `active` / `done` / `archived` などの粗い語彙を想定しており、
-docsweep の `[様子見]` のような細粒度は `active` に丸めて表現します（読み手側で
-OKF 寄せに処理できる粒度に揃える狙い）。逆方向（OKF → docsweep）の自動変換は
-提供しません（細粒度が落ちるため、人間が判断する）。
+## Profile とバージョン
 
-## review_status の値域
+検査・export の契約は Python ソースではなく、同梱 `docsweep/okf_profiles/0.2.json` に置きます。
+通常実行はオフラインで同梱 profile を使います。別 profile を試すときだけ明示します。
 
-OKF 仕様には `review_status` の明示がありませんが、docsweep は陳腐化の前倒し検知
-（`docsweep stale`）のために以下の値域を **OSS として宣言する許容値** に固定します:
+```bash
+python -m docsweep okf-profiles
+python -m docsweep okf-check ./bundle --okf-version 0.2 --json
+python -m docsweep okf-check ./bundle --okf-profile ./okf-profile.json
+python -m docsweep okf-check ./bundle \
+  --okf-profile https://raw.githubusercontent.com/org/repo/<commit>/okf.json \
+  --okf-profile-sha256 <sha256>
+```
 
-| 値 | 意味 | docsweep `stale` の既定しきい値 |
-|---|---|---|
-| `draft`     | 書きかけ・最初の草稿 | 14 日以上更新なし → 候補 |
-| `review`    | レビュー中 | 7 日以上更新なし → 候補 |
-| `published` | 確定版 | `last_reviewed` が 90 日以上前 → 候補 |
+URL profile の自動取得や別 version への黙った fallback はありません。CI では commit 固定 URL
+または SHA-256 固定を推奨します。新しい profile だけを配布する場合は docsweep の実装 Release
+を増やさずに利用できます。
 
-しきい値は `.docsweep.yaml` の `stale_thresholds:` で上書き可能です。
-`review_status` が未記入の md は `draft` 相当で扱われます。
+## 関係と移行
 
-## related の双方向化
+OKF の標準的な関係表現は本文中の Markdown link です。`related` は docsweep の検索・双方向化
+を補助する extension で、`docsweep fix-related --apply` で対称化できます。
 
-OKF の `related:` は単方向リスト記法ですが、docsweep は **`docsweep fix-related` で
-双方向に自動対称化** します（片側更新で必ずズレるため）。`fix-related --apply` を
-走らせた直後の md は OKF 規約から見ても完全に互換です。
+`docsweep_parent` は docsweep 固有の方向付き extension です。新規の `new plan <topic> --split N`
+は子 plan に repo-relative の親 path を付けます。closeout 判定ではこれを正本とし、旧 plan は
+filename が `<parent-stem>_c<N>_<short>.md` に一致し、かつ子の `related` が親を指す場合だけ
+inferred child として扱います。親の `related` だけでは child を確定しません。
 
-## tags / owner / last_reviewed
+旧来の H1 のみの md と frontmatter 付き md は混在可能です。一括移行は必ず dry-run から行います。
 
-これらは OKF と完全に同じ意味で使います。
+```bash
+python -m docsweep migrate-frontmatter --dry-run
+python -m docsweep migrate-frontmatter --apply
+```
 
-- `tags`: 自由 list（語彙統制なし）。`.docsweep.yaml` で `known_tags:` を宣言する
-  と、未知 tag の使用を `docsweep find --tag` の dry-run モードで警告できます。
-- `owner`: ユーザー名スカラ。`docsweep claim` で `git config user.name` または
-  `docsweep config user.name` の値が書き込まれます。
-- `last_reviewed`: `YYYY-MM-DD`。`docsweep stale` の判定に使われます。
-
-## OKF 採用 / 非採用ファイルの混在
-
-frontmatter なしの旧来 md（H1 ラベルのみ）と OKF 採用 md（frontmatter あり）は **同じ
-プロジェクトに混在しても問題ありません**。docsweep のパーサは
-**frontmatter > H1 > filename** の優先順で検出し、frontmatter があればそちらを使い、
-無ければ H1 ラベルへフォールバックします。
-
-一括変換したい場合は `docsweep migrate-frontmatter --apply` で全 md に frontmatter を
-非破壊挿入できます（H1 ラベルは温存）。
+dry-run では旧 `status` を `status: draft` と `docsweep_state: <旧状態>` に分ける差分も表示します。
+元の H1・本文・既存の未知フィールドは温存されます。

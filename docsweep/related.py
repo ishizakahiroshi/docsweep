@@ -15,7 +15,7 @@ from .atomic import update_line
 from .config import Config
 from .engine import run_scan
 from .models import FileRecord
-from .services.frontmatter import update_frontmatter_field
+from .services.frontmatter import read_frontmatter_text, update_frontmatter_field
 
 
 def _index_records(records: list[FileRecord]) -> dict[str, str]:
@@ -155,10 +155,9 @@ def apply_fix_related(config: Config) -> FixRelatedResult:
             seen.add(key)
             merged.append(ref if ref else key)
         path = Path(fix.path)
-        text = path.read_text(encoding="utf-8", newline="")
-        from .detect import _FRONTMATTER_RE
-
-        if not _FRONTMATTER_RE.match(text):
+        text = path.open("r", encoding="utf-8", newline="").read()
+        _data, body = read_frontmatter_text(text)
+        if body == text:
             # frontmatter が無い md には書けない（migrate-frontmatter を先に走らせる前提）。
             continue
         try:

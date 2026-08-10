@@ -107,6 +107,53 @@ def build_server(config: Config):
         return [r.to_dict() for r in records]
 
     @mcp.tool()
+    def list_projects() -> dict:
+        """プロジェクト一覧と有効/除外状態（UX W2 / P39）。"""
+        from .excluded import list_known_projects, load_excluded
+
+        return {
+            "projects": list_known_projects(config),
+            "excluded": sorted(load_excluded()),
+        }
+
+    @mcp.tool()
+    def set_project_enabled(root: str, enabled: bool = True) -> dict:
+        """プロジェクトを看板/scan から除外（enabled=False）または復帰。"""
+        from .excluded import disable_project, enable_project, is_excluded
+
+        if enabled:
+            enable_project(root)
+        else:
+            disable_project(root)
+        return {"root": root, "enabled": not is_excluded(root)}
+
+    @mcp.tool()
+    def route_intent(text: str) -> dict:
+        """自然言語の意図を docsweep サブコマンドへマップする（UX W2 / P28）。
+
+        典型: 「昨日何やった」「今日の続き」「看板開いて」「undo」
+        """
+        from .intent import route_intent as _route
+
+        return _route(text).to_dict()
+
+    @mcp.tool()
+    def doctor() -> dict:
+        """環境ヘルスチェック（config / roots / index / inject）。CLI ``docsweep doctor`` と同一。"""
+        from .doctor import run_doctor
+
+        return run_doctor(config=config).to_dict()
+
+    @mcp.tool()
+    def day(phase: str = "open") -> dict:
+        """1 日の開閉。phase は open（朝）または close（夜）。"""
+        from .day import day_close, day_open
+
+        if phase == "close":
+            return day_close(config).to_dict()
+        return day_open(config).to_dict()
+
+    @mcp.tool()
     def brief(project: str | None = None, all_projects: bool = False) -> dict:
         """朝の入口 = 今日 1 個だけやろうを断定する。CLI ``docsweep brief`` と同一契約。
 
@@ -132,6 +179,7 @@ def build_server(config: Config):
         project: str | None = None,
         use_llm: bool = False,
         max_drafts: int = 5,
+        allow_sensitive: bool = False,
     ) -> dict:
         """会話履歴 ``text`` から plan / bugfix / pending の草案候補を抽出する。
 
@@ -146,10 +194,14 @@ def build_server(config: Config):
         """
         from .capture import extract_drafts
 
-        drafts = extract_drafts(
-            text, config=config, project=project,
-            max_drafts=max_drafts, use_llm=use_llm,
-        )
+        try:
+            drafts = extract_drafts(
+                text, config=config, project=project,
+                max_drafts=max_drafts, use_llm=use_llm,
+                allow_sensitive=allow_sensitive,
+            )
+        except PermissionError as e:
+            return {"error": str(e), "drafts": [], "count": 0}
         return {
             "drafts": [d.to_dict() for d in drafts],
             "count": len(drafts),
@@ -160,8 +212,9 @@ def build_server(config: Config):
         drafts: list[dict],
         project: str | None = None,
         out_dir: str | None = None,
+        allow_sensitive: bool = False,
     ) -> dict:
-        """``capture_extract`` で得た draft を採用して docs/local/ 配下へ保存する。
+        """``capture_extract`` で得た draft を採用して configured work_dir 配下へ保存する。
 
         典型ユーザー発話: 「採用して」「2 と 3 を採用」「全部 plan にして保存」。
 
@@ -171,6 +224,8 @@ def build_server(config: Config):
         from pathlib import Path as _P
         from .capture import save_drafts
         from .capture.models import Draft as _Draft
+        from .capture.service import CaptureScopeError as _ScopeErr
+        from .work_queue import resolve_work_target
 
         # dict -> Draft へ復元
         as_drafts = [
@@ -187,14 +242,22 @@ def build_server(config: Config):
             for d in (drafts or [])
         ]
 
-        if out_dir:
-            target = _P(out_dir)
-        elif config.roots:
-            target = _P(config.roots[0]) / "docs" / "local"
-        else:
-            target = _P.cwd() / "docs" / "local"
-
-        saved = save_drafts(as_drafts, config=config, target_dir=target)
+        try:
+            project_root, target = resolve_work_target(
+                config,
+                project=project,
+                explicit_dir=_P(out_dir) if out_dir else None,
+            )
+            saved = save_drafts(
+                as_drafts,
+                config=config,
+                target_dir=target,
+                project_dir=project_root,
+                allow_sensitive=allow_sensitive,
+            )
+        except (_ScopeErr, PermissionError, ValueError) as e:
+            # MCP は例外を JSON-RPC error に変換する。tool 契約に沿った error dict を返す。
+            return {"error": str(e), "saved": [], "count": 0}
         return {"saved": [str(p) for p in saved], "count": len(saved)}
 
     @mcp.tool()
@@ -413,6 +476,7 @@ def build_server(config: Config):
     @mcp.tool()
     def update_content(
         path: str, new_content: str, expected_mtime: float | None = None,
+        allow_sensitive: bool = False,
     ) -> dict:
         """MD 本文を全置換する（楽観ロック対応）。
 
@@ -423,9 +487,13 @@ def build_server(config: Config):
             return err
         try:
             res = svc_update_content(
-                resolved, new_content, expected_mtime=expected_mtime,
+                resolved,
+                new_content,
+                expected_mtime=expected_mtime,
+                config=config,
+                allow_sensitive=allow_sensitive,
             )
-        except ContentValidationError as e:
+        except (ContentValidationError, PermissionError) as e:
             return {"error": str(e), "path": path, "kind": "validation"}
         except ConflictError as e:
             return {

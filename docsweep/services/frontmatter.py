@@ -7,6 +7,7 @@ C4 で Web UI からの tags/owner/related/review_status 編集を受けるた�
 - frontmatter が無いファイルは新規に挿入する（``update_due`` の作法を踏襲）
 - list 型（``tags`` / ``related``）はフロー記法 ``[a, b]`` でシリアライズする
 - ``review_status`` / ``owner`` はスカラ（空文字を渡したら値を空に・行は残す）
+- ``docsweep_parent`` / ``docsweep_state`` は docsweep のスカラ拡張（親子関係と作業状態）
 - ``current_owner`` で git config / OS ログイン名から既定の owner 名を解決する
   （C2 の ``docsweep config user.name`` が来るまでの暫定動線）
 """
@@ -20,12 +21,28 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 from ..atomic import update_line
-from ..detect import _FRONTMATTER_RE
+
+# 区切り行の末尾は空白・タブ・CR だけを吸収する。`\s*` にすると閉じ `---` の後ろの
+# **空行まで飲み込み**、書き戻すときに落ちる（frontmatter を 1 フィールド直すたびに
+# 本文との間の空行が消え、tracked な docs では毎回よけいな差分が出る）。
+_FRONTMATTER_RE = re.compile(r"^---[ \t\r]*\n(.*?)\n---[ \t\r]*\n", re.DOTALL)
 
 # 単純なスカラ / list / フィールド名のみ。任意キーは受けない（API 側で許可リスト管理）。
 ALLOWED_FIELDS: frozenset[str] = frozenset(
-    {"tags", "owner", "related", "review_status", "last_reviewed"}
+    {
+        "tags",
+        "owner",
+        "related",
+        "docsweep_parent",
+        "review_status",
+        "last_reviewed",
+        "due",
+        "status",
+        "docsweep_state",
+    }
 )
 LIST_FIELDS: frozenset[str] = frozenset({"tags", "related"})
 
@@ -35,6 +52,61 @@ _FIELD_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 class FrontmatterValidationError(ValueError):
     """field 名や値が許容外のときに発生。"""
+
+
+class FrontmatterBlockStyleError(ValueError):
+    """手書き block-style list（``tags:\\n  - a``）の書き換え要求を拒否したとき発生。
+
+    現在の実装はフロー記法（``tags: [a, b]``）前提で行単位置換するため、block 記法の
+    継続行（``  - item``）を残したままキー行だけ書き換えると YAML パースが壊れる。
+    そのような入力を受けたら破壊せず ValueError を投げてユーザーに気付かせる。
+    """
+
+
+def read_frontmatter_text(text: str) -> tuple[dict, str]:
+    """テキスト先頭の YAML frontmatter と残りの本文を返す。
+
+    frontmatter が無い場合は ``({}, text)``、YAML が不正または mapping 以外の場合は
+    ``({}, body)`` を返す。後者では frontmatter の囲み自体は認識できているため、本文から
+    ブロックを分離した状態を維持する。
+    """
+    match = _FRONTMATTER_RE.match(text)
+    if match is None:
+        return {}, text
+    body = text[match.end():]
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return {}, body
+    if data is None:
+        return {}, body
+    if not isinstance(data, dict):
+        return {}, body
+    return data, body
+
+
+def read_frontmatter(path: Path) -> dict | None:
+    """ファイル先頭の YAML frontmatter を mapping として読む。
+
+    frontmatter が無い、ファイルを読めない、YAML が不正、または YAML のルートが mapping
+    でない場合は ``None`` を返す。
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    match = _FRONTMATTER_RE.match(text)
+    if match is None:
+        return None
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return None
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        return None
+    return data
 
 
 @dataclass
@@ -99,6 +171,10 @@ def _format_value(field: str, value) -> str:
 
 _FIELD_LINE_TEMPLATE = r"^(?P<indent>[ \t]*){name}[ \t]*:[ \t]*(?P<value>.*)$"
 
+# block-style list の継続行検出（``  - item`` / ``  -\n`` / ``  -`` EOF）。
+# 行頭スペース/タブ 1 個以上 + ``-`` + (空白 or 行末)。
+_BLOCK_LIST_CONTINUATION_RE = re.compile(r"^[ \t]+-(?:[ \t]|$)")
+
 
 def _field_line_re(field: str) -> re.Pattern[str]:
     if not _FIELD_NAME_RE.match(field):
@@ -131,6 +207,20 @@ def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
         inner = fm.group(1)
         m_line = line_re.search(inner)
         if m_line is not None:
+            # 手書き block 記法（``field:\n  - a\n  - b``）検出: フロー記法前提の
+            # 行単位置換では継続行が孤立して YAML が壊れるので、書き換えを拒否する。
+            after = inner[m_line.end():]
+            if after.startswith("\n"):
+                after = after[1:]
+            nl = after.find("\n")
+            next_line = after if nl == -1 else after[:nl]
+            if next_line and _BLOCK_LIST_CONTINUATION_RE.match(next_line):
+                raise FrontmatterBlockStyleError(
+                    f"frontmatter フィールド {field!r} が block-style list で書かれています "
+                    f"（次行: {next_line!r}）。docsweep は現在フロー記法 "
+                    f"（{field}: [a, b]）のみ書き換え可能です。"
+                    " 手動で flow 記法へ変換してから再実行してください。"
+                )
             indent = m_line.group("indent") or ""
             replacement = f"{indent}{new_yaml_line}"
             new_inner = inner[: m_line.start()] + replacement + inner[m_line.end():]
@@ -163,7 +253,7 @@ def update_frontmatter_field(
             f"許可されていないフィールド名: {field!r}（許可: {sorted(ALLOWED_FIELDS)}）"
         )
     new_line = _format_value(field, new_value)
-    text_before = Path(abs_path).read_text(encoding="utf-8", newline="")
+    text_before = Path(abs_path).open("r", encoding="utf-8", newline="").read()
     old_raw = _read_current(text_before, field)
 
     def _xform(text: str) -> str:

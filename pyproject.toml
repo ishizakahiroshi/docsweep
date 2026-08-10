@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docsweep"
-version = "0.2.0"
+version = "0.4.0"
 description = "Sweep, triage and archive AI coding agents' plan/bugfix/pending Markdown across projects."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,8 +39,12 @@ review = [
     "questionary>=2.0",
 ]
 # MCP stdio サーバー
+# 下限は 1.28.1。1.28.1 未満には CVE-2026-59950 があり、`>=1.0` のままだと
+# 脆弱な版が install され得た（2026-07-21 監査 F-06）。
+# 上限 <2: mcp 2.0.0 で `mcp.server.fastmcp` が無くなり、docsweep の MCP サーバーが
+# import 時点で落ちる（CI で実測）。2.0 系への対応は別途行う。
 mcp = [
-    "mcp>=1.0",
+    "mcp>=1.28.1,<2",
 ]
 # index-watch 用ファイル監視（任意・``docsweep watch`` だけが依存する）
 watch = [
@@ -52,8 +56,13 @@ resurrect = [
     "sentence-transformers>=2.0",
 ]
 # 全部入り（配布既定: CLI+Web+MCP+review+watch+resurrect が 1 パッケージ）
+# resurrect が sentence-transformers（torch/CUDA を引きずる GB 級）を含むため
+# 軽量版 all-lite も用意（resurrect を除いた実用最小 = 大半のユーザーはこちらで足りる）。
 all = [
     "docsweep[web,review,mcp,watch,resurrect]",
+]
+all-lite = [
+    "docsweep[web,review,mcp,watch]",
 ]
 dev = [
     "pytest>=8.0",
@@ -71,12 +80,43 @@ docsweep = "docsweep.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["docsweep"]
 
+# OKF rules are data, not Python source; keep bundled profiles in the wheel.
+[tool.hatch.build.targets.wheel.force-include]
+"docsweep/okf_profiles" = "docsweep/okf_profiles"
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
+# 段階導入: 既存 codebase が pre-existing パターンで pass しない状態のため、
+# 監査シリーズ (v0.3.0) の scope は「CI に ruff を配線する」までに留め、rule 拡張
+# （SIM / RUF / PLE / PIE 等）と既存 warning cleanup は別 PR で扱う（M-11 続編）。
+# 特に RUF001/002/003 は JP 全角括弧を ambiguous unicode 扱いするため JP-first コード
+# ベースでは大量ノイズになる。
 select = ["E", "F", "I", "UP", "B"]
+# 既存コードスタイル温存（監査シリーズの scope 外・別 refactor PR で cleanup 予定）:
+# - E501: 100 char 上限は JP CJK 幅換算で現実的でない（別 PR で line-length=120 検討）
+# - E402: 大依存の lazy import が意図的（起動時間削減）
+# - F401: __init__.py の re-export 経路で必要
+# - F841: 一部は test 残骸・別 cleanup で解消予定
+# - BLE001: `except Exception: pass` は graceful degradation の意図的パターン
+# - B008: FastAPI の `Query()` / `Body()` を default 引数に置くのは framework 慣習
+# - UP035: `typing.List` 等の deprecated import は一部 lazy import で残っている
+# - I001: import 並び順の isort 規則は `ruff --fix` で一括整形するのが正道。手 fix
+#   は非現実的（31 件散在）で別 PR で auto-fix cadence を回してから enforce する
+ignore = ["E501", "E402", "F401", "F841", "BLE001", "B008", "UP035", "I001"]
+
+[tool.mypy]
+# 段階導入: strict モードは既存コードで大量エラーになるため見送り。
+# 外部ライブラリ（mcp / sentence_transformers 等）は stub 無しなので ignore_missing_imports で緩める。
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 未宣言 marker と設定ミスを即エラー化（tests/ で `@pytest.mark.foo` を新規追加した際の
+# タイポを検知）。既存 tests に custom marker が無いことを確認済み → 追加影響なし。
+addopts = "-ra --strict-markers --strict-config"

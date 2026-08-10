@@ -57,7 +57,8 @@ def test_new_bugfix_does_not_include_due(tmp_path: Path):
     # OKF 採用: frontmatter の必須フィールドが入る
     assert body.startswith("---\n")
     assert "type: bugfix" in body
-    assert "status: in-progress" in body
+    assert "status: draft" in body
+    assert "docsweep_state: in-progress" in body
     assert "review_status: draft" in body
     # 2026-06-23 改修: 新規 bugfix は [対応中] でなく [実行中] を書く（active 統合）
     assert "# [実行中] login-500" in body
@@ -76,7 +77,8 @@ def test_no_offset_no_due_still_emits_okf_frontmatter(tmp_path: Path):
     body = doc.path.read_text(encoding="utf-8")
     assert body.startswith("---\n")
     assert "type: plan" in body
-    assert "status: planned" in body
+    assert "status: draft" in body
+    assert "docsweep_state: planned" in body
     assert "tags: []" in body
     assert "review_status: draft" in body
     assert "related: []" in body

@@ -1,8 +1,8 @@
-"""``update_status`` — H1 ラベル書き換え + postpone_count 自動リセット + archive 連携。
+"""``update_status`` — H1 と docsweep 作業状態の同期 + postpone_count 自動リセット。
 
 - 行単位の正規表現置換で本文を触らない（atomic.update_line 経由）
 - 軸 1 のラベル遷移時に postpone_count をリセット（state.should_reset_postpone）
-- ``[完了]`` / ``[廃止]`` 指定で archive_doc を内部呼び出し
+- ``[完了]`` / ``[廃止]`` は terminal 状態として返すが、archive は呼び出し側の責務
 - ファイル種別と無効ラベル組み合わせはバリデーション拒否
 """
 
@@ -14,7 +14,13 @@ from pathlib import Path
 from ..atomic import update_line
 from ..config import Config
 from ..detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
+from ..okf import is_okf_lifecycle_status
 from ..state import record_label_transition, should_reset_postpone
+from .frontmatter import (
+    _format_value,
+    _replace_or_insert,
+    read_frontmatter,
+)
 
 # ファイル種別ごとに許可されるラベル（内部 state key）。命名規約と state モデルの直交化。
 # - plan は [計画] からスタート可。bugfix は [計画] を持たない（事後記録のため）
@@ -44,6 +50,7 @@ class UpdateStatusResult:
     new_state_key: str
     postpone_count_reset: bool
     archive_triggered: bool
+    frontmatter_field: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -55,6 +62,7 @@ class UpdateStatusResult:
             "new_state_key": self.new_state_key,
             "postpone_count_reset": self.postpone_count_reset,
             "archive_triggered": self.archive_triggered,
+            "frontmatter_field": self.frontmatter_field,
         }
 
 
@@ -114,7 +122,7 @@ def update_status(
     new_label = f"[{new_label_token}]"
 
     # 旧ラベル抽出（書き換え前の text を読む）。
-    text_before = Path(abs_path).read_text(encoding="utf-8", newline="")
+    text_before = Path(abs_path).open("r", encoding="utf-8", newline="").read()
     old_token, _title = _current_h1(text_before)
     old_state = sm.match(old_token) if old_token else None
     old_state_key = old_state.key if old_state else None
@@ -133,7 +141,38 @@ def update_status(
         new_h1 = f"# {new_label} {title}".rstrip()
         return text[: m.start()] + new_h1 + cr + text[m.end():]
 
-    new_mtime = update_line(Path(abs_path), transform=_xform, expected_mtime=expected_mtime)
+    # Keep the human-facing H1 and the machine-readable work state in sync.
+    # New OKF documents use docsweep_state; legacy documents whose status is a
+    # docsweep state keep receiving the old status update for compatibility.
+    frontmatter_field: str | None = None
+    frontmatter = read_frontmatter(Path(abs_path))
+    if frontmatter is not None:
+        frontmatter_field = "docsweep_state"
+        if "docsweep_state" not in frontmatter:
+            raw_status = frontmatter.get("status")
+            if (
+                raw_status is not None
+                and not is_okf_lifecycle_status(raw_status)
+                and config.state_model.match(str(raw_status)) is not None
+            ):
+                frontmatter_field = "status"
+
+    def _combined_xform(text: str) -> str:
+        updated = _xform(text)
+        if frontmatter_field is not None:
+            updated = _replace_or_insert(
+                updated,
+                frontmatter_field,
+                _format_value(frontmatter_field, new_state_key),
+            )
+        return updated
+
+    # H1 and frontmatter are one atomic replacement.  This prevents a malformed
+    # frontmatter field or a concurrent edit from leaving the two state sources
+    # half-updated.
+    new_mtime = update_line(
+        Path(abs_path), transform=_combined_xform, expected_mtime=expected_mtime
+    )
 
     reset = should_reset_postpone(
         old_state_key=old_state_key, new_state_key=new_state_key,
@@ -154,4 +193,5 @@ def update_status(
         new_state_key=new_state_key,
         postpone_count_reset=reset,
         archive_triggered=archive_triggered,
+        frontmatter_field=frontmatter_field,
     )

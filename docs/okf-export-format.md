@@ -1,108 +1,121 @@
 # `docsweep export --okf` の出力フォーマット
 
-「docsweep を抜けても md が腐らない」を実演するためのエクスポートコマンドです。
-スキャン範囲内の plan / bugfix / pending を frontmatter ごとそのまま取り出し、
-OKF 互換語彙との対応表を `okf-manifest.json` として同梱した zip を出力します。
+`export --okf` は、docsweep の管理対象文書を OKF v0.2 Bundle として持ち出すための
+read-only export です。正本は [OKF v0.2 公式仕様](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+であり、`okf-manifest.json` は OKF 標準ではなく docsweep 固有の補助情報です。
 
 ## 使い方
 
 ```bash
-# 既定: カレントの ./docsweep-okf-<date>.zip に出力
+# 既定: ./docsweep-okf-<date>.zip
 python -m docsweep export --okf
 
-# 出力先を明示
+# 出力先・対象を指定
 python -m docsweep export --okf --out /tmp/snapshot.zip
-
-# 特定プロジェクトだけ
 python -m docsweep export --okf --project many-ai-cli
-
-# archive/ 配下も含める
 python -m docsweep export --okf --include-archive
 
-# 機械可読 JSON で結果を受ける
+# 結果を JSON で受ける
 python -m docsweep export --okf --json
+
+# profile を選ぶ。指定しなければ同梱 profile をオフラインで使用
+python -m docsweep export --okf --okf-version 0.2
+python -m docsweep export --okf --okf-profile ./okf-profile.json
+python -m docsweep export --okf \
+  --okf-profile https://raw.githubusercontent.com/org/repo/<commit>/okf.json \
+  --okf-profile-sha256 <sha256>
 ```
 
-## zip の構造
+URL profile はオプション指定時だけ取得します。CI では commit 固定 URL または SHA-256 固定を
+使ってください。取得失敗時に別 profile へ黙って切り替えることはありません。
 
-```
-docsweep-okf-2026-06-29.zip
-├─ okf-manifest.json           # OKF 互換語彙との対応表（後述）
+## Bundle の構造
+
+```text
+docsweep-okf-2026-08-09.zip
+├─ index.md                    # Bundle root の予約 index
+├─ okf-manifest.json            # docsweep 固有の補助 manifest
 ├─ <project_a>/
 │  └─ docs/local/
-│     ├─ plan_xxx.md          # frontmatter + 本文をバイトレベルで温存
-│     └─ bugfix_yyy_2026-06-29.md
+│     ├─ plan_xxx.md
+│     └─ bugfix_yyy_2026-08-09.md
 ├─ <project_b>/
-│  └─ docs/
-│     └─ pending_zzz.md
-└─ _archive/                   # --include-archive 指定時のみ
-   └─ <project_a>/archive/
-      └─ plan_old.md
+│  └─ docs/pending_zzz.md
+└─ _archive/                    # --include-archive 指定時のみ
+   └─ <project_a>/archive/plan_old.md
 ```
 
-- 各 md は **プロジェクト境界からの相対パス**で配置（リポ名と階層が一目で分かる形）。
-- 同一エントリ名が衝突したら `__1` / `__2` のサフィックスで一意化されます。
-- 本文・frontmatter・H1 ラベルはバイトレベルで温存されます（docsweep 側で変換しない）。
+- root `index.md` は `okf_version` だけを持つ frontmatter と、収録 concept への Markdown link
+  一覧を持ちます。
+- root 以外の `index.md` と `log.md` は OKF の予約形式として扱われます。
+- 通常の `.md` は parse 可能な YAML frontmatter と空でない `type` を持つようにします。
+- 旧形式や frontmatter 無しの入力は、原本を変更せず Bundle 内のコピーだけを最小限正規化します。
+  `status` は profile の lifecycle、作業状態は `docsweep_state` へ分けます。
+- `sources` / `generated` / `verified` / `stale_after` など未知の追加キーはコピー内でも保持します。
+- 同一 entry 名が衝突した場合は `__1` / `__2` の suffix で Bundle 内のパスを一意化します。
 
-## `okf-manifest.json` のスキーマ
+## `okf-manifest.json`
 
 ```jsonc
 {
-  "format": "okf",                        // 固定値
-  "okf_version": "0.1",                   // docsweep が準拠する OKF 仕様の版
-  "docsweep_version": "0.1.0",            // 生成時の docsweep バージョン
-  "generated_at": "2026-06-29T12:34:56+09:00",
+  "format": "okf",
+  "okf_version": "0.2",
+  "okf_profile": {
+    "spec_version": "0.2",
+    "source": "bundled:0.2",
+    "sha256": "..."
+  },
+  "docsweep_version": "0.4.0",
+  "generated_at": "2026-08-09T12:34:56+09:00",
   "include_archive": false,
-  "type_vocabulary": {
-    "plan":    { "okf_equivalent": "plan",     "description": "..." },
-    "bugfix":  { "okf_equivalent": "incident", "description": "..." },
-    "pending": { "okf_equivalent": "deferred", "description": "..." }
-  },
   "status_vocabulary": {
-    "planned": "draft", "in-progress": "active", "watching": "active",
-    "done": "done", "discarded": "discarded", "pending": "deferred"
+    "planned": "draft",
+    "in-progress": "draft",
+    "watching": "draft",
+    "done": "stable",
+    "discarded": "deprecated",
+    "pending": "draft"
   },
-  "review_status_vocabulary": ["draft", "review", "published"],
   "file_count": 42,
   "files": [
     {
       "path": "many-ai-cli/docs/local/plan_xxx.md",
       "type": "plan",
       "status": "draft",
+      "docsweep_state": "planned",
       "title": "認証フローのリファクタ",
+      "normalized": true,
       "tags": ["auth", "backend"],
       "owner": "ishizakahiroshi",
       "review_status": "draft",
       "related": ["plan_yyy.md"],
-      "last_reviewed": "2026-06-29"
+      "docsweep_parent": "docs/local/plan_parent.md",
+      "last_reviewed": "2026-08-09"
     }
-    // ...
   ]
 }
 ```
 
-`status` は **OKF 互換語彙に変換した値**が入ります（docsweep 内部 state key ではなく
-manifest 側で OKF 寄せに丸めた値）。元の docsweep 表記が必要なら md 本体の frontmatter
-を見てください（こちらは温存されています）。
+`status` は profile に定義された OKF lifecycle です。`docsweep_state` が docsweep 内部の
+作業状態です。`normalized` は入力 frontmatter を Bundle 内で補完・分離したかを示し、
+`true` でも元ファイルを書き換えたことを意味しません。
 
-## 互換性
+## read-only 検査
 
-- zip は標準形式（PKZIP）。OS 標準のアーカイバ・`unzip` / `tar` で展開できます。
-- `okf-manifest.json` は UTF-8 JSON。エディタで開けます。
-- 出力された md 群は **docsweep を入れていない別プロジェクトに展開しても**、
-  frontmatter の `type` / `status` / `related` がそのまま OKF 互換で読めます。
+任意の Bundle（ディレクトリまたは zip）は次で検査できます。
 
-## 何のために使うか
+```bash
+python -m docsweep okf-check ./bundle --json
+```
 
-1. **docsweep を抜ける移行**: docsweep をやめても md は OKF 形式として残り、別ツールで
-   読み続けられる。「ベンダーロックインしないこと」の実証材料。
-2. **チーム間共有**: 1 つのプロジェクトの作業ログを別チームへ渡す際、frontmatter 込みで
-   1 ファイル送れば全部入る。
-3. **バックアップ**: 定期的に export しておけば「全 md スナップショット」が手に入る。
+error は必須 frontmatter、予約ファイル形式、壊れた YAML、UTF-8 など構造上の不適合です。
+unknown type、unknown field、欠けた optional field、broken link は OKF の許容範囲を尊重して
+warning または受理とし、Bundle 全体を即 reject しません。検査はファイルを変更せず、終了コードは
+error があると `1`、profile / path を読めない場合は `2`、error が無ければ `0` です。
 
-## やらないこと（不変条件）
+## 互換性と用途
 
-- 本文の自動編集（frontmatter 補完・H1 ラベル整形等は **しない**。`migrate-frontmatter`
-  との責務分離）。
-- AI による要約・タグ推定（docsweep 自身は AI API を叩かない）。
-- 元 md の削除（export は **読み取り専用**）。
+- zip は通常の PKZIP で、OS 標準アーカイバで展開できます。
+- Bundle 内の通常 Markdown は docsweep が無い別ツールでも `type` / `status` を読めます。
+- docsweep をやめる移行、チーム共有、スナップショット保存のいずれにも使えます。
+- 元 md の削除、本文の AI 要約、根拠フィールドの推測生成は行いません。

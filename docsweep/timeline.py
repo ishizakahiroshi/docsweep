@@ -17,27 +17,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
 from .config import Config
-from .detect import _FRONTMATTER_RE
 from .engine import run_scan
 from .models import FileRecord
+from .services.frontmatter import read_frontmatter
 
 
 def _frontmatter_data(path: str) -> dict:
-    try:
-        text = Path(path).read_text(encoding="utf-8", newline="")
-    except (OSError, UnicodeDecodeError):
-        return {}
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        return {}
-    try:
-        data = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError:
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_frontmatter(Path(path)) or {}
 
 
 def _git_last_date(path: str) -> str | None:
@@ -79,8 +66,15 @@ def _resolve_date(rec: FileRecord) -> tuple[str, str]:
     d = _git_last_date(rec.path)
     if d:
         return d, "git"
-    d = datetime.fromtimestamp(rec.mtime).astimezone().strftime("%Y-%m-%d")
-    return d, "mtime"
+    # 4 段フォールバック最終段: rec.mtime が None（壊れた stat / archive 索引の一部）でも
+    # timeline 全体を落とさない。activity.py が同じく mtime を defensive に扱っているのと対称。
+    if rec.mtime:
+        try:
+            d = datetime.fromtimestamp(rec.mtime).astimezone().strftime("%Y-%m-%d")
+            return d, "mtime"
+        except (OSError, OverflowError, ValueError):
+            pass
+    return "", "unknown"
 
 
 @dataclass
@@ -92,6 +86,7 @@ class TimelineEntry:
     type: str | None
     state_label: str | None
     title: str | None
+    sensitive: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -101,7 +96,7 @@ class TimelineEntry:
             "project": self.project,
             "type": self.type,
             "state_label": self.state_label,
-            "title": self.title,
+            "title": "[sensitive]" if self.sensitive else self.title,
         }
 
 
@@ -143,7 +138,7 @@ def build_timeline(config: Config, topic: str) -> TimelineResult:
         out.append(TimelineEntry(
             date=d, source=src,
             path=rec.path, project=rec.project, type=rec.type,
-            state_label=rec.state_label, title=rec.title,
+            state_label=rec.state_label, title=rec.title, sensitive=rec.sensitive,
         ))
     return TimelineResult(topic=topic, entries=out)
 
@@ -163,7 +158,8 @@ def render_timeline(result: TimelineResult, *, fmt: str = "markdown") -> str:
         return "\n".join(lines)
     for e in result.entries:
         label = e.state_label or "[?]"
-        title = f" — {e.title}" if e.title else ""
+        display_title = "[sensitive]" if e.sensitive else e.title
+        title = f" — {display_title}" if display_title else ""
         if fmt == "markdown":
             lines.append(
                 f"- {e.date} ({e.source}) {label} **{e.type or '?'}** "

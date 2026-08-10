@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..atomic import write_atomic
+from ..config import Config, config_for_project
 from ..detect import _H1_RE, mask_code_fences
+from ..work_queue import ensure_write_allowed, find_project_dir
 
 
 class ContentValidationError(ValueError):
@@ -43,6 +45,8 @@ def update_content(
     new_content: str,
     *,
     expected_mtime: float | None = None,
+    config: Config | None = None,
+    allow_sensitive: bool = False,
 ) -> UpdateContentResult:
     """MD 本文を全置換する。0 バイトは拒否・H1 欠落は警告のみ。
 
@@ -58,6 +62,29 @@ def update_content(
     masked = mask_code_fences(new_content)
     if not _H1_RE.search(masked):
         warnings.append("H1 行が見つかりません（ステータスラベル抽出ができなくなる可能性）")
+    from ..secrets_guard import enforce_secret_policy, format_warnings
+    effective_config = config
+    if config is not None:
+        project_root = config.project_dir or find_project_dir(
+            config=config, cwd=Path(abs_path).parent
+        )
+        effective_config = config_for_project(config, project_root)
+
+    hits = enforce_secret_policy(
+        new_content,
+        policy=effective_config.secret_policy if effective_config is not None else "warn",
+        allow_sensitive=allow_sensitive,
+    )
+    warnings.extend(format_warnings(hits))
+
+    if config is not None:
+        ensure_write_allowed(
+            config=effective_config,
+            project_dir=project_root,
+            target_dir=Path(abs_path).parent,
+            content=new_content,
+            allow_sensitive=allow_sensitive,
+        )
 
     new_mtime = write_atomic(Path(abs_path), new_content, expected_mtime=expected_mtime)
     return UpdateContentResult(

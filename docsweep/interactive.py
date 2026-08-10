@@ -32,7 +32,10 @@ from typing import Callable, Iterable
 from .config import Config
 from .engine import ScanResult, apply_action, archive_doc, run_scan
 from .models import Action, Flag
+from .okf import is_okf_lifecycle_status
 from .scan import ScannedDoc
+from .services.frontmatter import read_frontmatter, update_frontmatter_field
+from .states import StateModel
 
 # キー → 抽象的な判定アクション。CLI/対話 UI 共通の正本。
 KEY_DONE = "done"  # c
@@ -99,39 +102,35 @@ def candidates_for_review(result: ScanResult) -> list[ScannedDoc]:
     return out
 
 
-def _update_frontmatter_status(path: Path, new_status: str) -> bool:
-    """frontmatter の ``status:`` 行を ``new_status`` に書換える（無ければ何もしない）。
+def _update_frontmatter_status(
+    path: Path, new_status: str, *, state_model: StateModel | None = None
+) -> bool:
+    """作業状態用の frontmatter フィールドを更新する。
 
-    H1 ラベルの書換は engine.relabel_file が担うので、ここは frontmatter 側だけを面倒見る。
-    無事更新したら True、frontmatter が無い / status 行が無い場合は False。
+    新形式では ``docsweep_state`` だけを更新し、OKF v0.2 の ``status``
+    （draft / stable / deprecated）は変更しない。旧形式で ``status`` が
+    docsweep の state 語彙なら、旧利用者のために従来どおり ``status`` を更新する。
     """
     try:
-        text = path.read_text(encoding="utf-8", newline="")
+        data = read_frontmatter(path)
     except (OSError, UnicodeDecodeError):
         return False
-    # 先頭 frontmatter ブロックの中の ``status:`` 行だけ置換する。
-    lines = text.split("\n")
-    if not lines or lines[0].strip() != "---":
+    if data is None:
         return False
-    # 終了 ``---`` を探す。
-    end = None
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            end = i
-            break
-    if end is None:
+    field = "docsweep_state"
+    if "docsweep_state" not in data:
+        raw_status = data.get("status")
+        matcher = state_model or StateModel()
+        if (
+            raw_status is not None
+            and not is_okf_lifecycle_status(raw_status)
+            and matcher.match(str(raw_status)) is not None
+        ):
+            field = "status"
+    try:
+        update_frontmatter_field(path, field, new_status)
+    except (OSError, UnicodeDecodeError, ValueError):
         return False
-    changed = False
-    for i in range(1, end):
-        stripped = lines[i].lstrip()
-        if stripped.startswith("status:"):
-            indent = lines[i][: len(lines[i]) - len(stripped)]
-            lines[i] = f"{indent}status: {new_status}"
-            changed = True
-            break
-    if not changed:
-        return False
-    path.write_text("\n".join(lines), encoding="utf-8", newline="")
     return True
 
 
@@ -179,7 +178,7 @@ def apply_decision(
             try:
                 if not dry_run:
                     apply_action(doc, Action.PROMOTE.value, config)
-                    _update_frontmatter_status(path, "done")
+                    _update_frontmatter_status(path, "done", state_model=config.state_model)
                 return DecisionResult(
                     path=rec.path, decision=decision, action=Action.PROMOTE.value, archived=True
                 )
@@ -192,8 +191,14 @@ def apply_decision(
         try:
             if not dry_run:
                 if rec.state != "done":
-                    apply_action(doc, Action.RELABEL.value, config, to="done")
-                    _update_frontmatter_status(path, "done")
+                    apply_action(
+                        doc,
+                        Action.RELABEL.value,
+                        config,
+                        to="done",
+                        allow_type_override=True,
+                    )
+                    _update_frontmatter_status(path, "done", state_model=config.state_model)
                 archive_doc(doc, config)
             return DecisionResult(
                 path=rec.path, decision=decision, action="relabel+archive", archived=True
@@ -211,7 +216,7 @@ def apply_decision(
                 else:
                     apply_action(doc, Action.RELABEL.value, config, to="discarded")
                     archive_doc(doc, config)
-                _update_frontmatter_status(path, "discarded")
+                _update_frontmatter_status(path, "discarded", state_model=config.state_model)
             return DecisionResult(
                 path=rec.path, decision=decision, action=Action.DISCARD.value, archived=True
             )
@@ -223,8 +228,14 @@ def apply_decision(
     if decision == KEY_WATCHING:
         try:
             if not dry_run:
-                apply_action(doc, Action.RELABEL.value, config, to="watching")
-                _update_frontmatter_status(path, "watching")
+                apply_action(
+                    doc,
+                    Action.RELABEL.value,
+                    config,
+                    to="watching",
+                    allow_type_override=True,
+                )
+                _update_frontmatter_status(path, "watching", state_model=config.state_model)
             return DecisionResult(
                 path=rec.path, decision=decision, action=Action.RELABEL.value, archived=False
             )
@@ -268,7 +279,8 @@ def _format_item(doc: ScannedDoc) -> str:
     label = r.state_label or "[?]"
     name = Path(r.path).name
     flags = f" !{','.join(r.flags)}" if r.flags else ""
-    title = f" {r.title}" if r.title else ""
+    display_title = "[sensitive]" if r.sensitive else r.title
+    title = f" {display_title}" if display_title else ""
     return f"{label} {r.project}/{name} {r.age_days}d{flags}{title}"
 
 
@@ -304,36 +316,42 @@ def run_interactive_triage(
     pairs: list[tuple[ScannedDoc, str]] = []
     open_results: list[DecisionResult] = []
     quit_loop = False
-    for i, d in enumerate(docs, start=1):
-        if quit_loop:
-            break
-        wr(f"\n[{i}/{len(docs)}] {_format_item(d)}")
-        # `o` は副作用がその場で必要なので、判定ループの中で即時 dispatch する。
-        # 開いた後は同じ item で再度キーを読む（c/w/x/s/l/q のいずれかが来るまで）。
-        while True:
-            try:
-                raw = rd("  [c/w/x/s/l/o/q]? ")
-            except EOFError:
-                wr("（入力ストリーム終了 → q として終了）")
-                raw = "q"
-            key = parse_key(raw)
-            if key is None:
-                wr("  → 不明なキーです。c/w/x/s/l/o/q のいずれかを入力してください。")
-                continue
-            if key == KEY_QUIT:
-                wr("  → 中断しました（ここまでの判定だけ適用します）")
-                quit_loop = True
+    try:
+        for i, d in enumerate(docs, start=1):
+            if quit_loop:
                 break
-            if key == KEY_OPEN:
-                res = apply_decision(d, KEY_OPEN, config, dry_run=dry_run)
-                open_results.append(res)
-                if res.error:
-                    wr(f"  → 開けませんでした: {res.error}")
-                else:
-                    wr("  → 開きました。続けてキーを入力してください。")
-                continue
-            pairs.append((d, key))
-            break
+            wr(f"\n[{i}/{len(docs)}] {_format_item(d)}")
+            # `o` は副作用がその場で必要なので、判定ループの中で即時 dispatch する。
+            # 開いた後は同じ item で再度キーを読む（c/w/x/s/l/q のいずれかが来るまで）。
+            while True:
+                try:
+                    raw = rd("  [c/w/x/s/l/o/q]? ")
+                except EOFError:
+                    wr("（入力ストリーム終了 → q として終了）")
+                    raw = "q"
+                key = parse_key(raw)
+                if key is None:
+                    wr("  → 不明なキーです。c/w/x/s/l/o/q のいずれかを入力してください。")
+                    continue
+                if key == KEY_QUIT:
+                    wr("  → 中断しました（ここまでの判定だけ適用します）")
+                    quit_loop = True
+                    break
+                if key == KEY_OPEN:
+                    res = apply_decision(d, KEY_OPEN, config, dry_run=dry_run)
+                    open_results.append(res)
+                    if res.error:
+                        wr(f"  → 開けませんでした: {res.error}")
+                    else:
+                        wr("  → 開きました。続けてキーを入力してください。")
+                    continue
+                pairs.append((d, key))
+                break
+    except KeyboardInterrupt:
+        # 蓄積した pairs を捨てず、ここまでの判定を一括処理する（docstring の「終了時に
+        # 一括処理する」設計と整合させる）。EOFError は q 相当で扱っているが、Ctrl+C は
+        # 無捕捉だったため蓄積分が全消失していた。
+        wr("\n  → Ctrl+C を検知しました（ここまでの判定だけ適用します）")
 
     results = dispatch_decisions(pairs, config, dry_run=dry_run)
     wr("")

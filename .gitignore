@@ -57,6 +57,7 @@ id_ed25519
 *.env
 secrets.*
 *secret*
+!docsweep/secrets_guard.py
 *credential*
 *token*
 .netrc
@@ -71,6 +72,9 @@ secrets.*
 # docsweep の個人作業ログ（公開しない）
 docs/local/
 
+# Obsidian knowledge artifacts are not public repository content.
+/docs/obsidian/
+
 # docsweep 実行時の生成物（スキャン結果・履歴）
 INDEX.md
 INDEX.json
@@ -81,3 +85,6 @@ INDEX.json
 # それらの期待値を testdata に置くと黙って脱落する。ディレクトリ単位で明示許可。
 !**/testdata/**
 !**/tests/fixtures/**
+# === obsidian-link: managed ===
+/docs/obsidian/
+# === /obsidian-link: managed ===

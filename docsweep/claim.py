@@ -11,10 +11,10 @@ from datetime import datetime
 from pathlib import Path
 
 from .atomic import update_line
-from .detect import _FRONTMATTER_RE
 from .services.frontmatter import (
     FrontmatterValidationError,
     current_owner,
+    read_frontmatter_text,
     update_frontmatter_field,
 )
 
@@ -46,8 +46,6 @@ def _set_claimed_at(path: Path, value: str | None) -> None:
     ``services.frontmatter.ALLOWED_FIELDS`` に ``claimed_at`` を後付けで足したくないので、
     こちらは ``atomic.update_line`` で薄く行操作する。frontmatter が無いファイルは新設する。
     """
-    text = path.read_text(encoding="utf-8", newline="")
-    fm = _FRONTMATTER_RE.match(text)
     line = f"{_CLAIMED_AT_KEY}: {value}" if value else f"{_CLAIMED_AT_KEY}: "
 
     import re
@@ -57,12 +55,18 @@ def _set_claimed_at(path: Path, value: str | None) -> None:
     )
 
     def _xform(t: str) -> str:
-        m = _FRONTMATTER_RE.match(t)
-        if not m:
+        _data, body = read_frontmatter_text(t)
+        block_end = len(t) - len(body)
+        if block_end == 0:
             if value is None:
                 return t
             return f"---\n{line}\n---\n{t}"
-        inner = m.group(1)
+        block = t[:block_end]
+        first_nl = block.find("\n")
+        close = block.rfind("\n---")
+        if first_nl < 0 or close <= first_nl:
+            return t
+        inner = block[first_nl + 1:close]
         lm = field_re.search(inner)
         if lm is None:
             if value is None:
@@ -82,7 +86,7 @@ def _set_claimed_at(path: Path, value: str | None) -> None:
                 new_inner = inner[: lm.start()] + line + inner[lm.end():]
         head = "---\n"
         tail = "\n---\n" if new_inner and not new_inner.endswith("\n") else "---\n"
-        return head + new_inner + tail + t[m.end():]
+        return head + new_inner + tail + body
 
     update_line(path, transform=_xform)
 

@@ -5,7 +5,7 @@
 
 ## 重要な訂正（反映先パス）
 
-旧 proposal は `C:/dev/workshop/skills/D/SKILL.md` を反映先として記載していたが、
+旧 proposal は `D:/dev/workshop/skills/D/SKILL.md` を反映先として記載していたが、
 **`/D` は既に slash command に移行済**（`~/.claude/CLAUDE.md` の「P / S / D は slash command
 へ移行済」記述参照）。実体は `~/.claude/commands/D.md`。
 
@@ -16,7 +16,7 @@
 $EDITOR ~/.claude/commands/D.md
 ```
 
-`C:/dev/workshop/skills/D/` ディレクトリは存在しない（混同しないこと）。
+`D:/dev/workshop/skills/D/` ディレクトリは存在しない（混同しないこと）。
 
 ## 変更点
 

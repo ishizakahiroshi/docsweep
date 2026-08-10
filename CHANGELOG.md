@@ -3,6 +3,308 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
+## [Unreleased]
+
+## [0.4.0] - 2026-08-10
+
+### アップグレード時の注意
+
+- **本版の適用後に `docsweep index-rebuild` を 1 度実行することを推奨。** 索引の project 単位を
+  スキャンルートからリポジトリ（project_root）へ揃えたため、旧採番のファイル行が残る。
+  次回の `index-sync` でも自動的に掃除されるが、rebuild の方が確実。
+- `docsweep[mcp]` を使っている場合、`mcp` の下限が `1.28.1` に上がる（CVE-2026-59950 対応）。
+  古い版に固定している環境では解決に失敗し得るので、依存の pin を見直すこと。
+
+### Added
+
+- OKF v0.2 profile 駆動の frontmatter 状態分離を追加。標準 `status`（`draft` / `stable` /
+  `deprecated`）と docsweep の作業状態 `docsweep_state` を別軸で扱い、旧 `status: planned`
+  などは読み取り互換と dry-run migration を維持する。
+- `okf-check`（read-only Bundle 適合検査）と `okf-profiles` を追加。未知 type / 追加キー /
+  欠けた任意フィールド / 壊れた link は warning または受理とし、構造上の error と区別する。
+- `export --okf` が同梱 JSON profile を既定で使い、Bundle root `index.md` と v0.2 lifecycle
+  frontmatter を生成する。外部 profile は `--okf-profile` を明示した場合だけ読み込む。
+- `closeout-check`（read-only）で親 plan と child plan の関係、状態 conflict、完了条件、検証証跡、
+  manual gate、Git dirty overlap を JSON で検査できるようにした。`new plan --split` は
+  `docsweep_parent` を子へ付け、旧 plan は限定的な filename + related inference のみで互換判定する。
+- `work_dir` / `work_policy` / `secret_policy` を追加し、`new` / `capture` / MCP `capture_save` の
+  保存先を共通解決する。既定はプロジェクト相対 `docs/local`、private queue は export から除外し、
+  Git ignore / tracked 状態と秘密情報を保存前に検査する。
+
+### Changed
+
+- **cytoscape.js 3.30.0 を同梱し、graph ページの CDN 依存を解消した。** これまで graph ページだけが
+  実行時に unpkg から取得しており、オフライン環境で描画できず、利用のたびに外部サーバーへ
+  アクセスが渡っていた。`docsweep/server/static/cytoscape.min.js` として同梱し、MIT License 全文と
+  SHA-256 を `NOTICES.md` に記載した。Web UI の「このアプリについて」も CDN 節を廃して同梱一覧へ
+  統合した。なお **graph が描画されなかった原因は CDN 依存とは別**にもう 1 つあり、それは下記の
+  Fixed（inline script が CSP に拒否されていた件）で解消している。
+- profile のルールを Python ソースから分離し、`docsweep/okf_profiles/<version>.json` で管理する。
+  ローカル JSON や commit 固定の GitHub Raw URL を利用できるため、ルール更新だけなら
+  docsweep の実装 Release を必要としない。旧形式の廃止時期は別途告知する。
+- 作業記録の新規接頭辞を `plan` / `bugfix` / `pending` に整理した。個別リリースの MD は
+  `plan_release-vX.Y.Z_*.md`、再利用する手順・参照資料は `manual_*.md` / `reference_*.md` /
+  `setup_*.md` とし、旧 `manual_release-*` は履歴互換として読み取る。
+- `apply --action relabel` / `promote` / `resume` の状態変更を共通 status service 経由に寄せ、
+  H1 と `docsweep_state`（旧形式では `status`）を同期する。relabel は archive を暗黙実行しない。
+- `inject` / `init` / shipped templates / README の AI 導線を設定済み work queue 前提へ同期した。
+
+### Security
+
+- **`docsweep[mcp]` の範囲を `mcp>=1.28.1,<2` にした。** 従来の `mcp>=1.0` では
+  CVE-2026-59950（fix: 1.28.1）を含む版が install され得た（2026-07-21 監査 F-06）。
+  上限を切ったのは **mcp 2.0.0 で `mcp.server.fastmcp` が無くなり、`docsweep mcp` が
+  import 時点で落ちる**ため（上限なしだと新規 install が 2.0.0 を掴んで即座に壊れる）。
+  2.0 系への対応は次の版で行う。
+
+### Fixed
+
+- **Web UI の graph / brief / capture の 3 ページが、自分自身の CSP に拒否されて
+  機能していなかったのを修正した。** サーバーは全レスポンスに `script-src 'self'`
+  （`'unsafe-inline'` なし）を付けているのに、この 3 ページだけ処理を inline `<script>`
+  （brief は `onclick=` も）で書いていた。ブラウザは実行を拒否するが**画面には何のエラーも
+  出ない**ため、症状は「graph が真っ白」「brief のコピー ボタンが無反応」「capture が
+  生成ボタンを押しても何も起きない」という**黙った機能停止**だった。処理を
+  `/static/{graph,brief,capture}.js` へ出し、データは `<script type="application/json">`
+  （実行されないので CSP の対象外）と `data-*` 属性で渡す形に統一した。
+  template に inline script / inline イベント属性が入ったら落ちるテストを追加している。
+- **`.gitignore` が `docs/local/`（末尾スラッシュ）のとき、新規プロジェクトの 1 本目が
+  「private work queue が Git ignore されていません」で作れなかったのを修正した。**
+  `git check-ignore` は実在しないパスをディレクトリと判断できないため、queue が未作成の
+  初回だけディレクトリ限定パターンに一致しなかった。docsweep 自身のテンプレートと
+  ドキュメントが `docs/local/` 表記なので、手順どおり設定した利用者が必ず踏む経路だった。
+  末尾スラッシュ付きでも問い合わせるようにした。
+- **`fix-conflict --prefer h1` が H1 の値を書き戻せていなかったのを修正した。** 書き戻す値に
+  「frontmatter > H1 > filename」で解決済みの state を使っていたため、frontmatter がある
+  conflict では **frontmatter 自身の値を自分に書き戻すだけ**になり、`[ok]` を報告しながら
+  1 文字も直らなかった（0.3.1 で直したのは `--path` の絞り込み側だけで、この本体は残っていた）。
+  H1 の値を本文から取り直すようにし、既に同値なら書き込まないようにした。
+- **frontmatter を 1 フィールド書き換えるたびに、本文との間の空行が消えていたのを修正した。**
+  frontmatter を判定する正規表現の閉じ `---` の後ろが `\s*` で、直後の空行まで飲み込んでいた。
+  tracked な docs では relabel のたびによけいな差分が出ていた。
+- **現行の OpenAI API キー形式（`sk-proj-…` / `sk-svcacct-…`）を秘密情報スキャンが
+  検出できていなかったのを修正した。** 旧パターンが `sk-` の直後に英数 20 文字以上を
+  要求しており、途中に `-` が入る現行形式は 1 件も一致しなかった（`secret_policy: block`
+  でも素通りしていた）。併せて Slack / Google API key / Stripe の形式を追加し、
+  `PRIVATE KEY` ブロックの検出をアルゴリズム名の列挙から一般化した（DSA / PGP / ENCRYPTED を含む）。
+- **`secret_policy` に未知の値（設定の綴り違い等）を渡すと、block が黙って warn に
+  なっていたのを修正した。** `off` 以外は `block` として扱う（fail-closed）。無効化できるのは
+  明示的な `off` だけになった。
+- **private work queue の保護を互換 fallback で外すときに、黙って外していたのをやめた。**
+  `work_dir` / `work_policy` が未設定の既存利用者では private queue の検査結果が error から
+  取り除かれるが、その内容が警告としても残らず「保護されている」と誤解できる状態だった。
+  落とした検査結果は理由と明示方法つきで warning に残す。`export --okf` も同様に、
+  work_policy=private の queue を含めた場合は対象プロジェクト名つきで警告し、
+  除外した場合は件数を通知する（黙って含めない・黙って減らさない）。
+- **`work_dir` を junction / symlink でリポジトリ外へ逃がした構成で、その作業記録が
+  別プロジェクトの持ち物として登録されていたのを修正した。** `docs/local` をリンク化すると
+  `Path.resolve()` がリポジトリの外へ抜け、実体側から上へ辿っても project marker が見つからず、
+  `detect_project_root` の fallback が「スキャンルート直下の先頭セグメント」を project にしていた。
+  一方 cwd 判定は実体ディレクトリを見るので別名になり、**`docsweep brief` がエラーも警告も出さずに
+  0 件を返していた**（実測: 未完 65 件のリポジトリで 0 件。同じ配置の 20 リポジトリすべてが該当）。
+  `work_dir` は「そのプロジェクトの作業キュー」と宣言済みの設定なので、実体パスから宣言元
+  プロジェクトへ引き戻す対応表を作り、project 判定の入口で marker 走査より先に引くようにした。
+  同じ実体を 2 つのプロジェクトが `work_dir` として宣言している場合は、**黙って片方を採らず
+  対応表から外す**（どちらが正しいか機械には決められないため）。通常構成（`docs/local` が実体）の
+  挙動は変わらない。
+- **索引の project 単位をスキャンルートからリポジトリ（project_root）へ揃えた。**
+  索引経由の `WHERE project_id = ?` はスキャンルート名で、索引なしフォールバックは
+  `FileRecord.project`（= リポ名）で絞っており、**同じ `--project <リポ名>` が経路に
+  よって別の列と比較されていた**。索引が有効だと `docsweep triage --project mer` が
+  エラーも警告も出さずに 0 件を返し、「残作業なし」と誤読する状態だった。
+  併せて `projects.root_path` は project_root、`files.rel_path` は project_root 相対に
+  なる。副作用として、basename が同じスキャンルート（`D:/dev` と `C:/Users/x/dev`）が
+  同一 project_id に潰れて互いの登録を消し合う問題も解消した（実測で
+  `files_added: 639 / files_deleted: 639 / files_unchanged: 0` だった差分同期が、
+  `files_unchanged: 641` の真の no-op になった）。処理順次第で索引が空のまま終わり得た
+  危険もなくなる。
+  **本修正の適用後は `docsweep index-rebuild` を 1 度実行することを推奨**（旧採番の
+  ファイル行は次回の `index-sync` でも自動的に掃除されるが、rebuild の方が確実）。
+  掃除した時は stderr に 1 行だけ通知する。空になった project 行は自動削除せず、
+  従来どおり `docsweep index-sync --prune-projects` に委ねる。
+  `--prune-projects` の現行 ID 算出もスキャンルート単位から「今回の走査で見つかった
+  全 project」へ追従させた（直し忘れると生きている project が孤児と誤判定されて
+  CASCADE 削除される）。
+- `index-sync` / `index-rebuild` の全走査を DB 書き込みより前に完了させるようにした。
+  `index-rebuild` は `DELETE FROM files` の直後に走査ループへ入っていたため、走査中に
+  落ちると索引が不完全なまま残っていた（下記 junction 問題で実際に壊れた）。
+- **`docsweep fix-conflict --path` が効いていなかったのを修正。** `--path` の dest が
+  `_add_scope_args` の positional `paths`（スキャンルート）と衝突し、positional 側の
+  既定値 `[]` が `append` の結果を潰していたため、**1 件だけ指定したつもりで全 conflict が
+  処理対象になっていた**（`--prefer` の向きが合わない conflict まで巻き込むと、完了済み
+  plan が未着手へ戻る誤修正になる）。dest を分離し、併せて渡されたパスを
+  `resolve().as_posix()` で正規化して Windows のバックスラッシュ表記でも一致するようにし、
+  1 件も一致しなかった指定は stderr に警告するようにした（黙って「対象なし」で終わると
+  誤指定に気づけない）。
+- `index-sync` / `index-rebuild` が、スキャンルート配下に junction / symlink があると
+  `ValueError: '...' is not in the subpath of '...'` で中断していたのを修正。
+  `FileRecord.path` は `resolve()` 済みのためリンク先がルート外の実体パスに解決され、
+  `relative_to(root)` が失敗していた。ルート相対が取れない場合は実体の絶対パスを
+  `rel_path` の識別子に使う（表示・移送に使う絶対パスは従来どおり `abs_path` 列を参照する
+  ため実害はない）。`index-rebuild` は `DELETE FROM files` の直後にこのループへ入るので、
+  中断すると索引が不完全なまま残っていた。
+
+## [0.3.1] - 2026-07-18
+
+v0.3.0 patch。`.docsweep/backup/` 経由で `docs/local/*.md`（家宣言 private）が
+公開リポの origin/main に意図せず到達する漏洩事故が実際に発生した（many-ai-cli /
+offline-md-editor-viewer / PlainSheet / ShotTTL）ため、書き込み前 backup 機構を
+根本から撤去して漏洩経路そのものを消した。同時に `manual_release-*.md` を sweep 対象
+type として正式認識した。削除したのは全て内部ヘルパで CLI/MCP の外向き API は無変更。
+
+### Added
+
+- `manual_release-*.md` を内蔵の `manual_release` type として認識し、`[完了]` / `[廃止]`
+  に達したリリース記録を通常の `docsweep sweep` で自動 archive できるようにした。
+
+### Fixed
+
+- **`.docsweep/backup/` 経由の docs/local 漏洩を根本対処**。書き込み前に
+  `.docsweep/backup/<name>.<ts>` へ md 丸コピーを 30 日保持する `atomic.backup()` 機構を
+  丸ごと撤去し、`take_backup` 引数・`backup_dir_for` / `_ensure_gitignored` /
+  `_cleanup_backups` および関連定数（`BACKUP_DIR_NAME` / `BACKUP_RETENTION_SECONDS` /
+  `GITIGNORE_MARK` / `GITIGNORE_RULE`）を削除。
+  背景: 実質 99% の書き込みは `update_line` 経由の 1 行差分（H1 ラベル `[完了]` 化・
+  `due:` 差替）で、その世代を md 全文で残すのは過剰。加えて `.docsweep/backup/` を
+  gitignore し忘れた公開リポで `docs/local/*.md`（非公開ポリシー宣言済み）が意図せず
+  push される事故が実際に発生した（many-ai-cli / offline-md-editor-viewer など）。
+  復元は git 側の履歴に一本化し、docsweep はプロジェクト空間内に何も生成しない。
+  外部利用者向け API（CLI サブコマンド / MCP tool）は無変更、削除したのは全て内部
+  ヘルパのため **v0.3.1（patch）** に留める。既存ユーザーは各プロジェクトの
+  `.docsweep/backup/` を手動削除して構わない（`state.json` は温存）。
+
+## [0.3.0] - 2026-07-16
+
+2026-07-16 の ai-audit-prompts / ultracode 監査（52 findings 検出）と、その進言事項 15 件を
+全消化した「監査シリーズ完結版」。critical / high の security fix、Cookie 認証への移行、
+`cli.py` / `inject.py` の分割 refactor を含む minor bump。互換性維持: URL クエリ認証は
+hybrid 経路として残る（v0.4.x で廃止予定）。
+
+### Security
+
+- **[critical]** capture 経路（`POST /api/capture/save` と MCP `capture_save`）の任意ファイル
+  書き込みを塞いだ。`save_drafts` に `target_dir` のスキャンルート境界チェックと
+  `suggested_filename` の basename 化・`.md` 拡張子検証を導入し、`../evil.md` 系の
+  トラバーサルと絶対パス書き込みを拒否する（`CaptureScopeError`）。**トークン漏洩時に
+  スタートアップ / 認証情報 / cron 等へ任意書き込みできた実質 RCE 経路を除去**。
+- **[medium]** capture 画面（`server/templates/capture.html`）の innerHTML 経路で
+  `d.kind` / `d.suggested_filename` を `escapeHtml` 未通しだった箇所を修正（XSS 除去）。
+- Web UI 認証を **HttpOnly / SameSite=Strict Cookie と `x-docsweep-token` ヘッダへ移行**。
+  初回の `?token=` 付き URL は Cookie へ交換後に token 無し URL へ redirect する
+  hybrid モード（URL クエリ認証は v0.4.x で完全廃止予定・本版はその告知フェーズ）。
+- `POST /api/config/roots` を `--allow-root-mutation` 起動フラグで守るようになった。
+  未指定なら 403、指定時も `/`・`C:\`・HOME 直下の追加は allowlist で常時拒否
+  （トークン漏洩時のスキャン範囲拡張＝任意 .md 読取／書換の連鎖を防ぐ）。
+- `docsweep/server/sanitize.py` の stdlib HTMLParser フォールバック（88 行）を削除し、
+  `nh3` を `web` extras の必須依存に。パーサ実装差に依存した bypass 余地を除去。
+
+### Added
+
+- **CI ワークフロー**（`.github/workflows/ci.yml`）を新設。Python 3.10 / 3.12 マトリクスで
+  `pytest` / `ruff check` / `mypy` を回す。mypy は段階導入のため `continue-on-error` で
+  警告扱い（既存コードでの初回真っ赤を回避）。
+- `--allow-root-mutation` CLI フラグ（上記 Security の項参照）。
+- `[project.optional-dependencies].all-lite` extras 新設。`resurrect`（torch/CUDA を
+  引きずる GB 級）を除いた実用最小構成（`web,review,mcp,watch`）。大半のユーザーは
+  こちらで足りる想定。
+- `services/frontmatter.py` に `read_frontmatter(path)` / `read_frontmatter_text(text)` の
+  read API を追加。既存 9 モジュールに散っていた `_FRONTMATTER_RE` 直接利用を services
+  内に集約するための基盤（下記 Refactor 参照）。
+- `services/frontmatter.py` に `FrontmatterBlockStyleError` を追加し、手書き block-style
+  list（`tags:\n  - a\n  - b`）を検出したら書き換えを拒否（フロー記法前提の 1 行置換で
+  継続行が孤立し YAML パースが壊れる事故を予防）。
+- `migrate-frontmatter` を「素の md を OKF 形式に整えるフォーマッタ」へ一般化。従来は
+  frontmatter が 1 行でもあると無条件スキップだったが、OKF キー（type/status/tags/owner/
+  review_status/related/last_reviewed）が欠けている md へ**不足キーだけを追記**する
+  mode=`upgrade` を追加（`due:` だけの部分 frontmatter 等が対象。既存キーの値・行は不変・
+  H1 温存の不変条件は維持）。JSON 出力と CLI 表示に `mode` を追加。
+- inject の導線（グローバル / プロジェクト）に「新規 md の作成（OKF frontmatter 必須）」節を追加
+  （`GUIDANCE_VERSION` 3 → 4）。AI が `docsweep new` を通さず手書きすると `due:` だけの
+  最小 frontmatter になり OKF フィールドが欠落する穴を、docsweep 自身の注入ルールで塞ぐ
+  （特定の AI ツールに依存しない）。反映には `docsweep inject --global` の再実行が必要。
+- pytest を `--strict-markers --strict-config` で厳格化。未宣言 marker と設定ミスを即エラー化。
+- `[tool.mypy]` セクション追加（`ignore_missing_imports = true` / `warn_unused_ignores = true`）。
+- `[tool.ruff.lint].select` を `E,F,I,UP,B,SIM,RUF` に拡張（バグ検出系 PLE/PIE は次版で
+  段階導入予定）。
+
+### Fixed
+
+以下は 2026-07-16 監査で確定した finding のうち、最小修正で対応可能なもの 12 件。
+
+- `engine.relabel_file` を `write_atomic` 経由へ寄せて、atomic.py の宣言（「全ての書き込み
+  API はこのヘルパ経由で MD を更新する」）と整合。バックアップと原子的差し替えが効くように
+  なり、Web UI 編集中の md を CLI/MCP 側から書き換える race が壊れにくくなる。（A-01）
+- `config.load_config` が `postpone_warn_threshold` に文字列や null が入った YAML を読ませ
+  られると `ValueError` で全コマンドが起動不能になっていたのを、`_safe_int` フォールバック
+  に修正（既定値 3 / 5 へ落とす）。（A-02）
+- `docsweep auto-triage --apply` が対象 JSON の欠損や破損で生の traceback を吐いていたのを、
+  `FileNotFoundError` / `JSONDecodeError` / `UnicodeDecodeError` を捕捉して exit 2 に修正。
+  （A-03）
+- 空 `due:` 行（値なし）を含む md への `update_due` で `due:` キーが重複挿入され YAML
+  パーサ依存の last-wins になっていたのを、`_DUE_LINE_RE` を `[ \t]` 空白限定に修正して
+  1 本置換に。（B-01）
+- `inject.save_manifest` を tmp → `os.replace` のアトミック書き込みに変更。inject/eject 中の
+  プロセス停止で `injected.json` が truncate → 全プロジェクトの注入履歴（block ハッシュ・
+  preset_version）が事実上失われる事故を防止。（B-04）
+- `graph` の node id で複数プロジェクトの同名 md（例: 各プロジェクトの `plan_v0.1.md`）が
+  basename 衝突していたのを、**衝突時のみ** `project/basename` の複合キーに昇格させる部分
+  互換方式で修正（衝突なしの通常ケースは basename のまま・後方互換）。（C-02）
+- `brief` の `yesterday_done` が age_days 降順（＝古い順）になっていたのを mtime 降順
+  （＝新しい順）に修正。24h ウィンドウ内での自然な並び順に。（C-03）
+- `timeline._resolve_date` が `rec.mtime` None のレコード 1 件で TypeError → timeline 全体が
+  落ちていたのを、`("", "unknown")` フォールバックに修正。（C-04）
+- 対話 `triage --review` を Ctrl+C で中断すると蓄積した判定が全ロスしていたのを、
+  `KeyboardInterrupt` を捕捉してここまでの pairs を dispatch するよう修正
+  （EOFError と対称の挙動に）。（C-05）
+- `atomic.backup` のファイル名 suffix を `time.time()` → `time.time_ns()` に上げ、同一秒内
+  2 回書きで前世代を上書きする問題を修正。（A-05）
+
+### Changed / Refactor
+
+- `docsweep/cli.py`（2311 行）を `docsweep/cli/` パッケージに分割。`cli/parser.py`
+  （argparse 定義）と `cli/commands/*.py`（読取系 / 書込系 / 特殊系）に責務分離。
+  公開エントリ `docsweep.cli:main` と既存 `from docsweep.cli import ...` は `__init__.py`
+  の re-export で完全互換。（M-06）
+- `docsweep/inject.py`（828 行）を `docsweep/inject/` パッケージに分割。`blocks.py` /
+  `manifest.py` / `agent_claude.py` / `agent_codex.py` / `api.py` の 5 モジュールへ責務分離。
+  公開 API（`inject` / `eject` / `inject_global` / `eject_global` / `MANIFEST_PATH` / etc）は
+  `__init__.py` から re-export され後方互換 100%。（M-10）
+- **frontmatter 読み書き API を `services/frontmatter.py` に一本化**。9 モジュール
+  （`claim.py` / `context.py` / `related.py` / `migrate.py` / `timeline.py` / `fix_conflict.py` /
+  `services/due.py` 他）に散っていた `_FRONTMATTER_RE` 直接利用を services 内に集約。
+  `services/due._replace_or_insert_due` は廃し、`services/frontmatter.update_frontmatter_field`
+  に統合。9 箇所の drift（`migrate.py:32` が「厳密版が必要」と告白していた既知の負債）を
+  解消。（M-07 / M-08）
+
+### Tests
+
+- 97 テスト追加（既存 535 → 632）。内訳:
+  - `tests/test_audit_fixes_2026_07_16.py`（16 件）: 上記 Fixed の再現テスト
+  - `tests/test_server_routes_extras.py`（17 件）: `/graph` `/resurrect` `/brief` `/cross`
+    `/capture` の 200 / 401 / エラー系 smoke
+  - `tests/test_cli_smoke.py`（55 件）: 全 CLI サブコマンドの `--help` exit 0 smoke
+  - `tests/test_mcp_tools.py` に read 系 smoke 7 件追記
+    （`route_intent` / `doctor` / `day` / `list_projects` / `set_project_enabled` /
+    `inject_global` / `eject_global`）
+  - `tests/test_services_frontmatter.py` に block 記法検出テスト 2 件追記
+- Phase 2 (L-01/02/03/04/05) の追加分と合わせて最終 **650 テスト green**。
+
+## [0.2.1] - 2026-07-04
+
+### Fixed
+
+- `serve` を Ctrl+C で停止した際に KeyboardInterrupt のスタックトレースが出ていたのを
+  1 行の停止メッセージに変更（Python 3.14 の asyncio.runners 再送出を捕捉）。
+- frontmatter と H1 ラベルの status 食い違い warning が Web UI の描画のたびに
+  繰り返し出力されていたのを、同一 (path, message) につきプロセス内 1 回に抑制
+  （矛盾自体は従来どおり needs_fix フラグで可視化され続ける）。
+- 看板左上のロゴがファビコンと異なる「DS」テキストアイコンだったのを、
+  favicon.svg と同一画像に統一。
+- 狭幅ウィンドウ（埋め込みブラウザ等）でトップバーの「再スキャン」ボタンや編集ペインの
+  「プレビュー/編集」タブに `white-space: nowrap` が無く、文字が折り返して縦積みに
+  なっていたのを修正。900px 以下では看板と編集ペインを上下 2 段に、640px 以下では
+  3 列カードを 1 列に切り替えるレスポンシブ対応も追加。
+
 ## [0.2.0] - 2026-07-03
 
 ### Added

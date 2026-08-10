@@ -41,6 +41,48 @@ def test_update_status_rewrites_h1_label(tmp_path: Path):
     assert "本文。" in body  # 本文は触らない
 
 
+def test_update_status_changes_docsweep_state_not_okf_lifecycle(tmp_path: Path):
+    proj = _setup_project(tmp_path)
+    f = proj / "plan_a.md"
+    f.write_text(
+        "---\n"
+        "type: plan\n"
+        "status: stable\n"
+        "docsweep_state: planned\n"
+        "---\n"
+        "# [計画] テスト\n",
+        encoding="utf-8",
+    )
+    cfg = _cfg(tmp_path)
+
+    res = update_status(f, "in-progress", project_root=proj, config=cfg, file_type="plan")
+
+    body = f.read_text(encoding="utf-8")
+    assert res.frontmatter_field == "docsweep_state"
+    assert "status: stable" in body
+    assert "docsweep_state: in-progress" in body
+
+
+def test_update_status_does_not_overwrite_unknown_producer_status(tmp_path: Path):
+    proj = _setup_project(tmp_path)
+    f = proj / "plan_a.md"
+    f.write_text(
+        "---\n"
+        "type: plan\n"
+        "status: published-by-other-tool\n"
+        "---\n"
+        "# [計画] テスト\n",
+        encoding="utf-8",
+    )
+    cfg = _cfg(tmp_path)
+
+    update_status(f, "in-progress", project_root=proj, config=cfg, file_type="plan")
+
+    body = f.read_text(encoding="utf-8")
+    assert "status: published-by-other-tool" in body
+    assert "docsweep_state: in-progress" in body
+
+
 def test_update_status_resets_postpone_on_planned_to_inprogress(tmp_path: Path):
     proj = _setup_project(tmp_path)
     f = proj / "plan_a.md"

@@ -108,7 +108,7 @@ def save(project_root: Path, doc: StateDoc) -> None:
     p = state_path(project_root)
     p.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(doc.to_dict(), ensure_ascii=False, indent=2) + "\n"
-    write_atomic(p, content, take_backup=False)
+    write_atomic(p, content)
 
 
 def _rel_key(project_root: Path, abs_path: Path) -> str:

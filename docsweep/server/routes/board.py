@@ -12,11 +12,10 @@
 
 from __future__ import annotations
 
-import secrets
 from datetime import date
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
@@ -26,19 +25,12 @@ from ...inject import list_injected
 from ...models import Flag
 from ...presets import DEFAULT_PRESET, PRESETS
 from ...state import get_postpone_count
+from ..security import check_token
 
 _DIR = Path(__file__).parent.parent
 TEMPLATES = Jinja2Templates(directory=str(_DIR / "templates"))
 
 router = APIRouter()
-
-
-def _check_token(request: Request, token_q: str | None) -> None:
-    """app.state.docsweep.token と照合（既存 _check_token と同等の振る舞い）。"""
-    state = request.app.state.docsweep
-    supplied = token_q or request.headers.get("x-docsweep-token")
-    if not supplied or not secrets.compare_digest(supplied, state.token):
-        raise HTTPException(status_code=403, detail="invalid or missing token")
 
 
 def _scope_lang(request: Request, lang: str | None) -> str:
@@ -91,7 +83,14 @@ def _column_key(rec, today: date) -> str:
     return "future"
 
 
-def _card_view(rec, config, backref_count: int = 0, t: dict | None = None) -> dict:
+def _card_view(
+    rec,
+    config,
+    backref_count: int = 0,
+    t: dict | None = None,
+    *,
+    link_progress: str | None = None,
+) -> dict:
     """テンプレートに渡すカード dict（path/state/期日/postpone を整形）。"""
     from ..i18n import get_messages
 
@@ -133,8 +132,9 @@ def _card_view(rec, config, backref_count: int = 0, t: dict | None = None) -> di
         "type": file_type,
         "state": rec.state,
         "state_label": rec.state_label or "[?]",
-        "title": rec.title,
-        "summary": rec.summary,
+        "title": "[sensitive]" if rec.sensitive else rec.title,
+        "summary": "[sensitive]" if rec.sensitive else rec.summary,
+        "sensitive": rec.sensitive,
         "due": rec.due,
         "due_label": due_label,
         "due_kind": due_kind,
@@ -151,6 +151,7 @@ def _card_view(rec, config, backref_count: int = 0, t: dict | None = None) -> di
         "related_count": len(rec.related),
         "last_reviewed": rec.last_reviewed,
         "backref_count": backref_count,
+        "link_progress": link_progress,  # UX W3 / P8
     }
 
 
@@ -163,6 +164,53 @@ def _backref_map(records) -> dict[str, int]:
     from ...related import backref_counts
 
     return backref_counts(list(records))
+
+
+def _linkcheck_map(config, records) -> dict[str, str]:
+    """plan path → progress_hint（失敗時は空 dict）。"""
+    try:
+        from ...linkcheck import linkcheck
+    except Exception:  # noqa: BLE001
+        return {}
+    try:
+        # 全 plan は重いので open plan のみ（上限 40）
+        plans = [
+            r for r in records
+            if r.type == "plan" and r.state not in {"done", "discarded"}
+        ][:40]
+        if not plans:
+            return {}
+        out: dict[str, str] = {}
+        for lc in linkcheck(config):
+            out[lc.plan_path] = lc.progress_hint
+            if len(out) >= 40:
+                break
+        return out
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _filter_records_by_profile(records, config, profile: str | None):
+    """Cookie の profile 名で roots 配下に絞る（UX W2 / P41）。"""
+    if not profile or profile in ("", "all"):
+        return records
+    roots = (config.profiles or {}).get(profile)
+    if not roots:
+        return records
+    norms = []
+    for r in roots:
+        try:
+            norms.append(Path(r).resolve().as_posix().lower())
+        except OSError:
+            norms.append(str(r).replace("\\", "/").lower())
+    if not norms:
+        return records
+    out = []
+    for rec in records:
+        pr = (rec.project_root or "").replace("\\", "/").lower()
+        if any(pr == n or pr.startswith(n.rstrip("/") + "/") for n in norms):
+            out.append(rec)
+    return out
 
 
 def _columns(records, config, t: dict | None = None) -> dict:
@@ -178,9 +226,15 @@ def _columns(records, config, t: dict | None = None) -> dict:
         "archivable": [],
     }
     backrefs = _backref_map(records)
+    lc_map = _linkcheck_map(config, records)
     for rec in records:
         col = _column_key(rec, today)
-        card = _card_view(rec, config, backref_count=backrefs.get(rec.path, 0), t=t)
+        card = _card_view(
+            rec, config,
+            backref_count=backrefs.get(rec.path, 0),
+            t=t,
+            link_progress=lc_map.get(rec.path),
+        )
         if col == "active_future":
             # 「実行中で未来期日」は 🟢 実行中列に入れる。
             cols["active"].append(card)
@@ -223,10 +277,100 @@ def _health(records, top_n: int = 5) -> list[dict]:
     return rows[:top_n]
 
 
+def _index_freshness() -> dict:
+    """index.db の鮮度（UX W1 / P61）。board トップバー表示用。"""
+    from datetime import datetime, timezone
+
+    from ...index import db_path
+
+    path = db_path()
+    if not path.is_file():
+        return {
+            "exists": False,
+            "path": str(path),
+            "age_hours": None,
+            "level": "warn",  # missing
+            "label": "index 未作成",
+        }
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return {
+            "exists": False,
+            "path": str(path),
+            "age_hours": None,
+            "level": "warn",
+            "label": "index 読めず",
+        }
+    age_h = max(0.0, datetime.now(timezone.utc).timestamp() - mtime) / 3600.0
+    if age_h >= 168:
+        level, label = "bad", f"index {age_h:.0f}h 前"
+    elif age_h >= 24:
+        level, label = "warn", f"index {age_h:.0f}h 前"
+    else:
+        level, label = "ok", f"index {age_h:.1f}h 前"
+    return {
+        "exists": True,
+        "path": str(path),
+        "age_hours": round(age_h, 2),
+        "level": level,
+        "label": label,
+    }
+
+
+def _today_pick_view(config, t: dict | None = None) -> dict | None:
+    """brief の today_pick を board 固定ピン用に取る（UX W1 / P6）。
+
+    横断 roots では all_projects のうち score 最大の 1 件をピンする。
+    """
+    try:
+        from ...brief.service import build_brief
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        brief = build_brief(config, all_projects=True)
+    except Exception:  # noqa: BLE001
+        return None
+    best = None
+    best_score = -1.0
+    for proj in brief.projects:
+        tp = proj.today_pick
+        if not tp:
+            continue
+        sc = tp.get("score") or {}
+        total = float(sc.get("total", 0.0)) if isinstance(sc, dict) else 0.0
+        if best is None or total > best_score:
+            best = tp
+            best_score = total
+    if not best:
+        return None
+    sc = best.get("score") if isinstance(best.get("score"), dict) else {}
+    return {
+        "path": best.get("path"),
+        "name": Path(best.get("path") or "").name,
+        "project": best.get("project") or "",
+        "state_label": best.get("state_label") or "[?]",
+        "title": best.get("title") or "",
+        "summary": best.get("summary") or "",
+        "rel": best.get("rel") or "",
+        "age_days": best.get("age_days"),
+        "score_total": (sc or {}).get("total"),
+        "score": sc,
+    }
+
+
 def _board_data(request: Request, t: dict | None = None) -> dict:
     state = request.app.state.docsweep
     result = run_scan(state.config)
-    cols = _columns(result.records, state.config, t=t)
+    profile = request.cookies.get("docsweep_profile") or "all"
+    records = _filter_records_by_profile(result.records, state.config, profile)
+    cols = _columns(records, state.config, t=t)
+    try:
+        from ...auto_triage import suggest_transitions
+        suggestion_count = len(suggest_transitions(state.config).suggestions)
+    except Exception:  # noqa: BLE001
+        suggestion_count = 0
+    profiles = sorted((state.config.profiles or {}).keys())
     return {
         "version": __version__,
         "cols": cols,
@@ -235,7 +379,12 @@ def _board_data(request: Request, t: dict | None = None) -> dict:
         # _card.html がカード色分けで参照（.docsweep.yaml の due: ブロックで上書き可）。
         "postpone_warn": state.config.due_warn_threshold,
         "postpone_alert": state.config.due_alert_threshold,
-        "health": _health(result.records),
+        "health": _health(records),
+        "today_pick": _today_pick_view(state.config, t=t),
+        "index_freshness": _index_freshness(),
+        "profile": profile,
+        "profiles": profiles,
+        "suggestion_count": suggestion_count,
     }
 
 
@@ -245,7 +394,7 @@ def board(
     token: str = Query(default=""),
     lang: str | None = None,
 ):
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     from ..i18n import get_messages
 
     resolved_lang = _scope_lang(request, lang)
@@ -270,7 +419,7 @@ def board_fragment(
     lang: str | None = None,
 ):
     """htmx 用パーシャル（カラム本体だけを差し替える）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     from ..i18n import get_messages
 
     resolved_lang = _scope_lang(request, lang)
@@ -294,7 +443,7 @@ def board_triage_json(
     token: str = Query(default=""),
 ):
     """JSON 版（MCP / CLI 検証用に同じ表示データを返す）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     data = _board_data(request)
     return JSONResponse(
         {
@@ -304,11 +453,56 @@ def board_triage_json(
     )
 
 
+@router.get("/api/cards/context")
+def card_context(
+    request: Request,
+    token: str = Query(default=""),
+    path: str = Query(...),
+    allow_sensitive: bool = Query(default=False),
+):
+    """作業開始パック: path の context 文字列を返す（UX W1 / P7）。"""
+    from ...context import collect_context, render_context
+    from ...secrets_guard import SensitiveContentError
+    from ..security import resolve_under_roots
+
+    check_token(request, token, status_code=403, detail="invalid or missing token")
+    cfg = request.app.state.docsweep.config
+    resolved = resolve_under_roots(path, cfg.roots)
+    if resolved is None:
+        raise HTTPException(status_code=403, detail="path out of scope or not .md")
+    # collect_context は scan の path 表記（posix 寄り）と一致させる
+    candidates = [
+        resolved.as_posix(),
+        str(resolved),
+        str(resolved.resolve()),
+    ]
+    last_err: Exception | None = None
+    for cand in candidates:
+        try:
+            bundle = collect_context(cand, cfg, allow_sensitive=allow_sensitive)
+            text = render_context(bundle, fmt="markdown")
+            return JSONResponse({
+                "path": resolved.as_posix(),
+                "text": text,
+                "chars": len(text),
+            })
+        except SensitiveContentError as e:
+            raise HTTPException(status_code=403, detail=str(e)) from e
+        except (FileNotFoundError, ValueError) as e:
+            last_err = e
+            continue
+    raise HTTPException(
+        status_code=404,
+        detail=str(last_err) if last_err else "not found",
+    )
+
+
 @router.get("/api/cards/raw")
 def card_raw(
     request: Request,
     token: str = Query(default=""),
     path: str = Query(...),
+    allow_sensitive: bool = Query(default=False),
 ):
     """編集ペイン用に生 MD と現在の mtime を返す（読み取り専用・スコープ境界チェック）。
 
@@ -317,7 +511,7 @@ def card_raw(
     """
     from ..security import resolve_under_roots
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
     resolved = resolve_under_roots(path, cfg.roots)
     if resolved is None:
@@ -327,9 +521,22 @@ def card_raw(
     if resolved.suffix.lower() != ".md":
         raise HTTPException(status_code=400, detail="only .md files are readable here")
     try:
-        text = resolved.read_text(encoding="utf-8", newline="")
+        text = resolved.open("r", encoding="utf-8", newline="").read()
     except OSError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+    from ...config import config_for_project
+    from ...secrets_guard import SensitiveContentError, enforce_secret_policy
+    from ...work_queue import find_project_dir
+    project_root = find_project_dir(config=cfg, cwd=resolved.parent)
+    effective_config = config_for_project(cfg, project_root)
+    try:
+        enforce_secret_policy(
+            text,
+            policy=effective_config.secret_policy,
+            allow_sensitive=allow_sensitive,
+        )
+    except SensitiveContentError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     return JSONResponse(
         {
             "path": resolved.as_posix(),
@@ -351,7 +558,7 @@ def card_detail(
     """
     from ..security import resolve_under_roots
 
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     state = request.app.state.docsweep
     cfg = state.config
     resolved = resolve_under_roots(path, cfg.roots)
@@ -380,7 +587,7 @@ def card_detail(
                     "type": r.type,
                     "state": r.state,
                     "state_label": r.state_label,
-                    "title": r.title,
+                    "title": "[sensitive]" if r.sensitive else r.title,
                 })
                 break
 
@@ -403,7 +610,7 @@ def label_picker_partial(
     token: str = Query(default=""),
 ):
     """ラベル選択セグメント partial（keymap.js が fetch して body に貼る）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved_lang = _scope_lang(request, None)
     return TEMPLATES.TemplateResponse(
         request, "_label_picker.html",
@@ -431,7 +638,7 @@ def change_picker_partial(
     経緯: docs/local/kanban-card-ux-options/index.html — バッジクリック動線を廃し、
     下段 3 ボタン（変更▾ / 期日更新▾ / 廃止）に全操作を集約する方針。
     """
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved_lang = _scope_lang(request, None)
     return TEMPLATES.TemplateResponse(
         request, "_change_picker.html",
@@ -439,8 +646,10 @@ def change_picker_partial(
     )
 
 
-def _settings_state(records) -> dict:
+def _settings_state(records, config=None) -> dict:
     """注入モーダル用のプロジェクト一覧 + グローバル inject 状態 + presets。"""
+    from ...excluded import is_excluded, list_known_projects, load_excluded
+
     injected = {it["path"]: it for it in list_injected()}
     projects: dict[str, dict] = {}
     for r in records:
@@ -452,7 +661,27 @@ def _settings_state(records) -> dict:
                 "injected": info is not None,
                 "preset": (info or {}).get("preset"),
                 "version": (info or {}).get("version"),
+                "enabled": not is_excluded(root),
             }
+    if config is not None:
+        try:
+            for p in list_known_projects(config):
+                if p["root"] not in projects:
+                    projects[p["root"]] = {
+                        "name": p["name"], "root": p["root"],
+                        "injected": False, "preset": None, "version": None,
+                        "enabled": p["enabled"],
+                    }
+                else:
+                    projects[p["root"]]["enabled"] = p["enabled"]
+        except Exception:  # noqa: BLE001
+            for e in load_excluded():
+                if e not in projects:
+                    projects[e] = {
+                        "name": Path(e).name, "root": e,
+                        "injected": False, "preset": None, "version": None,
+                        "enabled": False,
+                    }
     global_by_agent = {it.get("agent"): it for it in injected.values() if it.get("scope") == "global"}
     return {
         "projects": sorted(projects.values(), key=lambda x: x["name"]),
@@ -471,14 +700,14 @@ def settings_partial(
     token: str = Query(default=""),
 ):
     """⚙ 設定モーダルの中身（プロジェクト一覧 + グローバル inject タブ + presets）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     state = request.app.state.docsweep
     result = run_scan(state.config)
     return TEMPLATES.TemplateResponse(
         request, "_settings.html",
         {
             "token": state.token,
-            "settings": _settings_state(result.records),
+            "settings": _settings_state(result.records, config=state.config),
             "roots": [Path(r).as_posix() for r in state.config.roots],
             "version": __version__,
             "T": _t(request),
@@ -487,11 +716,87 @@ def settings_partial(
     )
 
 
+@router.get("/api/suggestions")
+def api_suggestions(
+    request: Request,
+    token: str = Query(default=""),
+):
+    """auto-triage 提案トレイ JSON（UX W2 / P35）。"""
+    from ...auto_triage import suggest_transitions
+
+    check_token(request, token, status_code=403, detail="invalid or missing token")
+    cfg = request.app.state.docsweep.config
+    result = suggest_transitions(cfg)
+    return JSONResponse(result.to_dict())
+
+
+@router.post("/api/suggestions/apply")
+def api_suggestions_apply(
+    request: Request,
+    token: str = Form(default=""),
+    path: str = Form(...),
+    action: str = Form(...),
+    to: str | None = Form(default=None),
+    dry_run: bool = Form(default=False),
+):
+    """提案 1 件を Accept（apply）する。"""
+    from ...auto_triage import apply_suggestions
+
+    check_token(request, token, status_code=403, detail="invalid or missing token")
+    cfg = request.app.state.docsweep.config
+    decisions = [{"path": path, "action": action, "to": to}]
+    res = apply_suggestions(cfg, decisions, dry_run=dry_run)
+    return JSONResponse(res.to_dict())
+
+
+@router.post("/api/project/toggle")
+def api_project_toggle(
+    request: Request,
+    token: str = Form(default=""),
+    root: str = Form(...),
+    enabled: str = Form(...),
+):
+    """プロジェクト ON/OFF（除外リスト）（UX W2 / P39）。"""
+    from ...excluded import disable_project, enable_project, is_excluded
+
+    check_token(request, token, status_code=403, detail="invalid or missing token")
+    want_on = str(enabled).strip().lower() in ("1", "true", "yes", "on")
+    if want_on:
+        enable_project(root)
+    else:
+        disable_project(root)
+    return JSONResponse({
+        "root": root,
+        "enabled": not is_excluded(root),
+    })
+
+
+@router.post("/api/profile")
+def api_set_profile(
+    request: Request,
+    token: str = Form(default=""),
+    profile: str = Form(default="all"),
+):
+    """看板の profile cookie を設定（UX W2 / P41）。"""
+    from fastapi.responses import JSONResponse as JR
+
+    check_token(request, token, status_code=403, detail="invalid or missing token")
+    name = (profile or "all").strip() or "all"
+    resp = JR({"profile": name})
+    resp.set_cookie(
+        "docsweep_profile", name,
+        max_age=60 * 60 * 24 * 365,
+        httponly=False,
+        samesite="lax",
+    )
+    return resp
+
+
 @router.get("/board/_partial/due_picker", response_class=HTMLResponse)
 def due_picker_partial(
     request: Request,
     token: str = Query(default=""),
 ):
     """期日変更ポップオーバー partial（keymap.js が fetch して body に貼る）。"""
-    _check_token(request, token)
+    check_token(request, token, status_code=403, detail="invalid or missing token")
     return TEMPLATES.TemplateResponse(request, "_due_picker.html", {"T": _t(request)})

@@ -25,6 +25,41 @@ def test_frontmatter_wins_over_h1():
     assert d.conflict is True
 
 
+def test_okf_lifecycle_status_is_not_docsweep_work_state():
+    text = "---\ntype: plan\nstatus: stable\n---\n# [計画] タイトル\n"
+    d = detect_status(text=text, filename="plan_x.md", sm=SM)
+    assert d.state_key == "planned"
+    assert d.source == "h1"
+    assert d.okf_status == "stable"
+    assert d.docsweep_state is None
+    assert d.conflict is False
+
+
+def test_docsweep_state_has_priority_and_reports_legacy_conflict():
+    text = (
+        "---\n"
+        "type: plan\n"
+        "status: in-progress\n"
+        "docsweep_state: watching\n"
+        "---\n"
+        "# [様子見] タイトル\n"
+    )
+    d = detect_status(text=text, filename="plan_x.md", sm=SM)
+    assert d.state_key == "watching"
+    assert d.source == "frontmatter"
+    assert d.docsweep_state == "watching"
+    assert d.okf_status == "in-progress"
+    assert any("旧 status" in warning for warning in d.frontmatter_warnings)
+
+
+def test_legacy_status_remains_readable():
+    text = "---\ntype: plan\nstatus: in-progress\n---\n# [実行中] タイトル\n"
+    d = detect_status(text=text, filename="plan_x.md", sm=SM)
+    assert d.state_key == "in-progress"
+    assert d.source == "frontmatter"
+    assert d.state_field == "legacy status"
+
+
 def test_unknown_label_is_parse_error():
     d = detect_status(text="# [なにか] タイトル\n", filename="plan_x.md", sm=SM)
     assert d.state_key is None
@@ -73,3 +108,84 @@ def test_filename_prefix():
 def test_extract_summary_skips_quote_meta():
     text = "# [計画] t\n> 最終更新: 2026-01-01\n\n## 概要\n\nこれが概要の一行目。\n二行目。\n\n## 次\n"
     assert extract_summary(text, "概要") == "これが概要の一行目。 二行目。"
+
+
+def test_html_docsweep_meta_parsed():
+    """HTML の ``<!--docsweep-meta ... -->`` を frontmatter と同格で読む（C5）。"""
+    html = (
+        "<!doctype html>\n"
+        "<!--docsweep-meta\n"
+        "type: mockup\n"
+        "status: planned\n"
+        "tags: [ui, mockup]\n"
+        "owner: alice\n"
+        "related: [plan_x.md]\n"
+        "last_reviewed: 2026-07-13\n"
+        "docsweep_policy: archive_with_release\n"
+        "-->\n"
+        "<html><body>本文</body></html>\n"
+    )
+    d = detect_status(text=html, filename="mockup_admin_2026-07-13.html", sm=SM)
+    assert d.frontmatter_type == "mockup"
+    assert d.state_key == "planned"
+    assert d.source == "frontmatter"
+    assert d.tags == ["ui", "mockup"]
+    assert d.owner == "alice"
+    assert d.related == ["plan_x.md"]
+    assert d.last_reviewed == "2026-07-13"
+    assert d.docsweep_policy == "archive_with_release"
+
+
+def test_html_docsweep_meta_never_archive():
+    """``docsweep_policy: never_archive`` が Detection に伝わる（C6 前提）。"""
+    html = (
+        "<!doctype html>\n"
+        "<!--docsweep-meta\n"
+        "type: design\n"
+        "status: watching\n"
+        "docsweep_policy: never_archive\n"
+        "-->\n"
+        "<html></html>\n"
+    )
+    d = detect_status(text=html, filename="design_ref_2026-07-13.html", sm=SM)
+    assert d.docsweep_policy == "never_archive"
+    assert d.state_key == "watching"
+
+
+def test_html_without_docsweep_meta_returns_no_state():
+    """docsweep-meta を持たない普通の HTML は state 検出できない（scan.py 側で除外される）。"""
+    html = "<!doctype html><html><body><h1>普通のページ</h1></body></html>\n"
+    d = detect_status(text=html, filename="mockup_x_2026-07-13.html", sm=SM)
+    assert d.frontmatter_type is None
+    assert d.state_key is None
+    assert d.source == "none"
+
+
+def test_html_docsweep_meta_broken_yaml_ignored():
+    """docsweep-meta の YAML が壊れていても例外を投げない（ログは既存機構任せ）。"""
+    html = (
+        "<!doctype html>\n"
+        "<!--docsweep-meta\n"
+        "type: mockup\n"
+        "tags: [a,, b\n"  # 壊れた YAML
+        "-->\n"
+        "<html></html>\n"
+    )
+    d = detect_status(text=html, filename="mockup_broken_2026-07-13.html", sm=SM)
+    assert d.frontmatter_type is None
+    assert d.state_key is None
+
+
+def test_html_docsweep_meta_invalid_policy_ignored():
+    """未知の docsweep_policy 値は無視して None（誤字で archive 挙動が変わらないよう安全側）。"""
+    html = (
+        "<!doctype html>\n"
+        "<!--docsweep-meta\n"
+        "type: mockup\n"
+        "status: done\n"
+        "docsweep_policy: keep_forever\n"  # 未知の値
+        "-->\n"
+    )
+    d = detect_status(text=html, filename="mockup_x_2026-07-13.html", sm=SM)
+    assert d.docsweep_policy is None
+    assert d.state_key == "done"

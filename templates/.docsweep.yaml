@@ -8,14 +8,19 @@
 # roots:
 #   - .
 
+# --- AI work queue (project-relative; new / capture use the same path) ---
+# work_dir: docs/local
+# work_policy: private   # private requires Git ignore and is excluded from export
+# secret_policy: block   # block high-confidence secrets; warn / off are explicit alternatives
+
 # --- SQLite 索引が走査するプロジェクトルート群（wings / C1） ---
 # 通常はグローバル ~/.docsweep/config.yaml に書く（横断索引のため）。
 # プロジェクト .docsweep.yaml で上書きするケースは稀。
 # projects:
 #   search_paths:
-#     - C:/dev/github/public/*
-#     - C:/dev/github/private/*
-#     - C:/dev/work/*
+#     - D:/dev/github/public/*
+#     - D:/dev/github/private/*
+#     - D:/dev/work/*
 #   exclude:
 #     - "**/node_modules/**"
 #     - "**/archive-vault/**"
@@ -32,6 +37,9 @@
 # 独自除外グロブ（.gitignore とは別に効く）。archive 自身は常に除外される。
 # ignore:
 #   - "**/drafts/**"
+#   - "docs/obsidian"
+#   - "**/docs/obsidian"
+#   - "**/docs/obsidian/**"
 
 # .gitignore を尊重するか（既定 true）
 # use_gitignore: true

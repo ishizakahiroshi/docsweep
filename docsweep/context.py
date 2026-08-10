@@ -13,25 +13,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import Config
+from .config import Config, config_for_project
 from .engine import run_scan
 from .models import FileRecord
 from .related import backref_records, forward_records
+from .secrets_guard import enforce_secret_policy
+from .services.frontmatter import read_frontmatter_text
 
 
 def _read_text(path: str) -> str:
     try:
-        return Path(path).read_text(encoding="utf-8", newline="")
+        return Path(path).open("r", encoding="utf-8", newline="").read()
     except (OSError, UnicodeDecodeError):
         return ""
 
 
 def _strip_frontmatter(text: str) -> str:
     """OKF frontmatter を取り除いた本文を返す（context へは本文だけ載せる）。"""
-    from .detect import _FRONTMATTER_RE
-
-    m = _FRONTMATTER_RE.match(text)
-    return text[m.end():] if m else text
+    _data, body = read_frontmatter_text(text)
+    return body
 
 
 def _parent_plan(target: FileRecord, records: list[FileRecord]) -> FileRecord | None:
@@ -57,8 +57,17 @@ class ContextBundle:
     backrefs: list[FileRecord]
 
 
-def collect_context(target_path: str, config: Config) -> ContextBundle:
-    """target_path に対する context bundle を組み立てる。"""
+def collect_context(
+    target_path: str,
+    config: Config,
+    *,
+    allow_sensitive: bool = False,
+) -> ContextBundle:
+    """target_path に対する context bundle を組み立てる。
+
+    context は本文を束ねて外へ渡す経路なので、対象・親・related の全本文を
+    レンダリング前に同じ秘密情報ポリシーで検査する。
+    """
     result = run_scan(config)
     records = list(result.records)
     target = next((r for r in records if r.path == target_path), None)
@@ -73,6 +82,14 @@ def collect_context(target_path: str, config: Config) -> ContextBundle:
     parent = _parent_plan(target, records)
     related_recs = forward_records(target, records)
     backrefs = backref_records(target, records)
+    content_records = [target, *([parent] if parent is not None else []), *related_recs]
+    for record in content_records:
+        effective = config_for_project(config, Path(record.project_root))
+        enforce_secret_policy(
+            _read_text(record.path),
+            policy=effective.secret_policy,
+            allow_sensitive=allow_sensitive,
+        )
     return ContextBundle(
         target=target, parent=parent, related_recs=related_recs, backrefs=backrefs,
     )

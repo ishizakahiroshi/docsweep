@@ -18,6 +18,7 @@ from pathlib import Path
 
 from ..config import Config
 from ..engine import scan_records
+from ..scan import detect_project_for_path
 from ..models import FileRecord, Flag
 from .score import ScoreBreakdown, score_record, tiebreak_key
 
@@ -31,8 +32,9 @@ def _short_record(rec: FileRecord, score: ScoreBreakdown | None = None) -> dict:
         "type": rec.type,
         "state": rec.state,
         "state_label": rec.state_label,
-        "title": rec.title,
-        "summary": rec.summary,
+        "title": "[sensitive]" if rec.sensitive else rec.title,
+        "summary": "[sensitive]" if rec.sensitive else rec.summary,
+        "sensitive": rec.sensitive,
         "age_days": rec.age_days,
         "due": rec.due,
         "owner": rec.owner,
@@ -125,14 +127,16 @@ def _build_for_project(
     watchouts = watchouts[:5]
 
     start, end = _yesterday_window(now)
-    yesterday: list[dict] = []
+    yesterday: list[tuple[float, dict]] = []
     for rec in records:
         if rec.state not in {"done", "discarded"}:
             continue
         if rec.mtime and start <= rec.mtime <= end:
-            yesterday.append(_short_record(rec))
-    yesterday.sort(key=lambda d: -(d.get("age_days") or 0))
-    yesterday = yesterday[:5]
+            yesterday.append((rec.mtime, _short_record(rec)))
+    # 「昨日終わったこと」は新しい順に見せる意図。以前は age_days 降順（＝古い順）で
+    # 直感と逆になっていた。24h ウィンドウ内では mtime 降順が最も自然。
+    yesterday.sort(key=lambda pair: -pair[0])
+    yesterday_dicts = [d for _, d in yesterday[:5]]
 
     stale_count = sum(1 for r in open_recs if Flag.STALE.value in (r.flags or []))
 
@@ -141,7 +145,7 @@ def _build_for_project(
         today_pick=today_pick,
         co_running=co_running,
         watchouts=watchouts,
-        yesterday_done=yesterday,
+        yesterday_done=yesterday_dicts,
         open_count=len(open_recs),
         stale_count=stale_count,
     )
@@ -169,36 +173,14 @@ def _resolve_target_projects(
 def _detect_cwd_project(config: Config) -> str | None:
     """現在ディレクトリが含まれるプロジェクトを推測する（``cwd プロジェクト`` 既定）。
 
-    まず ``config.roots`` 配下に cwd が含まれていれば、その root の name を返す。
-    git remote が使える場合はそちら優先。失敗時は None（呼び出し側で他のフォールバック）。
+    索引作成と同じ project marker の遡り規則を使う。範囲外なら None（呼び出し側で
+    他のフォールバック）。
     """
     import os
-    import subprocess
 
     cwd = Path(os.getcwd()).resolve()
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(cwd), "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=2,
-        )
-        if result.returncode == 0:
-            url = result.stdout.strip()
-            if url:
-                tail = url.rstrip("/").split("/")[-1]
-                if tail.endswith(".git"):
-                    tail = tail[:-4]
-                if tail:
-                    return tail
-    except (OSError, subprocess.SubprocessError):
-        pass
-
-    for root in config.roots:
-        try:
-            cwd.relative_to(Path(root).resolve())
-            return Path(root).name
-        except ValueError:
-            continue
-    return None
+    project_root = detect_project_for_path(cwd, config)
+    return project_root.name if project_root is not None else None
 
 
 def build_brief(

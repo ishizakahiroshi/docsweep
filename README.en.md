@@ -11,25 +11,23 @@ labels such as `[完了]` / `[計画]` / `[廃止]` are supported out of the box
 completed docs into each project's `archive/`, surfaces stale ones with a "needs decision" flag,
 and gives you a cross-project INDEX at a glance.
 
-## OKF (Open Knowledge Format) compatibility
+## OKF (Open Knowledge Format) v0.2 support
 
-docsweep adopts the **machine-readable type / status / related frontmatter** from
-[OKF (Open Knowledge Format)](https://zenn.dev/knowledgesense/articles/14a874a9f423bb).
-The YAML frontmatter at the top of each md file makes `type` / `status` / `tags` / `owner` /
-`review_status` / `related` / `last_reviewed` machine-readable, so the files stay meaningful
-even when read by tools that don't have docsweep installed.
+docsweep follows the [official OKF v0.2 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+for machine-readable Markdown frontmatter, including `type` and `status`.
+Because OKF `status` describes the document lifecycle (`draft` / `stable` / `deprecated`),
+docsweep stores its work state (`planned` / `in-progress` / `watching` / `done` /
+`discarded` / `pending`) separately in the extension field `docsweep_state`.
 
-docsweep adds only two conventions of its own:
+`type` and producer extension fields are not treated as a closed registry: unknown values are
+preserved as OKF allows them. docsweep standardizes work records as `plan` / `bugfix` /
+`pending`; `manual` / `reference` / `setup` are kept as static knowledge documents, while H1
+labels remain the human-facing view. Legacy `manual_release` files remain readable for migration.
+Legacy values such as `status: planned` remain readable; use `migrate-frontmatter --dry-run`
+and then `--apply` when you want to split an existing collection into the two axes.
 
-- **The type set is fixed to `plan` / `bugfix` / `pending`** (slightly stricter than OKF).
-  This constraint enables archive automation; arbitrary type values are treated as unmanaged.
-- **H1 status labels are kept alongside, not deprecated**. They preserve the human-facing value
-  of seeing the state the moment you open the file, and files without frontmatter fall back to
-  the H1 label (100% backward compatible).
-
-See [docs/okf-mapping.md](docs/okf-mapping.md) for the full mapping table.
-`docsweep export --okf` demonstrates that "your md files won't rot even if you leave docsweep"
-([docs/okf-export-format.md](docs/okf-export-format.md)).
+See [docs/okf-mapping.md](docs/okf-mapping.md) for the mapping table and
+[docs/okf-export-format.md](docs/okf-export-format.md) for the Bundle layout.
 
 ## Installation
 
@@ -103,7 +101,7 @@ pip install 'docsweep[all]'
 
 # Launch (always works regardless of PATH)
 python -m docsweep triage
-python -m docsweep serve --root C:\dev
+python -m docsweep serve --root D:\dev
 python -m docsweep mcp
 
 # MCP registration example (~\.claude\mcp.json) — an absolute path stays stable across Python switches
@@ -232,6 +230,9 @@ python -m docsweep capture --from file ./conv.md --save-all
 # Check consistency between a plan's "files to change" and the actual implementation
 python -m docsweep linkcheck --json
 
+# Read-only closeout check for a parent plan and its child plans
+python -m docsweep closeout-check --path docs/local/plan_<parent>.md --to watching --json
+
 # Suggest state transitions (ruleset / future LLM delegation) + bulk apply
 python -m docsweep auto-triage --suggest > decisions.json
 python -m docsweep auto-triage --apply decisions.json --dry-run
@@ -273,11 +274,20 @@ python -m docsweep review
 # Instant template generation
 python -m docsweep new plan my-topic
 python -m docsweep new bugfix crash-on-start
+python -m docsweep new plan my-topic --split 3  # add docsweep_parent to each child
 
 # Export as an OKF-compatible zip (proof that your md files won't rot if you leave docsweep)
 python -m docsweep export --okf                          # ./docsweep-okf-<date>.zip
 python -m docsweep export --okf --out /tmp/snapshot.zip  # Explicit output path
 python -m docsweep export --okf --include-archive        # Include archive/ as well
+
+# Read-only Bundle check (unknown types / extra fields / broken links are warnings)
+python -m docsweep okf-check ./bundle --json
+python -m docsweep okf-profiles
+
+# Bundled profiles are offline by default; external profiles are explicit opt-in
+python -m docsweep export --okf --okf-profile ./okf-profile.json
+python -m docsweep okf-check ./bundle --okf-profile https://raw.githubusercontent.com/<org>/<repo>/<sha>/okf.json --okf-profile-sha256 <sha256>
 
 # Inject / remove the operating rules per project (CLAUDE.md = source of truth, AGENTS.md is a pointer to it)
 python -m docsweep inject --project ./foo --preset claude-jp
@@ -308,7 +318,7 @@ bugfix:              [In Progress] → [Watching] → [Done]
          (either can branch to [Discarded] from any state)
 ```
 
-The Japanese label set (`[保留]` → `[計画]` → `[実行中]` → `[様子見]` → `[完了]` / `[対応中]` /
+The Japanese label set (`[保留]` → `[計画]` → `[実行中]` → `[様子見]` → `[完了]` /
 `[廃止]`) is supported by default and follows the same transitions.
 
 - **`[Watching]`** = fixed but resting. **Never auto-archived** (protected as the queue awaiting
@@ -366,6 +376,25 @@ For a **one-off scan** you can also pass positional arguments without writing an
 ```bash
 python -m docsweep triage ~/dev/foo ~/projects/bar
 ```
+
+### Work queue and private documents
+
+`new`, `capture --save-all`, and MCP `capture_save` use the same project-relative `work_dir`.
+The default is `docs/local`; the path does not silently change based on whether `docs/` already exists.
+
+```yaml
+work_dir: docs/local       # project-relative; for example docs/ai
+work_policy: private       # check Git ignore / tracked state before writing
+secret_policy: block       # reject high-confidence secrets; warn / off are explicit choices
+```
+
+The precedence is CLI `--work-dir` / `--work-policy` / `--secret-policy`, then project config,
+then global config. A private queue is excluded from `export` by default, while `brief` / `triage`
+still see it even when Git ignores it. Secret warnings and JSON / UI output never include the content
+or a value fragment. Use `--allow-sensitive` only when explicitly necessary.
+
+Start with `python -m docsweep init`; then use `python -m docsweep inject` and
+`python -m docsweep new plan <topic>` in each project.
 
 ## AI agent integration
 

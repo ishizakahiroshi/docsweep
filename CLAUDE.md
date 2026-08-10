@@ -16,7 +16,7 @@
 陳腐化を「要判断」フラグで可視化し、複数プロジェクトを横断 INDEX で一望できるようにする。
 
 - GitHub リポジトリ名: `docsweep`
-- 配布: `pip install docsweep` + 単体バイナリ（PyInstaller）、Win / Mac / Linux 対応
+- 配布: PyPI（`pip install docsweep`、extras: `web` / `review` / `mcp` / `watch` / `resurrect` / `all`）、Win / Mac / Linux 対応。単体バイナリ（PyInstaller）は現時点で未提供
 - 設計の正本: [docs/local/plan_v0.1.0-product-requirements.md](docs/local/plan_v0.1.0-product-requirements.md)
   および [docs/local/plan_state-tag-orthogonalization.md](docs/local/plan_state-tag-orthogonalization.md)
 
@@ -37,28 +37,32 @@ docsweep は **自分自身のルールでドッグフーディング** する�
 - 規約を変更するときは `templates/CLAUDE.md`（正本）→ `docs/conventions.md`（解説）の
   順で更新し、両者をズラさない
 
-## 技術スタック（予定）
+## 技術スタック
 
 | レイヤ | 採用 |
 |------|------|
-| 言語 | Python（クロスプラットフォーム） |
+| 言語 | Python >= 3.10（クロスプラットフォーム・core 依存は PyYAML のみ） |
 | パッケージ | `docsweep/`（`pip install docsweep`） |
-| CLI | サブコマンド + フラグ（`--auto` / `--dry-run` / `--review` / `--json` / `--report` / `--summary` / `new`） |
-| インタラクティブ UI | `InquirerPy` / `questionary`（`--review` のチェックリスト専用） |
+| CLI | サブコマンド式（`triage` / `apply` / `sweep` / `serve` / `index` / `summary` / `new` / `inject` / `mcp` 等）+ `--json` / `--dry-run` / `--auto` |
+| Web UI | FastAPI + Jinja2/htmx（`docsweep serve`、extras `web`） |
+| インタラクティブ UI | `questionary`（`review` サブコマンド専用、extras `review`） |
 | 設定 | YAML（`~/.docsweep/config.yaml` / プロジェクトの `.docsweep.yaml`） |
-| 単体配布 | PyInstaller |
 
-## リポジトリ構成（予定）
+## リポジトリ構成
 
 ```
 docsweep/
-├─ docsweep/        # Python ツール本体（CLI・コアエンジン・Web UI）
+├─ docsweep/             # Python ツール本体（CLI・コアエンジン・MCP・Web UI: server/）
 ├─ templates/            # 配布物（採用者が取り込む）
-│  ├─ CLAUDE.md          #   Claude Code 向けルールの正本テンプレ
-│  ├─ AGENTS.md          #   Codex 向けの薄いポインタ
-│  └─ .docsweep.yaml#   設定サンプル
+│  ├─ CLAUDE.md          #   AI 作業ドキュメント運用ルールの正本テンプレ
+│  ├─ AGENTS.md          #   Codex 等他エージェント向けの薄いポインタ
+│  ├─ AGENT_GUIDE.md     #   AI エージェント向け docsweep 操作ガイド
+│  ├─ .docsweep.yaml     #   設定サンプル
+│  └─ .githooks/ + install-hooks.{sh,ps1}  # opt-in pre-commit hook
+├─ tests/                # pytest
 ├─ docs/
 │  ├─ conventions.md     # 命名・ステータス規約の人間向け解説
+│  ├─ okf-mapping.md     # OKF 語彙と内部 state の対応
 │  ├─ mockups/           # Web UI モックアップ
 │  └─ local/             # 設計書・作業ログ（非公開・gitignore）
 └─ CLAUDE.md / AGENTS.md # ← 本ファイル（リポジトリ開発者向け）
@@ -73,15 +77,31 @@ docsweep/
 - **インタラクティブ UI は `--review` 専用**。`--auto` / `--json` は非対話を厳守
   （cron・CI・AI エージェント委譲向け。プロンプトを出さない）。
 
-## 作業運用ルール（AI 共通）
+## AI 作業共通ルール
 
-- **ビルド・パッケージング・公開・コミット・プッシュは全てユーザーが行う**。
-  AI からは自動実行も提案もしない（確認質問も出さない）。
-  - 例外: ユーザーが明示的に「ビルドして」「`pip install -e .` 走らせて」「コミットして」等と
-    指示した場合のみ。
-  - 対象: `pyinstaller` / `pip install` / `pnpm publish` / `git commit` / `git push` / `git tag` 等。
-  - 型チェック・テスト実行（`pytest` / `ruff` / `mypy` 等、コードの正しさ確認）は本ルールの対象外。
-- 完了報告では「公開しますか？」のような提案を出さず、コード変更の要約だけ伝える。
+ビルド・コミット禁止、secrets-scan 責務、plan/bugfix/pending md の作成ルール等の
+AI 作業共通ルールは、各利用者のグローバル AI 設定に従う
+（作者環境の例: `~/.claude/CLAUDE.md` および `~/.claude/guides/`）。
+
+- このリポジトリでの適用注: `pyinstaller` / `pip install -e .` もビルド・パッケージング扱い
+  （ユーザー指示があるまで実行しない）。`pytest` / `ruff` / `mypy` 等の正しさ確認は対象外。
+
+## 開発者向け git hook（推奨）
+
+`.githooks/pre-push` が用意されている。push 前に自動で `pytest -q` を走らせて失敗を
+止めるためのフック。2026-07-16 v0.3.0 release で「ローカル pytest せず push → リモート
+CI で 5 連続失敗」の cascade があった教訓から追加。
+
+**有効化**（clone 後 1 回だけ）:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+- pytest 未導入や python 不在の環境では自動 skip（既存 clone に影響なし）
+- 緊急時は `git push --no-verify` で回避可
+- `git config` は per-clone の設定なので、リポに commit されない。clone した各自が
+  上記コマンドを 1 回だけ実行する。
 
 ## 公開・配布の方針
 

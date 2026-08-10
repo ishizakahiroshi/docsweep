@@ -52,11 +52,24 @@
       <span class="okf-tag" data-tag="{{ tag }}" title="tag: {{ tag }}">#{{ tag }}</span>
     {% endfor %}
     {% if card.related_count %}
-      <span class="okf-related" title="{{ T.related_title.format(n=card.related|length) }}">↔ {{ card.related_count }}</span>
+      <button type="button" class="okf-related okf-related-btn"
+              data-action="highlight-related"
+              data-related="{{ card.related|join('|') }}"
+              title="{{ T.related_title.format(n=card.related|length) }}">↔ {{ card.related_count }}</button>
     {% endif %}
     {% if card.backref_count %}
       <span class="okf-backref" title="{{ T.backref_title.format(n=card.backref_count) }}">↩ {{ card.backref_count }}</span>
     {% endif %}
+    {% if card.link_progress and card.link_progress != 'unknown' %}
+      <span class="okf-linkprog linkprog-{{ card.link_progress }}"
+            title="linkcheck: {{ card.link_progress }}">⚙ {{ card.link_progress }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if card.link_progress and card.link_progress != 'unknown' and not (card.tags or card.owner or card.related_count or card.backref_count) %}
+  <div class="card-okf">
+    <span class="okf-linkprog linkprog-{{ card.link_progress }}"
+          title="linkcheck: {{ card.link_progress }}">⚙ {{ card.link_progress }}</span>
   </div>
   {% endif %}
   <div class="card-actions">

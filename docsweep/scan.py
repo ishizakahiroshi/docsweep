@@ -12,9 +12,10 @@ from datetime import datetime, timezone
 from fnmatch import fnmatch
 from pathlib import Path
 
-from .config import Config, TypeDef
+from .config import Config, TypeDef, project_work_settings, resolve_work_dir
 from .detect import Detection, detect_status, extract_summary
 from .models import FileRecord
+from .secrets_guard import high_confidence_hits, scan_secrets
 
 # 常に除外するディレクトリ名。
 # docsweep 自身の生成物（INDEX.md / moves.jsonl）を再スキャンしないよう .docsweep も除外。
@@ -27,6 +28,10 @@ class ScannedDoc:
     detection: Detection
     type_def: TypeDef | None
     text: str
+
+
+# frontmatter 矛盾 warning のプロセス内 dedup（(path, message) 単位で 1 回だけ stderr へ）。
+_WARNED_ONCE: set[tuple[str, str]] = set()
 
 
 def _read_gitignore(root: Path) -> list[str]:
@@ -55,6 +60,30 @@ def _age_days(mtime: float) -> int:
     return max(0, int((now - mtime) // 86400))
 
 
+def _is_work_queue_path(
+    path: Path,
+    root: Path,
+    config: Config,
+    cache: dict[Path, Path],
+    aliases: dict[Path, Path] | None = None,
+) -> bool:
+    """.gitignore 済みでも、設定済み private queue は brief/triage の対象に残す。"""
+    try:
+        project_root = detect_project_root(
+            path if path.is_dir() else path.parent, root, config.project_markers, cache, aliases
+        )
+        queue = resolve_work_dir(project_root, project_work_settings(project_root, config)[0])
+        path_abs = path.resolve()
+        queue_abs = queue.resolve()
+        return (
+            path_abs == queue_abs
+            or path_abs.is_relative_to(queue_abs)
+            or queue_abs.is_relative_to(path_abs)
+        )
+    except (OSError, ValueError):
+        return False
+
+
 def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
     """1 つのスキャンルート配下を走査し ScannedDoc のリストを返す。"""
     root = root.resolve()
@@ -76,6 +105,7 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
 
     docs: list[ScannedDoc] = []
     proj_cache: dict[Path, Path] = {}
+    aliases = work_dir_aliases(root, config)
     for dirpath, dirnames, filenames in os.walk(root):
         cur = Path(dirpath)
         rel_dir = cur.relative_to(root).as_posix()
@@ -86,43 +116,157 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
             if d in ALWAYS_SKIP_DIRS or d in archive_names:
                 continue
             child_rel = f"{rel_dir}/{d}".lstrip("/") if rel_dir != "." else d
-            if _is_ignored(child_rel, d, base_patterns):
+            child_path = cur / d
+            if _is_ignored(child_rel, d, base_patterns) and not _is_work_queue_path(
+                child_path, root, config, proj_cache, aliases
+            ):
                 continue
             pruned.append(d)
         dirnames[:] = pruned
 
         for fn in filenames:
-            if not fn.endswith(".md"):
+            # .md / .html を対象拡張子とする。type 判定は filename pattern（config.match_type）
+            # で行うため、命名規約に合わない .md/.html（LICENSE・README・LP 等）は自然に除外される。
+            if not (fn.endswith(".md") or fn.endswith(".html") or fn.endswith(".htm")):
                 continue
             fpath = cur / fn
             rel = fpath.relative_to(root).as_posix()
-            if _is_ignored(rel, fn, base_patterns):
+            if _is_ignored(rel, fn, base_patterns) and not _is_work_queue_path(
+                fpath, root, config, proj_cache, aliases
+            ):
                 continue
             type_def = config.match_type(fn)
-            # 命名規約（plan_/bugfix_/pending_ 等の type パターン）に一致しない .md は
-            # docsweep の管理対象外（LICENSE・README・依存ライブラリの .md 等）。拾わない。
+            # 命名規約（plan_*.md / mockup_*.html 等の type パターン）に一致しないファイルは
+            # docsweep の管理対象外。拾わない（プロジェクトの LP や README を巻き込まない）。
             if type_def is None:
                 continue
-            project_root = detect_project_root(cur, root, config.project_markers, proj_cache)
+            project_root = detect_project_root(
+                cur, root, config.project_markers, proj_cache, aliases
+            )
             doc = _build_doc(fpath, root, config, type_def, project_root)
             if doc is not None:
                 docs.append(doc)
     return docs
 
 
+def _iter_project_roots(root: Path, config: Config) -> list[Path]:
+    """スキャンルート配下の「project marker を持つディレクトリ」を列挙する。
+
+    ファイルは読まずディレクトリだけを辿る（marker の ``exists()`` 判定のみ）。
+    入れ子リポジトリがあるため、marker を見つけても配下の走査は止めない。
+    """
+    found: list[Path] = []
+    for dirpath, dirnames, _filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in ALWAYS_SKIP_DIRS]
+        cur = Path(dirpath)
+        if any((cur / m).exists() for m in config.project_markers):
+            found.append(cur)
+    return found
+
+
+def build_work_dir_aliases(root: Path, config: Config) -> dict[Path, Path]:
+    """「work_dir の実体パス → それを宣言したプロジェクトルート」の対応を作る。
+
+    ``docs/local`` を junction / symlink でリポジトリ外へ逃がしている構成では、
+    実体パスから上へ辿っても元のリポジトリには戻れない。marker が 1 つも見つからないと
+    ``detect_project_root`` はスキャンルート直下の先頭セグメントへフォールバックするため、
+    **別プロジェクトの持ち物として黙って登録されてしまう**（cwd 判定は実体ディレクトリを
+    見るので別名になり、``brief`` が警告なしで 0 件を返す）。
+
+    work_dir は「そのプロジェクトの作業キュー」と宣言済みの設定なので、実体側から
+    プロジェクトへ引き戻す対応表をここで作り、判定の入口で優先する。
+    """
+    aliases: dict[Path, Path] = {}
+    conflicts: set[Path] = set()
+    for proj in _iter_project_roots(root, config):
+        try:
+            work_dir_name = project_work_settings(proj, config)[0]
+            work_dir = resolve_work_dir(proj, work_dir_name)
+        except (OSError, ValueError):
+            continue
+        try:
+            if not work_dir.exists():
+                continue
+            real = work_dir.resolve()
+            proj_real = proj.resolve()
+        except OSError:
+            continue
+        if real == work_dir:
+            continue  # junction / symlink ではない（実体がそのまま）
+        try:
+            real.relative_to(proj_real)
+            continue  # 実体がプロジェクト内に収まっているなら引き戻す必要がない
+        except ValueError:
+            pass
+        prev = aliases.get(real)
+        if prev is not None and prev != proj:
+            # 同じ実体を 2 つのプロジェクトが work_dir として宣言している。
+            # どちらが正しいか機械には決められないので、黙って片方を採らず両方外す。
+            conflicts.add(real)
+            continue
+        aliases[real] = proj
+    for real in conflicts:
+        aliases.pop(real, None)
+    return aliases
+
+
+# (root, project_markers, グローバル work_dir) 単位の alias キャッシュ。
+# sync_index は 1 ファイルごとに detect_project_for_path を呼ぶため、毎回列挙すると走査が二乗になる。
+_ALIAS_CACHE: dict[tuple[str, tuple[str, ...], str], dict[Path, Path]] = {}
+
+
+def clear_work_dir_alias_cache() -> None:
+    """alias キャッシュを捨てる（テスト・設定変更後の再計算用）。"""
+    _ALIAS_CACHE.clear()
+
+
+def work_dir_aliases(root: Path, config: Config) -> dict[Path, Path]:
+    """``build_work_dir_aliases`` のキャッシュ付き入口。"""
+    key = (root.as_posix(), tuple(config.project_markers), str(config.work_dir))
+    cached = _ALIAS_CACHE.get(key)
+    if cached is None:
+        cached = build_work_dir_aliases(root, config)
+        _ALIAS_CACHE[key] = cached
+    return cached
+
+
+def _alias_project(aliases: dict[Path, Path] | None, start_dir: Path) -> Path | None:
+    """``start_dir`` が work_dir の実体配下なら、宣言元プロジェクトを返す。"""
+    if not aliases:
+        return None
+    best_key: Path | None = None
+    best_proj: Path | None = None
+    for real, proj in aliases.items():
+        if start_dir == real or start_dir.is_relative_to(real):
+            if best_key is None or len(real.parts) > len(best_key.parts):
+                best_key, best_proj = real, proj
+    return best_proj
+
+
 def detect_project_root(
-    start_dir: Path, root: Path, markers: list[str], cache: dict[Path, Path]
+    start_dir: Path,
+    root: Path,
+    markers: list[str],
+    cache: dict[Path, Path],
+    aliases: dict[Path, Path] | None = None,
 ) -> Path:
     """プロジェクト境界を判定する。
 
-    ファイルのフォルダから上へ辿り、``markers``（既定 .git/.docsweep.yaml/package.json/
-    pyproject.toml）のいずれかを持つ最寄りの祖先をプロジェクトとする。スキャンルートより
-    上へは辿らない。見つからなければルート直下の先頭セグメントへフォールバック。
+    まず work_dir の実体パス（junction / symlink 解決後）に一致すれば、その work_dir を
+    宣言したプロジェクトへ引き戻す。一致しなければファイルのフォルダから上へ辿り、
+    ``markers``（既定 .git/.docsweep.yaml/package.json/pyproject.toml）のいずれかを持つ
+    最寄りの祖先をプロジェクトとする。スキャンルートより上へは辿らない。見つからなければ
+    ルート直下の先頭セグメントへフォールバック。
 
     フォルダ構成（docs/local 等）を一切決め打ちせず、開発者が既に定義済みの実体で判定する。
     """
     if start_dir in cache:
         return cache[start_dir]
+
+    aliased = _alias_project(aliases, start_dir)
+    if aliased is not None:
+        cache[start_dir] = aliased
+        return aliased
 
     chain: list[Path] = []
     cur = start_dir
@@ -148,6 +292,34 @@ def detect_project_root(
     return found
 
 
+def detect_project_for_path(
+    path: Path, config: Config, *, scope_roots: list[Path] | None = None,
+) -> Path | None:
+    """``path`` が属する設定済みプロジェクトルートを返す。
+
+    索引作成時と brief/activity の cwd 判定で同じ project_id を使うための共通入口。
+    設定されたスキャン範囲外は ``None`` とし、無関係な親リポジトリを project と誤認しない。
+    """
+    candidate = path.resolve()
+    roots: list[Path] = []
+    for raw_root in scope_roots if scope_roots is not None else config.roots:
+        root = Path(raw_root).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        roots.append(root)
+    if not roots:
+        return None
+
+    # 入れ子の root がある場合は、もっとも近い（長い）方を境界にする。
+    root = max(roots, key=lambda p: len(p.parts))
+    start_dir = candidate if candidate.is_dir() else candidate.parent
+    return detect_project_root(
+        start_dir, root, config.project_markers, {}, work_dir_aliases(root, config)
+    )
+
+
 def _build_doc(
     fpath: Path, root: Path, config: Config, type_def: TypeDef | None, project_root: Path
 ) -> ScannedDoc | None:
@@ -160,18 +332,26 @@ def _build_doc(
     det = detect_status(text=text, filename=fpath.name, sm=sm, _type=type_def)
 
     summary = None
-    if type_def is not None:
+    if type_def is not None and type_def.summary_section:
         summary = extract_summary(text, type_def.summary_section)
 
     stat = fpath.stat()
     age = _age_days(stat.st_mtime)
     state = sm.by_key(det.state_key) if det.state_key else None
+    sensitive = bool(high_confidence_hits(scan_secrets(text)))
 
     # 型矛盾は warn として stderr へ出す（自動上書きしない）。
     # plan_okf-adoption_2026-06-29.md C1 の方針: 矛盾を可視化するが直さない。
+    # 同一 (path, warning) はプロセス内 1 回だけ出す。Web UI (serve) は描画のたびに
+    # run_scan を呼ぶため、毎回出すと同じ warning がログを埋める（2026-07-03 実測）。
+    # 矛盾自体は needs_fix フラグとして UI にも出続けるので、抑制しても見落とさない。
     if det.frontmatter_warnings:
         import sys
         for w in det.frontmatter_warnings:
+            key = (fpath.resolve().as_posix(), w)
+            if key in _WARNED_ONCE:
+                continue
+            _WARNED_ONCE.add(key)
             print(f"warning: {fpath}: {w}", file=sys.stderr)
 
     record = FileRecord(
@@ -194,7 +374,12 @@ def _build_doc(
         owner=det.owner,
         review_status=det.review_status,
         related=list(det.related),
+        docsweep_parent=det.docsweep_parent,
         last_reviewed=det.last_reviewed,
+        docsweep_policy=det.docsweep_policy,
+        docsweep_state=det.docsweep_state,
+        okf_status=det.okf_status,
+        sensitive=sensitive,
     )
     return ScannedDoc(record=record, detection=det, type_def=type_def, text=text)
 
@@ -231,29 +416,33 @@ class SyncStats:
     projects_removed: int = 0
 
 
-def _resolve_project_id(root: Path) -> tuple[str, str | None]:
-    """プロジェクト識別子と remote_url を返す。
+def _project_remote_url(project_root: Path) -> str | None:
+    """``git remote get-url origin`` の URL を返す（取れなければ None）。
 
-    優先順: ``git remote get-url origin`` の repo 名（.git を除く最後の segment）→ ディレクトリ名。
-    git remote が無い／git でない場合は単にディレクトリ名を ID とする。
+    ``projects.remote_url`` を埋めるためだけの補助。**project_id の採番には使わない**
+    — 索引の project 単位は ``FileRecord.project``（= ``project_root.name``）に揃えてある。
+    索引なしフォールバック経路（``r.project == project``）と同じ意味論にしないと、
+    ``--project <リポ名>`` が索引の有無で別物を指してしまうため。
+
+    ``.git`` を持たないディレクトリでは git を呼ばない。呼ぶと ``git -C`` が上位へ
+    遡って親リポジトリの remote を拾い、monorepo 内のサブプロジェクトに親の URL が
+    付いてしまう。
     """
+    if not (project_root / ".git").exists():
+        return None
+
     import subprocess
 
     try:
         result = subprocess.run(
-            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            ["git", "-C", str(project_root), "remote", "get-url", "origin"],
             capture_output=True, text=True, timeout=3,
         )
         if result.returncode == 0:
-            url = result.stdout.strip()
-            if url:
-                tail = url.rstrip("/").split("/")[-1]
-                if tail.endswith(".git"):
-                    tail = tail[:-4]
-                return (tail or root.name, url)
+            return result.stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
         pass
-    return (root.name, None)
+    return None
 
 
 def _expand_search_paths(config: Config) -> list[Path]:
@@ -303,6 +492,44 @@ def _body_sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
 
+def _rel_for_index(abs_path: str, root: Path) -> str:
+    """索引に入れる rel_path を求める（``root`` は原則プロジェクトルート）。
+
+    ``FileRecord.path`` は ``fpath.resolve()`` 済みなので、root 配下に junction /
+    symlink があるとリンク先の実体パス（root の外）に解決される。例えば
+    ``D:/dev/kb`` が別ドライブ配下への junction だと ``relative_to(D:/dev)`` は
+    ValueError になり、以前は sync_index がその場で落ちて索引が不完全なまま
+    残っていた。
+
+    root 相対が取れない場合は実体の絶対パスをそのまま識別子に使う。
+    ``UNIQUE(project_id, rel_path)`` の一意性は保たれ、表示や移送に使う絶対パスは
+    別列 ``abs_path`` が持つため実害はない。同名 basename のリポが 2 つ同じ
+    project_id に落ちた場合も、片方はこのフォールバックで絶対パス識別子になり
+    互いを上書きしない。
+    """
+    p = Path(abs_path)
+    try:
+        return p.relative_to(root).as_posix()
+    except ValueError:
+        return p.as_posix()
+
+
+def _is_within(path: Path, roots: list[Path]) -> bool:
+    """``path`` が ``roots`` のいずれかの配下（または一致）かを返す。
+
+    「今回のスキャンがそのプロジェクトを実際にカバーしたか」の判定に使う。
+    カバーされていたのに 1 件も見つからなければ、そのプロジェクトの索引行は
+    すべて消えたものとして削除できる。判定できない場合は False（＝消さない安全側）。
+    """
+    for r in roots:
+        try:
+            path.relative_to(r)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def sync_index(
     config: Config,
     *,
@@ -312,17 +539,31 @@ def sync_index(
 ) -> SyncStats:
     """``search_paths`` 配下を走査し SQLite 索引へ差分同期する。
 
+    索引の project 単位は **スキャンルートではなくプロジェクトルート（リポジトリ）**。
+    ``projects.project_id`` には ``FileRecord.project``（= ``project_root.name``）を、
+    ``projects.root_path`` には ``project_root`` を入れ、``files.rel_path`` は
+    project_root 相対にする。理由は 2 つ:
+
+    1. 索引経由の ``WHERE project_id = ?`` と、索引なしフォールバックの
+       ``r.project == project`` が同じ意味論になる。以前は前者がスキャンルート単位
+       だったため、索引が有効だと ``--project <リポ名>`` がエラーも警告も無く 0 件を
+       返していた（「残作業なし」と誤読する事故）。
+    2. basename が同じスキャンルート（``D:/dev`` と ``C:/Users/x/dev``）が同じ
+       project_id に潰れ、``known_files`` → 未検出分削除の流れで互いの登録を消し合う
+       事故が消える（差分同期が毎回全件書き直しになり、処理順次第で索引が空になり得た）。
+
     Args:
         config: ロード済み Config
         full: True で全件再構築（DB の files を一旦 truncate してから挿入）
         db_path_override: テスト用に DB パスを上書き
-        prune_projects: True で「DB にあるが今回の search_paths 展開結果に無い projects」を
+        prune_projects: True で「DB にあるが今回の走査で見つからなかった projects」を
             CASCADE 削除する。既定 False（一時的な search_paths 変更で誤削除しないよう保護）。
 
     Returns:
         SyncStats — 同期件数の集計
     """
     import json as _json
+    import sys
     from datetime import datetime, timezone
 
     from . import index as db
@@ -331,64 +572,102 @@ def sync_index(
     stats = SyncStats()
     roots = _expand_search_paths(config)
 
+    # --- 1. 走査（DB を触る前に完了させる）--------------------------------------
+    # project_root ごとにまとめ直す。DB 書き込みより前に全走査を終えるのは、
+    # full=True の ``DELETE FROM files`` 直後に走査で落ちると索引が空のまま残るため
+    # （junction で ValueError を投げて実際に壊した実績がある）。
+    groups: dict[str, tuple[Path, list[ScannedDoc]]] = {}
+    seen_abs: set[str] = set()
+    for root in roots:
+        for doc in scan_root(root, config):
+            rec = doc.record
+            if rec.path in seen_abs:
+                continue  # スキャンルートが入れ子でも同じファイルを二重登録しない
+            seen_abs.add(rec.path)
+            # classify を呼んで flags / allowed_actions を FileRecord に充填
+            classify(doc, config)
+            project_root = detect_project_for_path(Path(rec.path), config, scope_roots=roots)
+            if project_root is None:
+                project_root = Path(rec.project_root) if rec.project_root else root
+            project_id = rec.project or project_root.name
+            entry = groups.get(project_id)
+            if entry is None:
+                groups[project_id] = (project_root, [doc])
+            else:
+                entry[1].append(doc)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     with db.connect(db_path_override) as conn:
-        if full:
-            # 全再構築: files を空にする（projects と tags/related は ON DELETE CASCADE で連鎖）
-            conn.execute("DELETE FROM files")
-            conn.commit()
+        existing_projects: dict[str, str] = {
+            r["project_id"]: (r["root_path"] or "")
+            for r in conn.execute("SELECT project_id, root_path FROM projects").fetchall()
+        }
+        current_ids = set(groups)
+        # connect() は autocommit なので、rebuild の DELETE と再投入を明示的に
+        # 同じ transaction に載せる。途中例外時は rollback され、旧索引を保持する。
+        conn.execute("BEGIN")
+        try:
+            if full:
+                # 全再構築: files を空にする（tags/related は ON DELETE CASCADE で連鎖）
+                conn.execute("DELETE FROM files")
 
-        # C4: 孤児プロジェクト掃除 — DB にあるが今回 search_paths から外れた project を CASCADE 削除。
-        # files / tags / related は ON DELETE CASCADE で連鎖削除される。
-        if prune_projects:
-            current_ids = {_resolve_project_id(root)[0] for root in roots}
-            existing_ids = {
-                r["project_id"]
-                for r in conn.execute("SELECT project_id FROM projects").fetchall()
-            }
-            orphan_ids = existing_ids - current_ids
-            for orphan in orphan_ids:
-                conn.execute("DELETE FROM projects WHERE project_id=?", (orphan,))
-                stats.projects_removed += 1
-            if orphan_ids:
-                conn.commit()
+            # --prune-projects は今回の search_paths が実際にカバーする project だけを対象に
+            # する。範囲外の project は一時的な絞り込みかもしれないため消さない。
+            pruned_ids: set[str] = set()
+            if prune_projects:
+                for orphan, root_path in existing_projects.items():
+                    if orphan in current_ids or not root_path or not _is_within(Path(root_path), roots):
+                        continue
+                    file_count = conn.execute(
+                        "SELECT COUNT(*) FROM files WHERE project_id=?", (orphan,)
+                    ).fetchone()[0]
+                    conn.execute("DELETE FROM projects WHERE project_id=?", (orphan,))
+                    pruned_ids.add(orphan)
+                    stats.projects_removed += 1
+                    stats.files_deleted += int(file_count)
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+            for project_id, (project_root, docs) in groups.items():
+                db.upsert_project(
+                    conn, project_id, project_root.as_posix(),
+                    _project_remote_url(project_root), now_iso,
+                )
+                stats.projects += 1
 
-        for root in roots:
-            project_id, remote_url = _resolve_project_id(root)
-            db.upsert_project(conn, project_id, str(root), remote_url, now_iso)
-            stats.projects += 1
+                existing = db.known_files(conn, project_id)
+                seen_rel: set[str] = set()
 
-            existing = db.known_files(conn, project_id)
-            seen_rel: set[str] = set()
+                for doc in docs:
+                    rec = doc.record
+                    rel_path = _rel_for_index(rec.path, project_root)
+                    seen_rel.add(rel_path)
+                    stats.files_total += 1
 
-            docs = scan_root(root, config)
-            for doc in docs:
-                # classify を呼んで flags / allowed_actions を FileRecord に充填
-                classify(doc, config)
-                rec = doc.record
-                rel_path = Path(rec.path).relative_to(root).as_posix()
-                seen_rel.add(rel_path)
-                stats.files_total += 1
+                    mtime = rec.mtime
+                    flags = _json.dumps(rec.flags, ensure_ascii=False)
+                    allowed_actions = _json.dumps(rec.allowed_actions, ensure_ascii=False)
+                    # 差分判定: 本文と mtime が不変でも、時間依存の classify 結果は更新する。
+                    prev = existing.get(rel_path)
+                    if not full and prev and prev[0] is not None and abs(prev[0] - mtime) < 1e-6:
+                        if prev[2] != flags or prev[3] != allowed_actions:
+                            conn.execute(
+                                "UPDATE files SET flags=?, allowed_actions=? WHERE project_id=? AND rel_path=?",
+                                (flags, allowed_actions, project_id, rel_path),
+                            )
+                        stats.files_unchanged += 1
+                        continue
 
-                mtime = rec.mtime
-                # 差分判定: 既知 mtime と一致なら skip
-                prev = existing.get(rel_path)
-                if not full and prev and prev[0] is not None and abs(prev[0] - mtime) < 1e-6:
-                    stats.files_unchanged += 1
-                    continue
+                    sha = _body_sha(doc.text)
+                    if not full and prev and prev[1] == sha:
+                        # mtime 変わっても body 未変化（touch のみ等）→ mtime と classify 結果だけ更新
+                        conn.execute(
+                            "UPDATE files SET mtime=?, flags=?, allowed_actions=? WHERE project_id=? AND rel_path=?",
+                            (mtime, flags, allowed_actions, project_id, rel_path),
+                        )
+                        stats.files_unchanged += 1
+                        continue
 
-                sha = _body_sha(doc.text)
-                if not full and prev and prev[1] == sha:
-                    # mtime 変わっても body 未変化（touch のみ等）→ mtime だけ更新
-                    conn.execute(
-                        "UPDATE files SET mtime=? WHERE project_id=? AND rel_path=?",
-                        (mtime, project_id, rel_path),
-                    )
-                    stats.files_unchanged += 1
-                    continue
-
-                file_id = db.upsert_file(
+                    file_id = db.upsert_file(
                     conn,
                     project_id=project_id,
                     rel_path=rel_path,
@@ -404,8 +683,8 @@ def sync_index(
                     summary=rec.summary,
                     state_label=rec.state_label,
                     state_source=rec.state_source,
-                    flags=_json.dumps(rec.flags, ensure_ascii=False),
-                    allowed_actions=_json.dumps(rec.allowed_actions, ensure_ascii=False),
+                    flags=flags,
+                    allowed_actions=allowed_actions,
                     due=rec.due,
                     due_parse_error=rec.due_parse_error,
                     archivable=rec.archivable,
@@ -413,19 +692,56 @@ def sync_index(
                     project_root=rec.project_root,
                     abs_path=rec.path,
                 )
-                db.replace_tags(conn, file_id, list(rec.tags or []))
-                db.replace_related(conn, file_id, list(rec.related or []))
+                    db.replace_tags(conn, file_id, list(rec.tags or []))
+                    db.replace_related(conn, file_id, list(rec.related or []))
 
-                if prev is None:
-                    stats.files_added += 1
-                else:
-                    stats.files_updated += 1
+                    if prev is None:
+                        stats.files_added += 1
+                    else:
+                        stats.files_updated += 1
 
-            # DB にあるが今回見つからなかったファイル = 削除済み
-            for stale_rel in set(existing.keys()) - seen_rel:
-                db.delete_file(conn, project_id, stale_rel)
-                stats.files_deleted += 1
+                # DB にあるが今回見つからなかったファイル = 削除済み
+                for stale_rel in set(existing.keys()) - seen_rel:
+                    db.delete_file(conn, project_id, stale_rel)
+                    stats.files_deleted += 1
 
-        conn.commit()
+            # 旧採番の行だけを行単位で掃除する。0 件スキャンを理由に有効な project の
+            # 全ファイルを消すのは、ロックや一時 I/O エラーでの誤削除につながるため行わない。
+            cleaned: list[tuple[str, int]] = []
+            for project_id, root_path in existing_projects.items():
+                if project_id in current_ids or project_id in pruned_ids or not root_path:
+                    continue
+                if not _is_within(Path(root_path), roots):
+                    continue
+                removed = 0
+                for stale_rel, prev in db.known_files(conn, project_id).items():
+                    abs_path = prev[4]
+                    if not abs_path:
+                        continue
+                    actual_root = detect_project_for_path(Path(abs_path), config, scope_roots=roots)
+                    if actual_root is None or actual_root.name == project_id:
+                        continue
+                    db.delete_file(conn, project_id, stale_rel)
+                    removed += 1
+                if removed:
+                    stats.files_deleted += removed
+                    cleaned.append((project_id, removed))
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    # 実際に掃除した時だけ 1 行出す。空になった project 行が残っているだけの状態で
+    # 毎回鳴らすと、常時 stderr を汚すだけで行動につながらない。
+    if cleaned:
+        detail = ", ".join(f"{pid}（{n} 件）" for pid, n in sorted(cleaned))
+        print(
+            f"warning: 実体を失った索引行を削除しました: {detail}"
+            " — project_id と実ファイルから再導出した project が食い違う旧採番の残骸です。"
+            "空になった project 行ごと消すなら"
+            " `docsweep index-sync --prune-projects`",
+            file=sys.stderr,
+        )
 
     return stats
