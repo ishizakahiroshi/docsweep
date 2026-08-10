@@ -21,7 +21,7 @@ from pathlib import Path
 
 import yaml
 
-from ..config import DEFAULT_DUE_OFFSET_DAYS, GLOBAL_CONFIG_PATH
+from ..config import DEFAULT_DUE_OFFSET_DAYS, GLOBAL_CONFIG_PATH, load_config, relative_work_dir
 from ..presets import Preset, get_preset
 from ..states import StateModel
 from .agent_claude import _agent_uses_central
@@ -51,7 +51,7 @@ GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "4"
+GUIDANCE_VERSION = "6"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -219,7 +219,13 @@ def generate_due_block(lang: str = "ja") -> str:
     ])
 
 
-def generate_okf_block(lang: str = "ja") -> str:
+def generate_okf_block(
+    lang: str = "ja",
+    *,
+    work_dir: str | None = None,
+    work_policy: str | None = None,
+    secret_policy: str | None = None,
+) -> str:
     """新規 md 作成ルール（OKF frontmatter の注入経路）節を生成する（プロジェクト非依存）。
 
     OKF frontmatter を注入する経路は ``docsweep new``（templates_gen）だけなので、
@@ -229,22 +235,52 @@ def generate_okf_block(lang: str = "ja") -> str:
     """
     new_cmd = docsweep_command("new", "<type>", "<topic>")
     migrate_cmd = docsweep_command("migrate-frontmatter", "--apply")
+    queue_lines_en = [
+        (
+            f"The effective project-relative work queue is `{work_dir}`."
+            if work_dir
+            else "The work queue is project-configured; do not assume a project path in global guidance."
+        ),
+        (
+            f"Its work policy is `{work_policy}` and its secret policy is `{secret_policy}`."
+            if work_dir and (work_policy or secret_policy)
+            else "Use the project configuration and let docsweep resolve the queue."
+        ),
+        "`capture` / `capture_save` use the same queue; do not create a parallel hidden folder.",
+    ]
+    queue_lines_ja = [
+        (
+            f"有効な作業 queue はプロジェクト相対の `{work_dir}` です。"
+            if work_dir
+            else "作業 queue はプロジェクト設定で決まるため、グローバル導線で特定プロジェクトのパスを断定しない。"
+        ),
+        (
+            f"work_policy は `{work_policy}`、secret_policy は `{secret_policy}` です。"
+            if work_dir and (work_policy or secret_policy)
+            else "設定を読み、docsweep に queue を解決させる。"
+        ),
+        "`capture` / `capture_save` も同じ queue を使い、別の隠しフォルダを作らない。",
+    ]
     if lang == "en":
         return "\n".join([
             "### Creating new docs (OKF frontmatter is required)",
             "",
             f"Create new `plan_*.md` / `bugfix_*.md` / `pending_*.md` with `{new_cmd}` by default.",
             "It injects OKF (Open Knowledge Format) compatible frontmatter automatically",
-            "(`type` / `status` / `tags` / `owner` / `review_status` / `related` / `last_reviewed`, plus `due`).",
+            "(`type` / OKF lifecycle `status` / `docsweep_state` / `tags` / `owner` / `review_status` / `related` / `last_reviewed`, plus `due`).",
             "If you (an AI agent) hand-write the file instead, do NOT emit a due-only minimal frontmatter:",
-            "always include the same OKF field set (`type: plan|bugfix|pending`, `status: planned` for plan /",
-            "`in-progress` for bugfix / `pending` for pending, `tags: []`, `owner: `, `review_status: draft`,",
+            "always include the same OKF field set (`type: plan|bugfix|pending`, `status: draft`,",
+            "`docsweep_state: planned` for plan / `in-progress` for bugfix / `pending` for pending,",
+            "`tags: []`, `owner: `, `review_status: draft`,",
             "`related: []`, `last_reviewed: <today>`).",
+            "Reusable `manual_*.md` / `reference_*.md` / `setup_*.md` are static knowledge docs:",
+            "give them an OKF `type` and lifecycle `status`, but normally omit `docsweep_state` and `due`.",
             f"To retrofit existing frontmatter-less docs in bulk, run `{migrate_cmd}`.",
             "",
+            *queue_lines_en,
             "`new` resolves the project root by walking up from cwd for a `.git` (or other project marker) "
             "when `--project-dir` is omitted, so calling it from a repo subdirectory (e.g. `web/`) still "
-            "places the doc under the repo's `docs/local/`. Pass `--project-dir` explicitly only for the "
+            "places the doc under the configured work queue (default `docs/local/`). Pass `--project-dir` explicitly only for the "
             "rare case where the detected root is not the one you want (e.g. nested git repos).",
         ])
     return "\n".join([
@@ -252,27 +288,36 @@ def generate_okf_block(lang: str = "ja") -> str:
         "",
         f"新規 `plan_*.md` / `bugfix_*.md` / `pending_*.md` は原則 `{new_cmd}` で作る。",
         "OKF（Open Knowledge Format）互換の frontmatter",
-        "（`type` / `status` / `tags` / `owner` / `review_status` / `related` / `last_reviewed` と `due`）が自動注入される。",
+        "（`type` / OKF lifecycle の `status` / `docsweep_state` / `tags` / `owner` / `review_status` / `related` / `last_reviewed` と `due`）が自動注入される。",
         "AI が Write 等で手書きする場合も、`due:` だけの最小 frontmatter にせず、同じ OKF フィールド一式を必ず入れること",
-        "（`type: plan|bugfix|pending`、`status:` は plan=`planned` / bugfix=`in-progress` / pending=`pending`、",
+        "（`type: plan|bugfix|pending`、`status: draft`、`docsweep_state:` は plan=`planned` / bugfix=`in-progress` / pending=`pending`、",
         "`tags: []` / `owner: ` / `review_status: draft` / `related: []` / `last_reviewed: <今日>`）。",
+        "再利用する `manual_*.md` / `reference_*.md` / `setup_*.md` は静的な知識文書なので、OKF の `type` / `status` は付けても、通常 `docsweep_state` / `due` は付けない。",
         f"frontmatter 無しの既存 md を一括変換したい時は `{migrate_cmd}` を使う。",
         "",
+        *queue_lines_ja,
         "`--project-dir` を省略した場合、`new` は cwd から `.git` 等の project marker を上へ遡ってプロジェクトルートを自動検出する。"
-        "リポジトリのサブディレクトリ（例: `web/`）から呼んでも、そのリポジトリの `docs/local/` に正しく生成される。"
+        "リポジトリのサブディレクトリ（例: `web/`）から呼んでも、そのリポジトリの設定済み work queue（既定 `docs/local/`）に正しく生成される。"
         "検出されたルートが意図と異なる場合（ネストした git リポジトリ等の特殊ケース）のみ `--project-dir` を明示する。",
     ])
 
 
-def generate_guidance_block(lang: str = "ja") -> str:
-    """セッション開始時に brief を読む導線＋ due ルール（プロジェクト非依存・グローバル注入可）。
+def generate_guidance_block(
+    lang: str = "ja",
+    *,
+    work_dir: str | None = None,
+    work_policy: str | None = None,
+    secret_policy: str | None = None,
+) -> str:
+    """セッション開始・親子 plan closeout・due ルール（プロジェクト非依存・グローバル注入可）。
 
     文言は常に同じなので、グローバル（~/.claude/CLAUDE.md 等）に一度入れれば全プロジェクトで効く。
-    due ルールもプロジェクト非依存（generate_due_block 参照）のためここに同梱する。
+    closeout / due ルールもプロジェクト非依存のためここに同梱する。
     グローバルに寄せたくない場合はプロジェクト inject（include_guidance=True 既定）で同じ内容が入る。
     """
     brief_cmd = docsweep_command("brief")
     cross_cmd = docsweep_command("cross")
+    closeout_cmd = docsweep_command("closeout-check", "--path", "<parent-plan>", "--json")
     if lang == "en":
         return "\n".join([
             "## docsweep — check remaining work at session start (required)",
@@ -290,7 +335,19 @@ def generate_guidance_block(lang: str = "ja") -> str:
             "- Everything else (consistency checks, archive resurrection, graphs, etc.): `docsweep <command> --json` via shell",
             "- In Claude Code, the `/D` slash command also dispatches all three routes",
             "",
-            generate_okf_block(lang),
+            "### Closing out a parent/child plan",
+            "",
+            f"After an implementation-complete report for a parent plan, first run `{closeout_cmd}`; use the global `plan-closeout` skill only if it is installed.",
+            "Separate machine blockers, manual checks, and dirty-worktree overlap. Do not relabel the H1 or `docsweep_state` before explicit user approval.",
+            "After approval, proceed from child plans to the parent; archive only through a separate dry-run and a separate approval.",
+            "Do not treat implementation complete, static checks, manual checks, `watching`, `done`, and archived as the same state.",
+            "",
+            generate_okf_block(
+                lang,
+                work_dir=work_dir,
+                work_policy=work_policy,
+                secret_policy=secret_policy,
+            ),
             "",
             generate_due_block(lang),
         ])
@@ -310,14 +367,33 @@ def generate_guidance_block(lang: str = "ja") -> str:
         "- それ以外（整合チェック・archive 蘇生・グラフ等）: Bash で `docsweep <command> --json`",
         "- Claude Code では `/D` slash command でも 3 経路をまとめてディスパッチできる",
         "",
-        generate_okf_block(lang),
+        "### 親子 plan の closeout",
+        "",
+        f"親 plan を含む実装完了報告を受けたら、まず `{closeout_cmd}` を実行する。global `plan-closeout` skill は導入済みの場合だけ補助に使う。",
+        "機械 blocker、手動確認、dirty worktree と変更予定ファイルの重複を分けて扱い、ユーザーの明示承認前に H1 / `docsweep_state` を relabel しない。",
+        "承認後も子 plan から親 plan の順に進め、archive は別の dry-run と別承認に分ける。",
+        "「実装完了」「静的検証済み」「手動確認済み」「watching」「done」「archive済み」を同じ状態として扱わない。",
+        "",
+        generate_okf_block(
+            lang,
+            work_dir=work_dir,
+            work_policy=work_policy,
+            secret_policy=secret_policy,
+        ),
         "",
         generate_due_block(lang),
     ])
 
 
 def generate_managed_block(
-    sm: StateModel, lang: str = "ja", *, use_frontmatter: bool = False, include_guidance: bool = True
+    sm: StateModel,
+    lang: str = "ja",
+    *,
+    use_frontmatter: bool = False,
+    include_guidance: bool = True,
+    work_dir: str | None = None,
+    work_policy: str | None = None,
+    secret_policy: str | None = None,
 ) -> str:
     """プロジェクト用の管理ブロック本文（ラベル節＋任意で導線）。
 
@@ -325,7 +401,12 @@ def generate_managed_block(
     """
     block = generate_label_block(sm, lang, use_frontmatter=use_frontmatter)
     if include_guidance:
-        block = block + "\n\n" + generate_guidance_block(lang)
+        block = block + "\n\n" + generate_guidance_block(
+            lang,
+            work_dir=work_dir,
+            work_policy=work_policy,
+            secret_policy=secret_policy,
+        )
     return block
 
 
@@ -339,9 +420,24 @@ def _pointer_body(lang: str) -> str:
     return "docsweep の運用ルール（ステータスラベル・残作業導線）は CLAUDE.md の docsweep 管理ブロックを参照してください。"
 
 
-def _project_inners(sm: StateModel, lang: str, *, use_frontmatter: bool, include_guidance: bool) -> tuple[str, str]:
+def _project_inners(
+    sm: StateModel,
+    lang: str,
+    *,
+    use_frontmatter: bool,
+    include_guidance: bool,
+    work_dir: str | None = None,
+    work_policy: str | None = None,
+    secret_policy: str | None = None,
+) -> tuple[str, str]:
     claude_inner = generate_managed_block(
-        sm, lang, use_frontmatter=use_frontmatter, include_guidance=include_guidance
+        sm,
+        lang,
+        use_frontmatter=use_frontmatter,
+        include_guidance=include_guidance,
+        work_dir=work_dir,
+        work_policy=work_policy,
+        secret_policy=secret_policy,
     )
     pointer_inner = _hook_inner(_pointer_body(lang), docsweep_command("eject"), lang)
     return claude_inner, pointer_inner
@@ -419,6 +515,8 @@ def inject(
         p = replace(p, lang=lang)
     sm = p.states
     result = InjectResult(project=project_dir.name)
+    effective = load_config(project_dir=project_dir)
+    effective_work_dir = relative_work_dir(project_dir, effective.work_dir)
 
     manifest = load_manifest()
     key = project_dir.as_posix()
@@ -429,13 +527,24 @@ def inject(
     # CLAUDE.md = 正本（ラベル節＋導線）。AGENTS.md 等は複製せず CLAUDE.md を指すポインタにする
     # （single source of truth。Codex は AGENTS.md のポインタを読んで CLAUDE.md を参照する）。
     claude_inner, pointer_inner = _project_inners(
-        sm, p.lang, use_frontmatter=p.use_frontmatter, include_guidance=include_guidance
+        sm,
+        p.lang,
+        use_frontmatter=p.use_frontmatter,
+        include_guidance=include_guidance,
+        work_dir=effective_work_dir,
+        work_policy=effective.work_policy,
+        secret_policy=effective.secret_policy,
     )
 
     if write_yaml:
         yaml_path = project_dir / ".docsweep.yaml"
         if not yaml_path.exists():
-            content = _render_yaml(p)
+            content = _render_yaml(
+                p,
+                work_dir=effective_work_dir,
+                work_policy=effective.work_policy,
+                secret_policy=effective.secret_policy,
+            )
             if not dry_run:
                 yaml_path.write_text(content, encoding="utf-8")
             result.yaml_path = yaml_path.as_posix()
@@ -476,7 +585,19 @@ def _ensure_global_config_scaffold(lang: str = "ja", *, dry_run: bool = False) -
             "# docsweep グローバル設定（全プロジェクト共通の既定）。\n"
             "# プロジェクトの .docsweep.yaml がここを部分上書きする（プロジェクトの方が強い）。\n\n"
         )
-    body = header + _due_scaffold(scope="global", lang=lang)
+    work_scaffold = (
+        "# Work queue defaults. Uncomment and edit to change the shared defaults.\n"
+        "# work_dir: docs/local\n"
+        "# work_policy: private\n"
+        "# secret_policy: block\n\n"
+        if lang == "en"
+        else
+        "# 作業キューの既定。共有の既定を変更する時はコメントを外して編集する。\n"
+        "# work_dir: docs/local\n"
+        "# work_policy: private\n"
+        "# secret_policy: block\n\n"
+    )
+    body = header + work_scaffold + _due_scaffold(scope="global", lang=lang)
     if not dry_run:
         GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         GLOBAL_CONFIG_PATH.write_text(body, encoding="utf-8")
@@ -518,7 +639,13 @@ def _due_scaffold(*, scope: str, lang: str = "ja") -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_yaml(p: Preset) -> str:
+def _render_yaml(
+    p: Preset,
+    *,
+    work_dir: str = "docs/local",
+    work_policy: str = "private",
+    secret_policy: str = "block",
+) -> str:
     states_block = []
     for st in p.states.states:
         labels = ", ".join(f"{k}: {v}" for k, v in st.labels.items())
@@ -535,6 +662,10 @@ def _render_yaml(p: Preset) -> str:
         f"lang: {p.lang}\n"
         f"preset: {p.name}\n"
         f"states:\n" + "\n".join(states_block) + "\n\n"
+        "# Work queue (project-relative; docsweep new/capture share this path)\n"
+        f"work_dir: {work_dir}\n"
+        f"work_policy: {work_policy}\n"
+        f"secret_policy: {secret_policy}\n\n"
         + _due_scaffold(scope="project", lang=p.lang)
     )
 
@@ -676,8 +807,15 @@ def preview_inject(
     """プロジェクト inject で「何が書かれるか」を返す（書き込みはしない・UI の dry-run プレビュー用）。"""
     project_dir = Path(project_dir).resolve()
     p: Preset = get_preset(preset)
+    effective = load_config(project_dir=project_dir)
     claude_inner, pointer_inner = _project_inners(
-        p.states, lang or p.lang, use_frontmatter=p.use_frontmatter, include_guidance=include_guidance
+        p.states,
+        lang or p.lang,
+        use_frontmatter=p.use_frontmatter,
+        include_guidance=include_guidance,
+        work_dir=relative_work_dir(project_dir, effective.work_dir),
+        work_policy=effective.work_policy,
+        secret_policy=effective.secret_policy,
     )
     blocks = [{"file": "CLAUDE.md", "text": _wrap(claude_inner)}]
     if (project_dir / "AGENTS.md").is_file():

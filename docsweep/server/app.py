@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import __version__
-from ..config import Config
+from ..config import Config, config_for_project
 from ..engine import ScanResult, apply_action, auto_sweep, run_scan
 from ..aggregate_index import write_index
 from ..inject import (
@@ -206,16 +206,33 @@ def create_app(
         return RedirectResponse(url=target, status_code=302)
 
     @app.get("/preview", response_class=HTMLResponse)
-    def preview(request: Request, token: str = Query(default=""), path: str = Query(default="")):
+    def preview(
+        request: Request,
+        token: str = Query(default=""),
+        path: str = Query(default=""),
+        allow_sensitive: bool = Query(default=False),
+    ):
         check_token(request, token, status_code=403, detail="invalid or missing token")
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None:
             raise HTTPException(status_code=403, detail="path outside scan roots")
         if not resolved.is_file():
             raise HTTPException(status_code=404, detail="not found")
+        text = resolved.read_text(encoding="utf-8", errors="replace")
+        from ..secrets_guard import SensitiveContentError, enforce_secret_policy
+        from ..work_queue import find_project_dir
+        project_root = find_project_dir(config=state.config, cwd=resolved.parent)
+        effective_config = config_for_project(state.config, project_root)
+        try:
+            enforce_secret_policy(
+                text,
+                policy=effective_config.secret_policy,
+                allow_sensitive=allow_sensitive,
+            )
+        except SensitiveContentError as e:
+            raise HTTPException(status_code=403, detail=str(e)) from e
         result = run_scan(state.config)
         doc = _find_doc(result, str(resolved))
-        text = resolved.read_text(encoding="utf-8", errors="replace")
         return TEMPLATES.TemplateResponse(
             request,
             "_preview.html",

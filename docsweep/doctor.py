@@ -13,9 +13,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from .config import GLOBAL_CONFIG_PATH, Config, load_config
+from .config import (
+    GLOBAL_CONFIG_PATH,
+    Config,
+    archive_dir_for_project,
+    load_config,
+    project_work_settings,
+    resolve_work_dir,
+)
 from .index import db_path
 from .inject import GUIDANCE_PATH, MANIFEST_PATH, list_injected
+from .work_queue import check_work_queue
 
 Status = Literal["ok", "warn", "fail", "hint"]
 
@@ -86,6 +94,7 @@ def run_doctor(
     index_db: Path | None = None,
     warn_index_hours: float = 24.0,
     fail_index_hours: float = 168.0,
+    project_dir: Path | None = None,
 ) -> DoctorReport:
     """ヘルスチェックを実行して DoctorReport を返す。"""
     gpath = global_path or GLOBAL_CONFIG_PATH
@@ -148,6 +157,96 @@ def run_doctor(
                     status="ok",
                     label="roots",
                     detail=f"{len(cfg.roots)} path(s): " + ", ".join(str(r) for r in cfg.roots[:5]),
+                ))
+
+        # 2b. work queue privacy.  This is read-only: it never edits .gitignore,
+        # untracks files, moves queue entries, or rewrites history.
+        candidates: list[Path] = []
+        if project_dir is not None:
+            candidates = [Path(project_dir).resolve()]
+        elif cfg.project_dir is not None:
+            candidates = [cfg.project_dir.resolve()]
+        else:
+            for raw_root in cfg.roots:
+                root = Path(raw_root).resolve()
+                if any((root / marker).exists() for marker in cfg.project_markers):
+                    candidates.append(root)
+                if root.is_dir():
+                    try:
+                        candidates.extend(
+                            child
+                            for child in root.iterdir()
+                            if child.is_dir()
+                            and any((child / marker).exists() for marker in cfg.project_markers)
+                        )
+                    except OSError:
+                        pass
+        if not candidates:
+            items.append(CheckItem(
+                id="work_queue",
+                status="hint",
+                label="work queue",
+                detail="検査対象プロジェクトを特定できません（--project-dir または roots を指定）",
+                fix="python -m docsweep doctor --project-dir <project>",
+            ))
+        else:
+            queue_errors: list[str] = []
+            queue_warnings: list[str] = []
+            seen_projects: set[str] = set()
+            for candidate in candidates:
+                key = candidate.as_posix().casefold()
+                if key in seen_projects:
+                    continue
+                seen_projects.add(key)
+                try:
+                    effective = load_config(project_dir=candidate, global_path=gpath)
+                    queue = resolve_work_dir(candidate, effective.work_dir)
+                    result = check_work_queue(
+                        config=effective,
+                        project_dir=candidate,
+                        target_dir=queue,
+                    )
+                    queue_errors.extend(f"{candidate.name}: {err}" for err in result.errors)
+                    queue_warnings.extend(f"{candidate.name}: {warning}" for warning in result.warnings)
+                    _work_dir, work_policy, _secret_policy = project_work_settings(candidate, effective)
+                    if work_policy == "private":
+                        archive_raw = archive_dir_for_project(candidate, effective)
+                        archive_candidate = Path(archive_raw)
+                        archive = (
+                            archive_candidate.resolve()
+                            if archive_candidate.is_absolute()
+                            else resolve_work_dir(candidate, archive_raw)
+                        )
+                        try:
+                            archive.relative_to(queue)
+                        except ValueError:
+                            queue_warnings.append(
+                                f"{candidate.name}: private queue の archive が queue 外です"
+                            )
+                except (OSError, ValueError, PermissionError) as exc:
+                    queue_errors.append(f"{candidate.name}: work queue を解決できません")
+            if queue_errors:
+                items.append(CheckItem(
+                    id="work_queue",
+                    status="fail",
+                    label="work queue",
+                    detail="; ".join(queue_errors[:5]),
+                    fix=".docsweep.yaml の work_dir / work_policy と Git ignore を確認",
+                ))
+            elif queue_warnings:
+                items.append(CheckItem(
+                    id="work_queue",
+                    status="warn",
+                    label="work queue",
+                    detail="; ".join(queue_warnings[:5]),
+                    fix="private queue を使う場合は Git リポジトリと ignore ルールを確認",
+                ))
+            else:
+                items.append(CheckItem(
+                    id="work_queue",
+                    status="ok",
+                    label="work queue",
+                    detail=f"private/shared queue の設定と tracked 状態を検査済み ({len(seen_projects)} project(s))",
                 ))
 
     # 3. index

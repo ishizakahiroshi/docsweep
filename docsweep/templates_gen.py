@@ -1,8 +1,8 @@
 """`docsweep new <type> <topic>` のテンプレ即生成。
 
 規約（templates/CLAUDE.md）の必須セクション・H1 ラベルに沿った雛形を出す。
-配置先は docs/local/ があればそこ、docs/ だけあれば docs/ 直下、
-どちらも無ければ docs/local/ を新規作成して配置（プロジェクトルート直下には置かない）。
+配置先は Config.work_dir（既定 docs/local/）で一元解決する。プロジェクトに docs/ が
+存在するかどうかで保存先を暗黙に変えない。
 
 新規生成時に frontmatter `due:` を初日から入れる（親 plan kanban-board-write-ops の §C4 §C2）。
 オフセット日数は ``Config.due_default_offset_days``（``.docsweep.yaml`` の ``due:`` ブロック）で可変。
@@ -10,10 +10,15 @@
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+from .config import Config, resolve_work_dir
+from .okf import bundled_okf_profile
+from .work_queue import ensure_write_allowed
 
 
 def _today() -> str:
@@ -27,24 +32,30 @@ class NewDoc:
     due: str | None = None
 
 
-def _placement_dir(project_dir: Path) -> Path:
-    local = project_dir / "docs" / "local"
-    if local.is_dir():
-        return local
-    docs = project_dir / "docs"
-    if docs.is_dir():
-        return docs
-    # どちらも無い新規リポでは家標準の docs/local/ を新設する（ルート直下に
-    # md をばら撒かない）。実ディレクトリ作成は呼び出し側の mkdir に任せる。
-    return local
+def _placement_dir(
+    project_dir: Path,
+    *,
+    config: Config | None = None,
+    work_dir: str | None = None,
+) -> Path:
+    # 直接 API 呼び出し（旧利用者）には従来の docs/ fallback を残す。CLI / MCP は
+    # 必ず Config を渡すため、設定済み work_dir では docs/ の有無で保存先を変えない。
+    if config is None and work_dir is None:
+        local = project_dir / "docs" / "local"
+        if local.is_dir():
+            return local
+        if (project_dir / "docs").is_dir():
+            return project_dir / "docs"
+    raw = work_dir if work_dir is not None else (config.work_dir if config is not None else None)
+    return resolve_work_dir(project_dir, raw)
 
 
 def _okf_frontmatter(
-    *, doc_type: str, status: str, due: str | None, today: str | None = None
+    *, doc_type: str, state: str, due: str | None, today: str | None = None
 ) -> str:
     """OKF（plan_okf-adoption_2026-06-29.md）準拠の frontmatter ブロックを返す。
 
-    最低限のフィールド: ``type`` / ``status`` / ``tags: []`` / ``owner`` /
+    最低限のフィールド: ``type`` / OKF ``status`` / ``docsweep_state`` / ``tags: []`` / ``owner`` /
     ``review_status: draft`` / ``related: []`` / ``last_reviewed: <today>``。
     ``due:`` は呼び出し側が決める（plan/pending は付与、bugfix は新規時は付けない設計）。
 
@@ -53,10 +64,12 @@ def _okf_frontmatter(
     H1 ラベル + ファイル名にフォールバックする）。
     """
     today = today or _today()
+    lifecycle_status = bundled_okf_profile().lifecycle_default
     lines = [
         "---",
         f"type: {doc_type}",
-        f"status: {status}",
+        f"status: {lifecycle_status}",
+        f"docsweep_state: {state}",
         "tags: []",
         "owner: ",
         "review_status: draft",
@@ -73,7 +86,7 @@ def _okf_frontmatter(
 
 def _plan_body(title: str, *, due: str | None = None) -> str:
     return (
-        _okf_frontmatter(doc_type="plan", status="planned", due=due)
+        _okf_frontmatter(doc_type="plan", state="planned", due=due)
         + f"# [計画] {title}\n\n"
         "## context配分\n\n"
         "| C | 内容 | 種別 |\n|---|---|---|\n| C1 | <TODO> | plan |\n\n"
@@ -86,7 +99,7 @@ def _bugfix_body(title: str, *, due: str | None = None) -> str:
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
     _ = due
     return (
-        _okf_frontmatter(doc_type="bugfix", status="in-progress", due=None)
+        _okf_frontmatter(doc_type="bugfix", state="in-progress", due=None)
         # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
         + f"# [実行中] {title}\n\n"
         "## 症状\n\n<TODO>\n\n## 根本原因\n\n<TODO>\n\n## 修正内容\n\n<TODO>\n\n"
@@ -96,7 +109,7 @@ def _bugfix_body(title: str, *, due: str | None = None) -> str:
 
 def _pending_body(title: str, *, due: str | None = None) -> str:
     return (
-        _okf_frontmatter(doc_type="pending", status="pending", due=due)
+        _okf_frontmatter(doc_type="pending", state="pending", due=due)
         + f"# [保留] {title}\n\n"
         "## 概要\n\n<TODO: 何を止めたか>\n\n## 保留理由\n\n<TODO>\n\n## 着手条件\n\n- <TODO>\n"
     )
@@ -149,20 +162,33 @@ def new_doc(
     title: str | None = None,
     due: str | None = None,
     offset_days: dict[str, int] | None = None,
+    config: Config | None = None,
+    work_dir: str | None = None,
+    allow_sensitive: bool = False,
 ) -> NewDoc:
     """テンプレ MD を新規生成して :class:`NewDoc` を返す。
 
     Args:
         doc_type: ``plan`` / ``bugfix`` / ``pending``。
         topic: ファイル名の ``<topic>`` 部（ケバブケース推奨）。
-        project_dir: 配置先ベース（``docs/local/`` → ``docs/`` の順で解決）。
+        project_dir: 配置先プロジェクトのルート。
         title: H1 タイトル。省略時は ``topic`` を流用。
         due: 初期 due を直接指定（``YYYY-MM-DD``）。明示指定が最優先。
         offset_days: ``Config.due_default_offset_days``。``due`` 未指定時の自動計算に使う。
     """
     if doc_type not in _BUILDERS:
         raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
-    out_dir = _placement_dir(project_dir)
+    out_dir = _placement_dir(project_dir, config=config, work_dir=work_dir)
+    resolved_due = _resolve_initial_due(doc_type, due=due, offset_days=offset_days)
+    body = _BUILDERS[doc_type](title or topic, due=resolved_due)
+    if config is not None:
+        ensure_write_allowed(
+            config=config,
+            project_dir=project_dir,
+            target_dir=out_dir,
+            content=body,
+            allow_sensitive=allow_sensitive,
+        )
     out_dir.mkdir(parents=True, exist_ok=True)
 
     base = _filename(doc_type, topic)
@@ -175,8 +201,6 @@ def new_doc(
             path = out_dir / f"{stem}_{n}{suffix}"
             n += 1
 
-    resolved_due = _resolve_initial_due(doc_type, due=due, offset_days=offset_days)
-    body = _BUILDERS[doc_type](title or topic, due=resolved_due)
     path.write_text(body, encoding="utf-8")
     return NewDoc(path=path, created=True, due=resolved_due)
 
@@ -206,6 +230,27 @@ def _patch_related(path: Path, related_names: list[str]) -> None:
     path.write_text("---\n" + "\n".join(out_lines) + "\n---" + body, encoding="utf-8")
 
 
+def _patch_scalar(path: Path, field: str, value: str) -> None:
+    """frontmatter の scalar extension を最小変更で追記する。"""
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        return
+    end = text.find("\n---", 3)
+    if end < 0:
+        return
+    fm = text[4:end]
+    body = text[end + 4:]
+    lines = fm.splitlines()
+    prefix = f"{field}:"
+    for index, line in enumerate(lines):
+        if line.strip().startswith(prefix):
+            lines[index] = f"{field}: {value}"
+            break
+    else:
+        lines.append(f"{field}: {value}")
+    path.write_text("---\n" + "\n".join(lines) + "\n---" + body, encoding="utf-8")
+
+
 def new_split_plans(
     topic: str,
     *,
@@ -214,8 +259,11 @@ def new_split_plans(
     title: str | None = None,
     due: str | None = None,
     offset_days: dict[str, int] | None = None,
+    config: Config | None = None,
+    work_dir: str | None = None,
+    allow_sensitive: bool = False,
 ) -> list[NewDoc]:
-    """親 plan + 子 N 本を生成し related 双方向を結ぶ（UX W3 / P26）。"""
+    """親 plan + 子 N 本を生成し related と方向付き親参照を付ける（UX W3 / P26）。"""
     if n < 1 or n > 20:
         raise ValueError("--split は 1〜20")
     parent_title = title or topic
@@ -223,6 +271,7 @@ def new_split_plans(
         "plan", topic,
         project_dir=project_dir, title=parent_title,
         due=due, offset_days=offset_days,
+        config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
     )
     children: list[NewDoc] = []
     child_names: list[str] = []
@@ -233,12 +282,20 @@ def new_split_plans(
             project_dir=project_dir,
             title=f"{parent_title} C{i}",
             due=due, offset_days=offset_days,
+            config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
         )
         children.append(child)
         child_names.append(child.path.name)
     # parent related → children
     _patch_related(parent.path, child_names)
     # each child related → parent
+    # Keep the repo-relative reference lexical.  ``docs/local`` may be a
+    # junction whose resolved target is outside the project root; resolving it
+    # here would make a valid generated child relation fail at creation time.
+    parent_abs = Path(os.path.abspath(os.path.normpath(os.fspath(parent.path))))
+    project_abs = Path(os.path.abspath(os.path.normpath(os.fspath(project_dir))))
+    parent_ref = parent_abs.relative_to(project_abs).as_posix()
     for ch in children:
         _patch_related(ch.path, [parent.path.name])
+        _patch_scalar(ch.path, "docsweep_parent", parent_ref)
     return [parent, *children]

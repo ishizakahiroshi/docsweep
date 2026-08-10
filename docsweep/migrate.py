@@ -21,19 +21,34 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from difflib import unified_diff
 from pathlib import Path
 
 from .config import Config
 from .detect import detect_status
 from .engine import run_scan
+from .okf import bundled_okf_profile, is_okf_lifecycle_status
 from .services.frontmatter import read_frontmatter, read_frontmatter_text
 
 # 書き換え用の厳密版（共通 reader は閉じフェンス後の空行まで \s* で飲み込むため、
 # 再構築に使うと本文側の空行が失われる。行内空白のみ許容し、本文をバイト位置で温存する）。
-_FRONTMATTER_SPLIT_RE = re.compile(r"^---[ \t]*\n(.*?\n)---[ \t]*\n", re.DOTALL)
+_FRONTMATTER_SPLIT_RE = re.compile(
+    r"^---[ \t]*(?P<open_nl>\r?\n)(?P<body>.*?)(?P<body_nl>\r?\n)"
+    r"---[ \t]*(?P<close_nl>\r?\n)",
+    re.DOTALL,
+)
 
 # OKF frontmatter の必須キー集合（_okf_key_lines と同順・同内容の正典）。
-_OKF_KEYS = ("type", "status", "tags", "owner", "review_status", "related", "last_reviewed")
+_OKF_KEYS = (
+    "type",
+    "status",
+    "docsweep_state",
+    "tags",
+    "owner",
+    "review_status",
+    "related",
+    "last_reviewed",
+)
 
 
 def _today() -> str:
@@ -59,10 +74,12 @@ def _state_to_status(state_key: str | None) -> str:
 
 
 def _okf_key_lines(*, doc_type: str, status: str, today: str) -> list[tuple[str, str]]:
-    """OKF キーと行表現の対（挿入順の正典。new_doc テンプレと同順）。"""
+    """新形式のキーと行表現（OKF lifecycle と docsweep state を分離）。"""
+    lifecycle_status = bundled_okf_profile().lifecycle_default
     return [
         ("type", f"type: {doc_type}"),
-        ("status", f"status: {status}"),
+        ("status", f"status: {lifecycle_status}"),
+        ("docsweep_state", f"docsweep_state: {status}"),
         ("tags", "tags: []"),
         ("owner", "owner: "),
         ("review_status", "review_status: draft"),
@@ -89,7 +106,13 @@ def _parse_frontmatter_keys(text: str, path: Path) -> set[str] | None:
 
 
 def _upgrade_frontmatter(
-    text: str, *, doc_type: str, status: str, today: str, existing_keys: set[str]
+    text: str,
+    *,
+    doc_type: str,
+    status: str,
+    today: str,
+    existing_keys: set[str],
+    replace_legacy_status: bool = False,
 ) -> str | None:
     """既存 frontmatter へ不足 OKF キーを追記した全文を返す（既存行は不変）。
 
@@ -103,10 +126,24 @@ def _upgrade_frontmatter(
         for key, line in _okf_key_lines(doc_type=doc_type, status=status, today=today)
         if key not in existing_keys
     ]
-    if not missing:
+    if not missing and not replace_legacy_status:
         return None
+    newline = m.group("open_nl")
+    inner = m.group("body") + m.group("body_nl")
+    if replace_legacy_status:
+        lifecycle_status = bundled_okf_profile().lifecycle_default
+        inner = re.sub(
+            r"^(?P<indent>[ \t]*)status[ \t]*:[^\r\n]*(?P<eol>\r?\n|$)",
+            lambda match: (
+                f"{match.group('indent')}status: {lifecycle_status}{match.group('eol')}"
+            ),
+            inner,
+            count=1,
+            flags=re.MULTILINE,
+        )
     # 不足キーを正典順で先頭に置き、既存行（due: 等）はそのまま後ろへ温存する。
-    return "---\n" + "\n".join(missing) + "\n" + m.group(1) + "---\n" + text[m.end():]
+    prefix = f"---{newline}" + (newline.join(missing) + newline if missing else "")
+    return prefix + inner + f"---{m.group('close_nl')}" + text[m.end():]
 
 
 @dataclass
@@ -118,6 +155,9 @@ class MigratePlan:
     status: str
     skipped_reason: str | None = None  # None なら適用可能
     mode: str = "insert"  # insert=frontmatter 無し / upgrade=旧形式（due: 等のみ）へ追記
+    legacy_status_migration: bool = False
+    diff: str | None = None
+    _new_text: str | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -129,7 +169,14 @@ class MigrateResult:
     def to_dict(self) -> dict:
         return {
             "planned": [
-                {"path": p.path, "type": p.doc_type, "status": p.status, "mode": p.mode}
+                {
+                    "path": p.path,
+                    "type": p.doc_type,
+                    "status": p.status,
+                    "mode": p.mode,
+                    "legacy_status_migration": p.legacy_status_migration,
+                    "diff": p.diff,
+                }
                 for p in self.planned
             ],
             "skipped": [
@@ -139,9 +186,12 @@ class MigrateResult:
         }
 
 
-def plan_migration(config: Config, *, project: str | None = None) -> MigrateResult:
+def plan_migration(
+    config: Config, *, project: str | None = None, today: str | None = None
+) -> MigrateResult:
     """全 plan/bugfix/pending を走査して、frontmatter 未挿入のものを抽出する。"""
     result = MigrateResult()
+    today = today or _today()
     scan_result = run_scan(config)
     for doc in scan_result.docs:
         rec = doc.record
@@ -168,21 +218,58 @@ def plan_migration(config: Config, *, project: str | None = None) -> MigrateResu
             ))
             continue
         if keys is not None:
+            data = _data if isinstance(_data, dict) else {}
+            raw_status = data.get("status")
+            legacy_status_migration = bool(
+                raw_status is not None
+                and not is_okf_lifecycle_status(raw_status)
+                and config.state_model.match(str(raw_status)) is not None
+            )
             missing = [k for k in _OKF_KEYS if k not in keys]
-            if not missing:
+            if not missing and not legacy_status_migration:
                 result.skipped.append(MigratePlan(
                     path=rec.path, doc_type=rec.type, status=rec.state or "?",
                     skipped_reason="OKF frontmatter が揃っています",
                 ))
                 continue
             # 部分 frontmatter（due: だけ・type: だけ等）→ 不足キーを追記する upgrade 対象。
-            result.planned.append(MigratePlan(
+            new_text = _upgrade_frontmatter(
+                text,
+                doc_type=rec.type,
+                status=status,
+                today=today,
+                existing_keys=keys,
+                replace_legacy_status=legacy_status_migration,
+            )
+            plan = MigratePlan(
                 path=rec.path, doc_type=rec.type, status=status, mode="upgrade",
-            ))
+                legacy_status_migration=legacy_status_migration,
+                _new_text=new_text,
+            )
+            if new_text is not None:
+                plan.diff = "".join(
+                    unified_diff(
+                        text.splitlines(keepends=True),
+                        new_text.splitlines(keepends=True),
+                        fromfile=rec.path,
+                        tofile=f"{rec.path} (migrated)",
+                    )
+                )
+            result.planned.append(plan)
             continue
-        result.planned.append(MigratePlan(
-            path=rec.path, doc_type=rec.type, status=status,
-        ))
+        new_text = _build_frontmatter_block(
+            doc_type=rec.type, status=status, today=today,
+        ) + text
+        plan = MigratePlan(path=rec.path, doc_type=rec.type, status=status, _new_text=new_text)
+        plan.diff = "".join(
+            unified_diff(
+                text.splitlines(keepends=True),
+                new_text.splitlines(keepends=True),
+                fromfile=rec.path,
+                tofile=f"{rec.path} (migrated)",
+            )
+        )
+        result.planned.append(plan)
     return result
 
 
@@ -191,7 +278,7 @@ def apply_migration(
 ) -> MigrateResult:
     """``plan_migration`` の結果を実際に各 md へ挿入する。"""
     today = today or _today()
-    result = plan_migration(config, project=project)
+    result = plan_migration(config, project=project, today=today)
     for plan in result.planned:
         path = Path(plan.path)
         try:
@@ -205,13 +292,14 @@ def apply_migration(
         if plan.mode == "upgrade":
             # 二重チェック（plan 後に手で frontmatter が完成された/壊れたケースは触らない）。
             keys = _parse_frontmatter_keys(text, path)
-            if keys is None or all(k in keys for k in _OKF_KEYS):
+            if keys is None or (all(k in keys for k in _OKF_KEYS) and not plan.legacy_status_migration):
                 plan.skipped_reason = "frontmatter が変化しています（再検出・スキップ）"
                 result.skipped.append(plan)
                 continue
             new_text = _upgrade_frontmatter(
                 text, doc_type=plan.doc_type, status=plan.status,
                 today=today, existing_keys=keys,
+                replace_legacy_status=plan.legacy_status_migration,
             )
             if new_text is None:
                 plan.skipped_reason = "frontmatter を再構築できません（スキップ）"
@@ -231,9 +319,7 @@ def apply_migration(
             plan.skipped_reason = "既に frontmatter があります（再検出）"
             result.skipped.append(plan)
             continue
-        block = _build_frontmatter_block(
-            doc_type=plan.doc_type, status=plan.status, today=today,
-        )
+        block = _build_frontmatter_block(doc_type=plan.doc_type, status=plan.status, today=today)
 
         def _xform(_t: str, _block: str = block) -> str:
             return _block + _t

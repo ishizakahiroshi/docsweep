@@ -9,8 +9,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from ...config import DEFAULT_PROJECT_MARKERS, load_config
-from ...engine import apply_action, auto_sweep, run_scan
+from ...config import load_config
+from ...engine import apply_action, auto_sweep, doc_for_path, run_scan
 from ..parser import _build_config
 
 def cmd_fix_conflict(args: argparse.Namespace) -> int:
@@ -59,6 +59,10 @@ def cmd_apply(args: argparse.Namespace) -> int:
     result = run_scan(cfg)
     target = Path(args.path).resolve().as_posix()
     doc = next((d for d in result.docs if d.record.path == target), None)
+    if doc is None:
+        # `docs/local` is commonly gitignored.  An explicitly named write target
+        # is still valid and must not be reported as a scan-scope success/empty.
+        doc = doc_for_path(Path(args.path), cfg)
     if doc is None:
         print(f"対象が見つかりません（スキャン範囲外?）: {args.path}", file=sys.stderr)
         return 2
@@ -142,6 +146,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
 def cmd_capture(args: argparse.Namespace) -> int:
     """会話履歴から plan / bugfix / pending 草案を抽出 (heuristic / LLM)。"""
     from ...capture import extract_drafts, save_drafts
+    from ...work_queue import resolve_work_target
 
     cfg = _build_config(args)
 
@@ -164,13 +169,18 @@ def cmd_capture(args: argparse.Namespace) -> int:
         print("入力が空です", file=sys.stderr)
         return 2
 
-    drafts = extract_drafts(
-        text,
-        config=cfg,
-        project=getattr(args, "project", None),
-        max_drafts=int(getattr(args, "max", 5)),
-        use_llm=bool(getattr(args, "llm", False)),
-    )
+    try:
+        drafts = extract_drafts(
+            text,
+            config=cfg,
+            project=getattr(args, "project", None),
+            max_drafts=int(getattr(args, "max", 5)),
+            use_llm=bool(getattr(args, "llm", False)),
+            allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
+        )
+    except PermissionError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     if not drafts:
         if getattr(args, "json", False):
@@ -181,8 +191,23 @@ def cmd_capture(args: argparse.Namespace) -> int:
 
     saved: list[Path] = []
     if getattr(args, "save_all", False):
-        out_dir = Path(args.out_dir) if getattr(args, "out_dir", None) else _resolve_out_dir(cfg)
-        saved = save_drafts(drafts, config=cfg, target_dir=out_dir)
+        explicit_dir = Path(args.out_dir) if getattr(args, "out_dir", None) else None
+        try:
+            project_root, out_dir = resolve_work_target(
+                cfg,
+                project=getattr(args, "project", None),
+                explicit_dir=explicit_dir,
+            )
+            saved = save_drafts(
+                drafts,
+                config=cfg,
+                target_dir=out_dir,
+                project_dir=project_root,
+                allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
+            )
+        except (PermissionError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
 
     if getattr(args, "json", False):
         print(json.dumps({
@@ -231,11 +256,11 @@ def _read_clipboard() -> str:
 
 
 def _resolve_out_dir(cfg) -> Path:
-    """capture 草案の保存先を決める（既定: 最初の root の docs/local/）。"""
-    if cfg.roots:
-        root = Path(cfg.roots[0])
-        return root / "docs" / "local"
-    return Path.cwd() / "docs" / "local"
+    """後方互換用の capture 保存先 helper（実際の境界検査は service 層）。"""
+    from ...work_queue import resolve_work_target
+
+    _root, target = resolve_work_target(cfg)
+    return target
 
 
 def cmd_auto_triage(args: argparse.Namespace) -> int:
@@ -266,23 +291,28 @@ def cmd_auto_triage(args: argparse.Namespace) -> int:
 
 
 def cmd_new(args: argparse.Namespace) -> int:
-    from ...scan import detect_project_root
-    from ...secrets_guard import format_warnings, scan_secrets
     from ...similar_guard import find_similar_open
     from ...templates_gen import new_doc, new_split_plans
+    from ...work_queue import find_project_dir
 
     if getattr(args, "project_dir", None):
         project_dir = Path(args.project_dir)
     else:
-        # --project-dir 省略時は cwd をそのまま使わず、.git 等の project marker を
-        # 上へ辿って自動検出する（scan 系コマンドと同じ detect_project_root を再利用）。
-        # cwd がサブディレクトリ（例: リポジトリ内の web/）のときに、そこを誤って
-        # プロジェクトルート扱いしてしまう問題への対処。
-        cwd = Path.cwd().resolve()
-        project_dir = detect_project_root(cwd, Path(cwd.anchor), DEFAULT_PROJECT_MARKERS, {})
+        project_dir = find_project_dir(cwd=Path.cwd())
     # ``.docsweep.yaml`` の ``due:`` ブロックから default_offset_days を読む。
     # --no-due 指定時は空 dict を渡してオフセット計算自体を無効化する（嘘の日付防止）。
-    cfg = load_config(project_dir=project_dir)
+    cfg = load_config(
+        project_dir=project_dir,
+        global_path=Path(args.config) if getattr(args, "config", None) else None,
+    )
+    if getattr(args, "work_dir", None):
+        cfg.work_dir = str(args.work_dir)
+        cfg.work_dir_explicit = True
+    if getattr(args, "work_policy", None):
+        cfg.work_policy = str(args.work_policy)
+        cfg.work_policy_explicit = True
+    if getattr(args, "secret_policy", None):
+        cfg.secret_policy = str(args.secret_policy)
     # 類似ガード（現役 open）
     try:
         sim = find_similar_open(cfg, topic=args.topic)
@@ -298,29 +328,35 @@ def cmd_new(args: argparse.Namespace) -> int:
         if args.type != "plan":
             print("--split は plan のみ対応です", file=sys.stderr)
             return 2
-        created = new_split_plans(
-            args.topic,
-            n=split_n,
-            project_dir=project_dir,
-            title=args.title,
-            due=getattr(args, "due", None),
-            offset_days=offsets,
-        )
+        try:
+            created = new_split_plans(
+                args.topic,
+                n=split_n,
+                project_dir=project_dir,
+                title=args.title,
+                due=getattr(args, "due", None),
+                offset_days=offsets,
+                config=cfg,
+                allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
+            )
+        except (PermissionError, ValueError) as exc:
+            print(f"保存を中止しました: {exc}", file=sys.stderr)
+            return 2
         for d in created:
             print(f"生成しました: {d.path}" + (f" (due={d.due})" if d.due else ""))
         return 0
-    doc = new_doc(
-        args.type, args.topic,
-        project_dir=project_dir, title=args.title,
-        due=getattr(args, "due", None),
-        offset_days=offsets,
-    )
     try:
-        body = doc.path.read_text(encoding="utf-8")
-        for w in format_warnings(scan_secrets(body)):
-            print(f"warn: {w}", file=sys.stderr)
-    except Exception:
-        pass
+        doc = new_doc(
+            args.type, args.topic,
+            project_dir=project_dir, title=args.title,
+            due=getattr(args, "due", None),
+            offset_days=offsets,
+            config=cfg,
+            allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
+        )
+    except (PermissionError, ValueError) as exc:
+        print(f"保存を中止しました: {exc}", file=sys.stderr)
+        return 2
     if doc.due:
         print(f"生成しました: {doc.path} (due={doc.due})")
     else:
@@ -350,7 +386,13 @@ def cmd_migrate_frontmatter(args: argparse.Namespace) -> int:
     for p in result.planned:
         marker = "[適用済]" if (apply and p.path in result.applied) else "[予定]"
         mode_note = "（既存frontmatterへ不足キー追記）" if p.mode == "upgrade" else ""
-        print(f"  {marker} {p.doc_type:<8} status={p.status:<11} {p.path}{mode_note}")
+        legacy_note = "（旧 status を分離）" if p.legacy_status_migration else ""
+        print(
+            f"  {marker} {p.doc_type:<8} docsweep_state={p.status:<11} "
+            f"{p.path}{mode_note}{legacy_note}"
+        )
+        if not apply and p.diff:
+            print(p.diff, end="" if p.diff.endswith("\n") else "\n")
     for p in result.skipped:
         print(f"  [skip] {p.path}  ({p.skipped_reason})")
     return 0

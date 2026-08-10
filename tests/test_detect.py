@@ -25,6 +25,41 @@ def test_frontmatter_wins_over_h1():
     assert d.conflict is True
 
 
+def test_okf_lifecycle_status_is_not_docsweep_work_state():
+    text = "---\ntype: plan\nstatus: stable\n---\n# [計画] タイトル\n"
+    d = detect_status(text=text, filename="plan_x.md", sm=SM)
+    assert d.state_key == "planned"
+    assert d.source == "h1"
+    assert d.okf_status == "stable"
+    assert d.docsweep_state is None
+    assert d.conflict is False
+
+
+def test_docsweep_state_has_priority_and_reports_legacy_conflict():
+    text = (
+        "---\n"
+        "type: plan\n"
+        "status: in-progress\n"
+        "docsweep_state: watching\n"
+        "---\n"
+        "# [様子見] タイトル\n"
+    )
+    d = detect_status(text=text, filename="plan_x.md", sm=SM)
+    assert d.state_key == "watching"
+    assert d.source == "frontmatter"
+    assert d.docsweep_state == "watching"
+    assert d.okf_status == "in-progress"
+    assert any("旧 status" in warning for warning in d.frontmatter_warnings)
+
+
+def test_legacy_status_remains_readable():
+    text = "---\ntype: plan\nstatus: in-progress\n---\n# [実行中] タイトル\n"
+    d = detect_status(text=text, filename="plan_x.md", sm=SM)
+    assert d.state_key == "in-progress"
+    assert d.source == "frontmatter"
+    assert d.state_field == "legacy status"
+
+
 def test_unknown_label_is_parse_error():
     d = detect_status(text="# [なにか] タイトル\n", filename="plan_x.md", sm=SM)
     assert d.state_key is None

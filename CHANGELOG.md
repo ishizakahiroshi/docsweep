@@ -5,6 +5,34 @@
 
 ## [Unreleased]
 
+### Added
+
+- OKF v0.2 profile 駆動の frontmatter 状態分離を追加。標準 `status`（`draft` / `stable` /
+  `deprecated`）と docsweep の作業状態 `docsweep_state` を別軸で扱い、旧 `status: planned`
+  などは読み取り互換と dry-run migration を維持する。
+- `okf-check`（read-only Bundle 適合検査）と `okf-profiles` を追加。未知 type / 追加キー /
+  欠けた任意フィールド / 壊れた link は warning または受理とし、構造上の error と区別する。
+- `export --okf` が同梱 JSON profile を既定で使い、Bundle root `index.md` と v0.2 lifecycle
+  frontmatter を生成する。外部 profile は `--okf-profile` を明示した場合だけ読み込む。
+- `closeout-check`（read-only）で親 plan と child plan の関係、状態 conflict、完了条件、検証証跡、
+  manual gate、Git dirty overlap を JSON で検査できるようにした。`new plan --split` は
+  `docsweep_parent` を子へ付け、旧 plan は限定的な filename + related inference のみで互換判定する。
+- `work_dir` / `work_policy` / `secret_policy` を追加し、`new` / `capture` / MCP `capture_save` の
+  保存先を共通解決する。既定はプロジェクト相対 `docs/local`、private queue は export から除外し、
+  Git ignore / tracked 状態と秘密情報を保存前に検査する。
+
+### Changed
+
+- profile のルールを Python ソースから分離し、`docsweep/okf_profiles/<version>.json` で管理する。
+  ローカル JSON や commit 固定の GitHub Raw URL を利用できるため、ルール更新だけなら
+  docsweep の実装 Release を必要としない。旧形式の廃止時期は別途告知する。
+- 作業記録の新規接頭辞を `plan` / `bugfix` / `pending` に整理した。個別リリースの MD は
+  `plan_release-vX.Y.Z_*.md`、再利用する手順・参照資料は `manual_*.md` / `reference_*.md` /
+  `setup_*.md` とし、旧 `manual_release-*` は履歴互換として読み取る。
+- `apply --action relabel` / `promote` / `resume` の状態変更を共通 status service 経由に寄せ、
+  H1 と `docsweep_state`（旧形式では `status`）を同期する。relabel は archive を暗黙実行しない。
+- `inject` / `init` / shipped templates / README の AI 導線を設定済み work queue 前提へ同期した。
+
 ### Fixed
 
 - **索引の project 単位をスキャンルートからリポジトリ（project_root）へ揃えた。**

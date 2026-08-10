@@ -30,7 +30,7 @@ def find_similar_open(
         if needle in hay or any(part and part in hay for part in needle.split("-") if len(part) > 3):
             hits.append({
                 "path": r.path,
-                "title": r.title,
+                "title": "[sensitive]" if r.sensitive else r.title,
                 "state_label": r.state_label,
                 "project": r.project,
             })

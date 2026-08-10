@@ -48,7 +48,8 @@ def _slim(rec: FileRecord) -> dict:
         "name": rec.path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
         "state": rec.state,
         "state_label": rec.state_label,
-        "title": rec.title,
+        "title": "[sensitive]" if rec.sensitive else rec.title,
+        "sensitive": rec.sensitive,
         "due": rec.due,
         "age_days": rec.age_days,
     }

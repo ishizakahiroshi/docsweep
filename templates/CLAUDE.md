@@ -12,20 +12,45 @@ Codex など他エージェント向けの `AGENTS.md` はこのファイルを�
 
 | 種別 | 用途 | ファイル名 |
 |---|---|---|
-| `plan_*.md` | 計画・調査メモ・検討メモ・将来計画 | `plan_<topic>.md` |
+| `plan_*.md` | 計画・調査・検討・リリース準備とその実行ログ | `plan_<topic>.md` |
 | `bugfix_*.md` | 障害対応記録（完了・進行中） | `bugfix_<topic>_YYYY-MM-DD.md` |
 | `pending_*.md` | 保留・将来対応・着手条件待ち | `pending_<topic>.md` |
-| `manual_release-*.md` | 手動リリースの実行記録 | `manual_release-<version>_YYYY-MM-DD.md` |
-| その他 | 参照資料・手順・セットアップ | `reference_*.md` / `manual_*.md` / `setup_*.md` |
+| その他 | 参照資料・手順・セットアップ（作業管理外） | `reference_*.md` / `manual_*.md` / `setup_*.md` |
 
 - `<topic>` はケバブケース（例: `files-tree-search-child-filter`）。
 - 既存ファイルと衝突したら末尾に枝番（`_2` 等）。
+- リリース 1 回分の MD も `plan_release-vX.Y.Z_YYYY-MM-DD.md` とする。旧 `manual_release-*` は履歴として読み取り互換にするが、新規作成しない。
+- 調査・リサーチも独立した `research_*.md` にはせず、`plan_<topic>.md` にまとめる。
+
+### 静的な manual / reference / setup
+
+`manual_*.md` / `reference_*.md` / `setup_*.md` は、後から読む手順・仕様・参照資料です。
+`plan` / `bugfix` / `pending` の作業状態管理には入れません。OKF frontmatter の `type` と
+lifecycle `status` は付けてもよいですが、通常は `docsweep_state` と `due` を付けません。
+更新作業が必要になったときだけ、別途 `plan_update-*.md` を作成して対象文書を更新します。
+
+### Obsidian knowledge artifacts
+
+The configured `work_dir` is the active work queue for `plan_*.md`, `bugfix_*.md`, and
+`pending_*.md`. Session recaps, skill-review reports, and audit reports belong in
+the repository-relative `docs/obsidian/` entry:
+
+`recap_YYYY-MM-DD_<topic>.md`
+
+`report_skill_<topic>_YYYY-MM-DD.md`
+
+`report_audit_<topic>_YYYY-MM-DD.md`
+
+These artifacts use OKF lifecycle `status: draft | stable | deprecated`, set
+`docsweep_policy: never_archive`, and do not use `docsweep_state` or `due`.
+They are excluded from the docsweep active queue. Follow-up work must be a separate
+plan, bugfix, or pending file under the configured `work_dir`, linked from the artifact.
 
 ### 配置先（共通）
 
-1. プロジェクトルートに `docs/local/` があればそこ
-2. 無ければ `docs/` 直下
-3. どちらも無ければ作成前に 1 行で確認
+1. `python -m docsweep new <type> <topic>` を使い、設定済みのプロジェクト相対 `work_dir` に作る
+2. `work_dir` 未設定時の既定は `docs/local/`（`docs/` の有無で暗黙に切り替えない）
+3. 会話履歴の草案保存（`capture` / `capture_save`）も同じ queue を使う
 
 ---
 
@@ -37,7 +62,7 @@ docsweep はこのラベルを読み取って自動アーカイブ・要判断�
 | 種別 | 使えるラベル |
 |---|---|
 | `plan_*.md` | `[計画]`（新規・未着手） / `[実行中]`（一部着手） / `[様子見]`（直したが寝かせ中） / `[完了]` / `[廃止]` |
-| `bugfix_*.md` | `[対応中]`（調査・修正中） / `[様子見]`（修正して寝かせ中） / `[完了]` / `[廃止]` |
+| `bugfix_*.md` | `[実行中]`（調査・修正中） / `[様子見]`（修正して寝かせ中） / `[完了]` / `[廃止]` |
 | `pending_*.md` | `[保留]` |
 
 例: `# [計画] 認証フローのリファクタ`
@@ -54,33 +79,36 @@ docsweep はこのラベルを読み取って自動アーカイブ・要判断�
 | pending | `[保留]` | `[Pending]` | ✗ |
 
 - `[様子見]` = 直した／一周したが、再発確認のため寝かせている状態。**docsweep は自動移送しない**。
-  再発が無いと確認できたら手で `[完了]` に上げる（その時点で archive 対象）。再発したら `[対応中]`/`[実行中]` へ戻す。
+  再発が無いと確認できたら手で `[完了]` に上げる（その時点で archive 対象）。再発したら `[実行中]` へ戻す。既存の `[対応中]` は読み取り互換。
 - `[廃止]` = 陳腐化して捨てると判断したもの。**削除ではなく** `archive/` へ隔離（復元可能）。
 - `> ステータス:` 行は**書かない**（状態は H1 ラベルに集約）。状態が変わったら H1 ラベルを書き換える。
 - ラベル語彙はプロジェクト設定（`.docsweep.yaml` の `states:`）で追加・改名・言語追加できる。
   上表は内蔵デフォルト。`python -m docsweep inject` は `states:` からこのラベル節を生成する（設定と検出が常に同期）。
 
-> フロントマター方式を併用してもよい（H1 ラベルに加えて
-> `status: planned | in-progress | watching | done | discarded | pending` を front matter に置く）。
-> docsweep は **frontmatter > H1 > ファイル名** の優先順で検出し、
-> 3方式が食い違うファイルは「要修正」フラグで可視化する（自動では直さない）。
+> フロントマター方式を併用してもよい。OKF v0.2 の `status: draft | stable | deprecated` は
+> 文書 lifecycle、docsweep の作業状態は `docsweep_state: planned | in-progress | watching |
+> done | discarded | pending` に置く。旧形式の `status: planned` などは読み取り互換である。
+> docsweep は **docsweep_state（または旧 status） > H1 > ファイル名** の優先順で作業状態を検出し、
+> lifecycle `status` は作業状態と誤認しない。方式が食い違うファイルは可視化する（自動では直さない）。
 
 ---
 
 ## OKF（Open Knowledge Format）互換 frontmatter（推奨）
 
-docsweep は [OKF](https://zenn.dev/knowledgesense/articles/14a874a9f423bb) 互換の
+docsweep は [OKF v0.2 の公式仕様](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) 互換の
 frontmatter を採用しています。新規 md は `python -m docsweep new` で
 以下の最小ブロック付きで生成されます:
 
 ```markdown
 ---
-type: plan                       # plan | bugfix | pending | manual_release（docsweep 固定値）
-status: planned                  # planned | in-progress | watching | done | discarded | pending
+type: plan                       # OKF は任意の非空文字列。docsweep 管理対象は plan 等
+status: draft                    # OKF lifecycle: draft | stable | deprecated
+docsweep_state: planned          # docsweep 作業状態: planned | in-progress | watching | done | discarded | pending
 tags: []                         # 自由 list（語彙統制なし）
 owner:                           # ユーザー名スカラ（claim コマンドで自動セット）
 review_status: draft             # draft | review | published（陳腐化前倒し検知用）
 related: []                      # 関連する md のファイル名 list（fix-related で双方向化）
+# docsweep_parent: docs/local/plan_parent.md  # child の repo-relative 親 path（related とは別の正本）
 last_reviewed: 2026-06-29        # YYYY-MM-DD（stale 判定に使用）
 due: 2026-07-06                  # 任意・期日（看板方式）
 ---
@@ -88,13 +116,16 @@ due: 2026-07-06                  # 任意・期日（看板方式）
 # [計画] タイトル
 ```
 
-docsweep 固有の追加規約は 2 点だけ:
+docsweep 固有の追加規約は次のとおりです:
 
-- **type 集合を `plan` / `bugfix` / `pending` / `manual_release` に固定**
-  （archive 自動化のため）。
-  その他の type は管理対象外（破壊しないが docsweep の対象に含めない）。
+- **archive / due / triage の標準的な作業管理対象は `plan` / `bugfix` / `pending`**。
+  `manual_release` は旧形式として読み取り互換を残すが、新規 release md は `plan_release-*` とする。
+  `manual` / `reference` / `setup` などの未知 type や追加フィールドは壊さず保持し、`okf-check` では拒否しない。
 - **H1 ステータスラベル運用は廃止せず併用**。frontmatter があればそちら優先、無ければ
   H1 へフォールバック（後方互換 100%）。
+- 親 plan を `python -m docsweep new plan <topic> --split N` で分割すると、各 child に
+  `docsweep_parent: <repo-relative path>` が付く。`related` は汎用の関連資料用であり、親子の
+  機械判定を単独で担わない。
 
 ### 既存採用者向け移行ガイド
 
@@ -102,17 +133,19 @@ frontmatter なしで運用していた md は触らなくても動き続けま�
 揃えたい場合は以下の手順を踏みます:
 
 ```bash
-# 1. 全 plan/bugfix/pending に frontmatter を非破壊挿入（dry-run）
+# 1. 全 plan/bugfix/pending に frontmatter を非破壊挿入（dry-run、差分を表示）
 python -m docsweep migrate-frontmatter --dry-run
 
-# 2. 内容を確認した上で適用（H1 ラベル・本文は触らない）
+# 2. 内容を確認した上で適用（H1 ラベル・本文・未知フィールドは触らない）
 python -m docsweep migrate-frontmatter --apply
 
 # 3. 片側 related を双方向化
 python -m docsweep fix-related --apply
 ```
 
-OKF と docsweep 内部 state key の対応は `docs/okf-mapping.md` を参照。
+旧 `status: planned` のような文書は、migrate により `status: draft` と
+`docsweep_state: planned` に分離されます。OKF と docsweep 内部 state key の対応は
+`docs/okf-mapping.md` を参照してください。
 
 ### `docsweep export --okf`
 
@@ -121,15 +154,19 @@ OKF と docsweep 内部 state key の対応は `docs/okf-mapping.md` を参照�
 ```bash
 python -m docsweep export --okf                    # ./docsweep-okf-<date>.zip
 python -m docsweep export --okf --include-archive  # archive/ 配下も含める
+python -m docsweep okf-check ./bundle --json       # read-only 適合検査
+python -m docsweep okf-profiles                    # 同梱 profile 一覧
 ```
 
-zip 内に `okf-manifest.json`（OKF 語彙との対応表）が同梱されるので、別ツールから
-読んでも意味が通る形で持ち運べます。
+zip 内の通常 md は frontmatter を Bundle 内だけ正規化し、`index.md` と
+`okf-manifest.json` を生成します。元ファイルは変更しません。profile は既定では同梱 JSON を
+オフラインで読み、外部 URL / GitHub Raw は `--okf-profile` を明示したときだけ取得します。
 
 ### pre-commit hook（任意）
 
-frontmatter 不整合（type/status の値域違反、related で存在しない md 指定、
-review_status が許容外）をコミット時に止める hook を opt-in で配置できます。
+frontmatter 不整合（空の type、lifecycle / docsweep_state の誤記、related で存在しない md 指定、
+review_status が許容外）をコミット時に止める hook を opt-in で配置できます。未知の type は
+OKF の許容範囲なので hook でも拒否しません。
 スクリプトは自身と同じ場所の `.githooks/docsweep-check.py` を `.git/hooks/pre-commit` へ
 コピーするだけなので、パスはこのテンプレ一式（`install-hooks.*` + `.githooks/`）を
 置いた場所に読み替えてください:
@@ -153,7 +190,8 @@ H1 ラベル（状態軸）と直交する**第 2 軸として期日 `due:` を 
 ```markdown
 ---
 due: 2026-06-29        # 「今の状態でいられる締切」（[計画]/[実行中] なら着手日、[様子見] なら卒業日）
-status: planned         # 任意・H1 ラベルと併記する場合
+status: draft           # OKF lifecycle
+docsweep_state: planned # docsweep の作業状態
 ---
 
 # [計画] タイトル
@@ -170,7 +208,7 @@ status: planned         # 任意・H1 ラベルと併記する場合
 
 | 状態 | `due` 超過の意味 | docsweep の扱い |
 |---|---|---|
-| `[計画]` / `[実行中]` / `[対応中]` / `[保留]` | やり忘れ（着手すべき期日を過ぎた） | 🔴 やり忘れ列・赤フラグ |
+| `[計画]` / `[実行中]` / `[保留]` | やり忘れ（着手すべき期日を過ぎた） | 🔴 やり忘れ列・赤フラグ |
 | `[様子見]` | 卒業判定どき（寝かせ期限到来） | ▼ 卒業判定セクション |
 | `[完了]` / `[廃止]` | 判定対象外（既に archive 行き） | 判定しない |
 
@@ -182,7 +220,7 @@ Web UI 看板でカードを「外す」操作は 3 つのみに集約される�
 2. **期日更新** — `update_due(path, '+1d' | '+1w' | '+1m' | 'YYYY-MM-DD')`
 3. **廃止** — `update_status(path, '廃止')` → archive 移送（確認ダイアログ後）
 
-新規 `plan_*.md` / `pending_*.md` を作るときは frontmatter に `due:` を入れて生まれてくることを推奨します（`bugfix_*.md` は `[様子見]` 遷移時に追記）。
+新規 `plan_*.md` / `pending_*.md` を作るときは frontmatter に `due:` を入れて生まれてくることを推奨します（`bugfix_*.md` は `[様子見]` 遷移時に追記）。`plan_release-*` も plan として扱います。
 
 ---
 
@@ -201,6 +239,19 @@ PATH に `docsweep` コマンドが無くても動くよう、AI 向け導線で
 
 ---
 
+## 親子 plan の closeout
+
+親 plan を含む実装完了報告を受けたら、状態を変える前にまず
+`python -m docsweep closeout-check --path <parent-plan> --json` を実行する。
+global の `plan-closeout` skill が導入済みなら補助に使ってよいが、skill が無くてもこのコマンドで確認できる。
+
+- 結果の機械 blocker、手動確認、dirty worktree と変更予定ファイルの重複を分けて扱う。
+- blocker があれば relabel せず、手動確認が残ればユーザーへ確認する。明示承認前に H1 / `docsweep_state` を変更しない。
+- 承認後も子 plan から親 plan の順に進める。archive は別の `sweep --dry-run` と別承認に分ける。
+- 「実装完了」「静的検証済み」「手動確認済み」「watching」「done」「archive済み」は同義ではない。
+
+---
+
 ## plan_*.md の書式
 
 - ファイル名 `plan_<topic>.md`。
@@ -216,14 +267,24 @@ PATH に `docsweep` コマンドが無くても動くよう、AI 向け導線で
   - 種別は `plan` / `fix` の 2 値のみ。
   - 全 C が `plan` なら H1 は `[計画]`、一部 `fix` なら `[実行中]`、全 `fix` なら `[様子見]`
     （直したが寝かせ中＝archive されない。寝かせ不要と分かっていれば手で直接 `[完了]` にしてよい）。
-  - `[完了]` / `[廃止]` は手の意思決定でのみ付ける（自動導出しない）。再発したら `[実行中]` へ戻す。
+- `[完了]` / `[廃止]` は手の意思決定でのみ付ける（自動導出しない）。再発したら `[実行中]` へ戻す。
+
+### `plan_release-*.md` の特例
+
+リリース 1 回分の plan は、通常の `context配分` 表の代わりに、Release skill が読む次の 3 節を順序固定で持ちます。
+
+1. `## リリース引数` — その回の repo / version / channels / dry-run などの確定値
+2. `## 実行計画` — 前提チェックから配布後確認までの検証付き手順
+3. `## 申し送り` — 実行結果・残作業・復旧内容
+
+H1 は `[計画]` → `[実行中]` → `[完了]` を使い、部分未了は `[保留]` とします。
 
 ---
 
 ## bugfix_*.md の書式
 
 - ファイル名 `bugfix_<topic>_YYYY-MM-DD.md`（アンダースコア区切り）。
-- H1 先頭にラベル（調査・修正中=`[対応中]` → 修正して寝かせ中=`[様子見]` → 確認済み=`[完了]`。陳腐化＝`[廃止]`）。
+- H1 先頭にラベル（調査・修正中=`[実行中]` → 修正して寝かせ中=`[様子見]` → 確認済み=`[完了]`。陳腐化＝`[廃止]`）。
 - `## context配分` 表は**不要**（事後記録のため章分割しない）。
 - 必須セクション（順序固定）:
   1. `## 症状`
@@ -275,7 +336,7 @@ topic・配置先・本文の埋め草は直近の会話文脈から推定する
 | 「バグフィックス作成」「bugfix 作って」 | `bugfix_<topic>_YYYY-MM-DD.md` |
 | 「ペンディング作って」「保留として入れといて」「いったん保留」 | `pending_<topic>.md` |
 
-- 「ローカルに入れて」「docs ローカル」は**配置先 `docs/local/` の指示**。種別は会話文脈で判断。
+- 「ローカルに入れて」「docs ローカル」は**設定済み work queue の指示**。種別は会話文脈で判断。
 - 取れない情報は `<TODO: ...>` プレースホルダで残す。
 - 「プラン読んで」「bugfix を更新して」など**既存ファイル操作**を意味する場合は
   このショートカットを発動せず通常通り読み書きする。

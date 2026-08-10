@@ -47,6 +47,9 @@ def _build_config_body(
     body: dict[str, Any] = {
         "roots": [root],
         "lang": lang if lang in ("ja", "en") else "ja",
+        "work_dir": "docs/local",
+        "work_policy": "private",
+        "secret_policy": "block",
         "projects": {
             "search_paths": [root],
         },

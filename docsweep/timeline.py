@@ -86,6 +86,7 @@ class TimelineEntry:
     type: str | None
     state_label: str | None
     title: str | None
+    sensitive: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -95,7 +96,7 @@ class TimelineEntry:
             "project": self.project,
             "type": self.type,
             "state_label": self.state_label,
-            "title": self.title,
+            "title": "[sensitive]" if self.sensitive else self.title,
         }
 
 
@@ -137,7 +138,7 @@ def build_timeline(config: Config, topic: str) -> TimelineResult:
         out.append(TimelineEntry(
             date=d, source=src,
             path=rec.path, project=rec.project, type=rec.type,
-            state_label=rec.state_label, title=rec.title,
+            state_label=rec.state_label, title=rec.title, sensitive=rec.sensitive,
         ))
     return TimelineResult(topic=topic, entries=out)
 
@@ -157,7 +158,8 @@ def render_timeline(result: TimelineResult, *, fmt: str = "markdown") -> str:
         return "\n".join(lines)
     for e in result.entries:
         label = e.state_label or "[?]"
-        title = f" — {e.title}" if e.title else ""
+        display_title = "[sensitive]" if e.sensitive else e.title
+        title = f" — {display_title}" if display_title else ""
         if fmt == "markdown":
             lines.append(
                 f"- {e.date} ({e.source}) {label} **{e.type or '?'}** "

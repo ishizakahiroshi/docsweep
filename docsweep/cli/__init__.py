@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from .parser import _build_config, build_parser
-from .commands.read import cmd_activity, cmd_brief, cmd_context, cmd_cookbook, cmd_cross, cmd_day, cmd_doctor, cmd_export, cmd_find, cmd_graph, cmd_history, cmd_intent, cmd_linkcheck, cmd_list, cmd_pending, cmd_project, cmd_report, cmd_resurrect, cmd_scan, cmd_show, cmd_stale, cmd_summary, cmd_timeline, cmd_triage
+from .commands.read import cmd_activity, cmd_brief, cmd_closeout_check, cmd_context, cmd_cookbook, cmd_cross, cmd_day, cmd_doctor, cmd_export, cmd_find, cmd_graph, cmd_history, cmd_intent, cmd_linkcheck, cmd_list, cmd_okf_check, cmd_okf_profiles, cmd_pending, cmd_project, cmd_report, cmd_resurrect, cmd_scan, cmd_show, cmd_stale, cmd_summary, cmd_timeline, cmd_triage
 from .commands.write import cmd_apply, cmd_auto_triage, cmd_capture, cmd_claim, cmd_fix_conflict, cmd_fix_related, cmd_migrate_frontmatter, cmd_new, cmd_promote, cmd_sweep
 from .commands.notify import cmd_notify
 from .commands.init import cmd_init, cmd_undo
@@ -18,7 +18,7 @@ from .commands.serve import cmd_serve
 from .commands.completion import cmd_completion
 from .commands.excluded import cmd_config, cmd_review, cmd_review_week
 
-_SUBCOMMANDS = {'scan', 'triage', 'apply', 'sweep', 'serve', 'promote', 'index', 'pending', 'index-sync', 'index-rebuild', 'index-watch', 'index-stats', 'index-vacuum', 'brief', 'cross', 'capture', 'linkcheck', 'auto-triage', 'graph', 'resurrect', 'report', 'summary', 'new', 'review', 'inject', 'eject', 'list', 'mcp', 'migrate-frontmatter', 'fix-related', 'show', 'stale', 'context', 'claim', 'config', 'timeline', 'find', 'completion', 'export', 'activity', 'doctor', 'init', 'undo', 'day', 'intent', 'fix-conflict', 'notify', 'project', 'review-week', 'history', 'cookbook', 'memory', 'ics'}
+_SUBCOMMANDS = {'scan', 'triage', 'apply', 'sweep', 'serve', 'promote', 'index', 'pending', 'index-sync', 'index-rebuild', 'index-watch', 'index-stats', 'index-vacuum', 'brief', 'cross', 'capture', 'linkcheck', 'auto-triage', 'graph', 'resurrect', 'report', 'summary', 'new', 'review', 'inject', 'eject', 'list', 'mcp', 'migrate-frontmatter', 'fix-related', 'show', 'stale', 'context', 'claim', 'config', 'timeline', 'find', 'completion', 'export', 'okf-check', 'okf-profiles', 'closeout-check', 'activity', 'doctor', 'init', 'undo', 'day', 'intent', 'fix-conflict', 'notify', 'project', 'review-week', 'history', 'cookbook', 'memory', 'ics'}
 
 _DISPATCH = {
     'scan': cmd_scan,
@@ -60,6 +60,9 @@ _DISPATCH = {
     'find': cmd_find,
     'completion': cmd_completion,
     'export': cmd_export,
+    'okf-check': cmd_okf_check,
+    'okf-profiles': cmd_okf_profiles,
+    'closeout-check': cmd_closeout_check,
     'activity': cmd_activity,
     'doctor': cmd_doctor,
     'init': cmd_init,

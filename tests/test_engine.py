@@ -43,6 +43,24 @@ def test_scan_finds_docs_excludes_archive(workspace: Path):
     assert "plan_old.md" not in names  # archive は除外
 
 
+def test_scan_excludes_obsidian_artifacts_but_keeps_local_queue(tmp_path: Path):
+    root = tmp_path / "dev"
+    _write(root / "proj" / "docs" / "local" / "plan_keep.md", "# [計画] keep\n\n## 概要\n\nqueue\n")
+    _write(
+        root / "proj" / "docs" / "obsidian" / "recap_2026-08-09_test.md",
+        "---\ntype: recap\nstatus: stable\ndocsweep_policy: never_archive\n---\n# recap\n",
+    )
+    _write(root / "proj" / "docs" / "obsidian" / "plan_not_queue.md", "# [計画] not queue\n")
+    cfg = _cfg(root)
+    cfg.ignore = ["docs/obsidian", "**/docs/obsidian", "**/docs/obsidian/**"]
+
+    names = {Path(item.path).name for item in run_scan(cfg).records}
+
+    assert "plan_keep.md" in names
+    assert "recap_2026-08-09_test.md" not in names
+    assert "plan_not_queue.md" not in names
+
+
 def test_html_docsweep_type_prefix_is_scanned(tmp_path: Path):
     """命名規約 mockup_*.html / review_*.html / design_*.html / incident_*.html は type 判定される。"""
     root = tmp_path / "dev"

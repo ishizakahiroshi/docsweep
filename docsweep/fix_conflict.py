@@ -15,6 +15,7 @@ from typing import Any, Literal
 from .config import Config
 from .engine import scan_records
 from .interactive import _update_frontmatter_status
+from .okf import is_okf_lifecycle_status
 from .models import Flag
 from .services.frontmatter import read_frontmatter
 from .services.status import update_status
@@ -81,7 +82,7 @@ def _conflict_rows(config: Config, paths: list[str] | None = None) -> tuple[list
             "state": r.state,
             "state_label": r.state_label,
             "state_source": r.state_source,
-            "title": r.title,
+            "title": "[sensitive]" if r.sensitive else r.title,
         })
     unmatched = [orig for key, orig in want.items() if key not in matched_keys] if want else []
     return out, unmatched
@@ -150,11 +151,14 @@ def fix_conflicts(
 
         h1_label = r.state_label
         fm_status = None
+        fm_state = None
         try:
             fm = read_frontmatter(path) or {}
             fm_status = fm.get("status")
+            fm_state = fm.get("docsweep_state")
         except Exception:  # noqa: BLE001
             fm_status = None
+            fm_state = None
 
         project_root = Path(r.project_root) if r.project_root else path.parent
 
@@ -173,7 +177,7 @@ def fix_conflicts(
                     new_value=r.state,
                 ))
                 continue
-            ok = _update_frontmatter_status(path, r.state)
+            ok = _update_frontmatter_status(path, r.state, state_model=config.state_model)
             items.append(ConflictFix(
                 path=r.path, fixed=ok,
                 detail="frontmatter status ← H1 state" if ok else "no frontmatter status line",
@@ -181,8 +185,10 @@ def fix_conflicts(
                 new_value=r.state,
             ))
         else:
-            # frontmatter の status を state key に解決して H1 を書き換え
-            raw = str(fm_status) if fm_status is not None else ""
+            # 新形式は docsweep_state、旧形式だけ status を作業状態として読む。
+            raw = str(fm_state) if fm_state is not None else ""
+            if not raw and fm_status is not None and not is_okf_lifecycle_status(fm_status):
+                raw = str(fm_status)
             matched = config.state_model.match(raw) if raw else None
             target_key = matched.key if matched else (raw or None)
             if not target_key:

@@ -87,7 +87,8 @@ def _short_record(rec: FileRecord) -> dict:
         "type": rec.type,
         "state": rec.state,
         "state_label": rec.state_label,
-        "title": rec.title,
+        "title": "[sensitive]" if rec.sensitive else rec.title,
+        "sensitive": rec.sensitive,
         "due": rec.due,
         "age_days": rec.age_days,
     }

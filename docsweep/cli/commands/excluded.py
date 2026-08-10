@@ -31,12 +31,12 @@ def cmd_review_week(args: argparse.Namespace) -> int:
     payload = {
         "watching_count": len(watching),
         "watching": [
-            {"path": r.path, "title": r.title, "age_days": r.age_days}
+            {"path": r.path, "title": "[sensitive]" if r.sensitive else r.title, "age_days": r.age_days}
             for r in watching[:20]
         ],
         "old_planned_count": len(old_planned),
         "old_planned": [
-            {"path": r.path, "title": r.title, "age_days": r.age_days}
+            {"path": r.path, "title": "[sensitive]" if r.sensitive else r.title, "age_days": r.age_days}
             for r in old_planned[:20]
         ],
         "conflict_count": len(conflict),

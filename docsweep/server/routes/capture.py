@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from ...capture import extract_drafts, save_drafts
 from ...capture.models import Draft
 from ...capture.service import CaptureScopeError
+from ...work_queue import resolve_work_target
 from ..security import check_token
 
 _DIR = Path(__file__).parent.parent
@@ -53,14 +54,19 @@ def api_capture_extract(
     project = payload.get("project") or None
     use_llm = bool(payload.get("use_llm", False))
     max_drafts = int(payload.get("max_drafts", 5))
+    allow_sensitive = bool(payload.get("allow_sensitive", False))
 
     if not text.strip():
         raise HTTPException(status_code=400, detail="text is empty")
 
-    drafts = extract_drafts(
-        text, config=state.config, project=project,
-        max_drafts=max_drafts, use_llm=use_llm,
-    )
+    try:
+        drafts = extract_drafts(
+            text, config=state.config, project=project,
+            max_drafts=max_drafts, use_llm=use_llm,
+            allow_sensitive=allow_sensitive,
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return JSONResponse({
         "drafts": [d.to_dict() for d in drafts],
         "count": len(drafts),
@@ -78,6 +84,7 @@ def api_capture_save(
     drafts_raw = payload.get("drafts") or []
     project = payload.get("project") or None
     out_dir = payload.get("out_dir") or None
+    allow_sensitive = bool(payload.get("allow_sensitive", False))
 
     drafts: list[Draft] = []
     for d in drafts_raw:
@@ -92,16 +99,20 @@ def api_capture_save(
             tags=list(d.get("tags") or []),
         ))
 
-    if out_dir:
-        target = Path(out_dir)
-    elif state.config.roots:
-        target = Path(state.config.roots[0]) / "docs" / "local"
-    else:
-        target = Path.cwd() / "docs" / "local"
-
     try:
-        saved = save_drafts(drafts, config=state.config, target_dir=target)
-    except CaptureScopeError as e:
+        project_root, target = resolve_work_target(
+            state.config,
+            project=project,
+            explicit_dir=Path(out_dir) if out_dir else None,
+        )
+        saved = save_drafts(
+            drafts,
+            config=state.config,
+            target_dir=target,
+            project_dir=project_root,
+            allow_sensitive=allow_sensitive,
+        )
+    except (CaptureScopeError, PermissionError, ValueError) as e:
         # 400 に落とす（403 でも良いが、入力の不正として 400 を選ぶ）。
         raise HTTPException(status_code=400, detail=str(e)) from e
     return JSONResponse({

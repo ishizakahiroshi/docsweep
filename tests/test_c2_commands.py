@@ -80,14 +80,15 @@ def _cfg(root: Path) -> Config:
 
 
 def test_migrate_plan_lists_targets(workspace: Path):
-    """dry-run は frontmatter なしの md を planned に並べ、ある md は skipped に入れる。"""
+    """dry-run は frontmatter なしと旧 status の md を planned に並べる。"""
     cfg = _cfg(workspace)
     result = plan_migration(cfg)
     planned_names = {Path(p.path).name for p in result.planned}
     skipped_names = {Path(p.path).name for p in result.skipped}
     assert "plan_alpha.md" in planned_names
     assert "pending_beta.md" in planned_names
-    assert "bugfix_alpha_2026-06-01.md" in skipped_names  # 既に frontmatter あり
+    assert "bugfix_alpha_2026-06-01.md" in planned_names  # 旧 status を二軸へ分離
+    assert "bugfix_alpha_2026-06-01.md" not in skipped_names
 
 
 def test_migrate_apply_inserts_frontmatter_and_preserves_h1(workspace: Path):
@@ -105,14 +106,15 @@ def test_migrate_apply_inserts_frontmatter_and_preserves_h1(workspace: Path):
     assert before.strip() in after
 
 
-def test_migrate_skips_already_frontmatter(workspace: Path):
-    """OKF キーが揃っているファイルは apply してもそのまま。"""
+def test_migrate_splits_legacy_status(workspace: Path):
+    """旧 status は OKF lifecycle と docsweep_state に分離される。"""
     cfg = _cfg(workspace)
     bf_path = workspace / "demo" / "docs" / "local" / "bugfix_alpha_2026-06-01.md"
-    before = bf_path.open("r", encoding="utf-8", newline="").read()
     apply_migration(cfg)
     after = bf_path.open("r", encoding="utf-8", newline="").read()
-    assert before == after
+    assert "status: draft" in after
+    assert "docsweep_state: in-progress" in after
+    assert "status: in-progress" not in after
 
 
 def test_migrate_upgrades_due_only_frontmatter(workspace: Path):
@@ -132,7 +134,8 @@ def test_migrate_upgrades_due_only_frontmatter(workspace: Path):
     assert after.startswith(
         "---\n"
         "type: plan\n"
-        "status: planned\n"
+        "status: draft\n"
+        "docsweep_state: planned\n"
         "tags: []\n"
         "owner: \n"
         "review_status: draft\n"
@@ -155,13 +158,55 @@ def test_migrate_completes_partial_okf_keys(workspace: Path):
     cfg = _cfg(workspace)
     apply_migration(cfg, today="2026-07-04")
     after = delta.open("r", encoding="utf-8", newline="").read()
-    # 既存キーはそのまま（status: watching が planned 等に書き換わらない）
-    assert "type: plan\nstatus: watching\ndue: 2026-07-20\n" in after
+    assert "type: plan" in after
+    assert "status: draft" in after
+    assert "docsweep_state: watching" in after
+    assert "status: watching" not in after
     assert after.count("\nstatus:") == 1  # review_status: は含めない（行頭一致）
     # 不足キーが追記されている
     for line in ("tags: []", "owner: ", "review_status: draft", "related: []", "last_reviewed: 2026-07-04"):
         assert line in after
     assert "# [様子見] δ 計画\n\n本文。\n" in after
+
+
+def test_migrate_normalizes_legacy_status_even_when_state_key_exists(workspace: Path):
+    mixed = _write(
+        workspace / "demo" / "docs" / "local" / "plan_mixed.md",
+        "---\n"
+        "type: plan\n"
+        "status: in-progress\n"
+        "docsweep_state: watching\n"
+        "tags: []\n"
+        "owner: \n"
+        "review_status: draft\n"
+        "related: []\n"
+        "last_reviewed: 2026-07-04\n"
+        "---\n"
+        "# [様子見] mixed\n",
+    )
+    apply_migration(_cfg(workspace), today="2026-07-04")
+    after = mixed.read_text(encoding="utf-8")
+    assert "status: draft" in after
+    assert "docsweep_state: watching" in after
+    assert "status: in-progress" not in after
+
+
+def test_migrate_preserves_crlf_frontmatter_line_endings(workspace: Path):
+    crlf = _write(
+        workspace / "demo" / "docs" / "local" / "plan_crlf.md",
+        "---\r\n"
+        "type: plan\r\n"
+        "status: in-progress\r\n"
+        "due: 2026-07-20\r\n"
+        "---\r\n"
+        "# [実行中] crlf\r\n",
+    )
+
+    apply_migration(_cfg(workspace), today="2026-07-04")
+    after = crlf.read_bytes()
+    assert b"status: draft\r\n" in after
+    assert b"docsweep_state: in-progress\r\n" in after
+    assert b"\n" not in after.replace(b"\r\n", b"")
 
 
 # ----------------------------------------------------------------------
@@ -485,6 +530,18 @@ def test_cli_migrate_dry_run_json(workspace: Path, capsys):
     payload = json.loads(out)
     assert "planned" in payload
     assert "skipped" in payload
+
+
+def test_cli_migrate_dry_run_shows_diff(workspace: Path, capsys):
+    rc = cli_mod.main([
+        "migrate-frontmatter",
+        "--root", str(workspace),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "--- " in out
+    assert "+++ " in out
+    assert "docsweep_state" in out
 
 
 def test_cli_find_json(workspace: Path, capsys):

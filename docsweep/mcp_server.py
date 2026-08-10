@@ -179,6 +179,7 @@ def build_server(config: Config):
         project: str | None = None,
         use_llm: bool = False,
         max_drafts: int = 5,
+        allow_sensitive: bool = False,
     ) -> dict:
         """会話履歴 ``text`` から plan / bugfix / pending の草案候補を抽出する。
 
@@ -193,10 +194,14 @@ def build_server(config: Config):
         """
         from .capture import extract_drafts
 
-        drafts = extract_drafts(
-            text, config=config, project=project,
-            max_drafts=max_drafts, use_llm=use_llm,
-        )
+        try:
+            drafts = extract_drafts(
+                text, config=config, project=project,
+                max_drafts=max_drafts, use_llm=use_llm,
+                allow_sensitive=allow_sensitive,
+            )
+        except PermissionError as e:
+            return {"error": str(e), "drafts": [], "count": 0}
         return {
             "drafts": [d.to_dict() for d in drafts],
             "count": len(drafts),
@@ -207,8 +212,9 @@ def build_server(config: Config):
         drafts: list[dict],
         project: str | None = None,
         out_dir: str | None = None,
+        allow_sensitive: bool = False,
     ) -> dict:
-        """``capture_extract`` で得た draft を採用して docs/local/ 配下へ保存する。
+        """``capture_extract`` で得た draft を採用して configured work_dir 配下へ保存する。
 
         典型ユーザー発話: 「採用して」「2 と 3 を採用」「全部 plan にして保存」。
 
@@ -219,6 +225,7 @@ def build_server(config: Config):
         from .capture import save_drafts
         from .capture.models import Draft as _Draft
         from .capture.service import CaptureScopeError as _ScopeErr
+        from .work_queue import resolve_work_target
 
         # dict -> Draft へ復元
         as_drafts = [
@@ -235,16 +242,20 @@ def build_server(config: Config):
             for d in (drafts or [])
         ]
 
-        if out_dir:
-            target = _P(out_dir)
-        elif config.roots:
-            target = _P(config.roots[0]) / "docs" / "local"
-        else:
-            target = _P.cwd() / "docs" / "local"
-
         try:
-            saved = save_drafts(as_drafts, config=config, target_dir=target)
-        except _ScopeErr as e:
+            project_root, target = resolve_work_target(
+                config,
+                project=project,
+                explicit_dir=_P(out_dir) if out_dir else None,
+            )
+            saved = save_drafts(
+                as_drafts,
+                config=config,
+                target_dir=target,
+                project_dir=project_root,
+                allow_sensitive=allow_sensitive,
+            )
+        except (_ScopeErr, PermissionError, ValueError) as e:
             # MCP は例外を JSON-RPC error に変換する。tool 契約に沿った error dict を返す。
             return {"error": str(e), "saved": [], "count": 0}
         return {"saved": [str(p) for p in saved], "count": len(saved)}
@@ -465,6 +476,7 @@ def build_server(config: Config):
     @mcp.tool()
     def update_content(
         path: str, new_content: str, expected_mtime: float | None = None,
+        allow_sensitive: bool = False,
     ) -> dict:
         """MD 本文を全置換する（楽観ロック対応）。
 
@@ -475,9 +487,13 @@ def build_server(config: Config):
             return err
         try:
             res = svc_update_content(
-                resolved, new_content, expected_mtime=expected_mtime,
+                resolved,
+                new_content,
+                expected_mtime=expected_mtime,
+                config=config,
+                allow_sensitive=allow_sensitive,
             )
-        except ContentValidationError as e:
+        except (ContentValidationError, PermissionError) as e:
             return {"error": str(e), "path": path, "kind": "validation"}
         except ConflictError as e:
             return {

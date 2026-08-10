@@ -132,8 +132,9 @@ def _card_view(
         "type": file_type,
         "state": rec.state,
         "state_label": rec.state_label or "[?]",
-        "title": rec.title,
-        "summary": rec.summary,
+        "title": "[sensitive]" if rec.sensitive else rec.title,
+        "summary": "[sensitive]" if rec.sensitive else rec.summary,
+        "sensitive": rec.sensitive,
         "due": rec.due,
         "due_label": due_label,
         "due_kind": due_kind,
@@ -457,9 +458,11 @@ def card_context(
     request: Request,
     token: str = Query(default=""),
     path: str = Query(...),
+    allow_sensitive: bool = Query(default=False),
 ):
     """作業開始パック: path の context 文字列を返す（UX W1 / P7）。"""
     from ...context import collect_context, render_context
+    from ...secrets_guard import SensitiveContentError
     from ..security import resolve_under_roots
 
     check_token(request, token, status_code=403, detail="invalid or missing token")
@@ -476,13 +479,15 @@ def card_context(
     last_err: Exception | None = None
     for cand in candidates:
         try:
-            bundle = collect_context(cand, cfg)
+            bundle = collect_context(cand, cfg, allow_sensitive=allow_sensitive)
             text = render_context(bundle, fmt="markdown")
             return JSONResponse({
                 "path": resolved.as_posix(),
                 "text": text,
                 "chars": len(text),
             })
+        except SensitiveContentError as e:
+            raise HTTPException(status_code=403, detail=str(e)) from e
         except (FileNotFoundError, ValueError) as e:
             last_err = e
             continue
@@ -497,6 +502,7 @@ def card_raw(
     request: Request,
     token: str = Query(default=""),
     path: str = Query(...),
+    allow_sensitive: bool = Query(default=False),
 ):
     """編集ペイン用に生 MD と現在の mtime を返す（読み取り専用・スコープ境界チェック）。
 
@@ -518,6 +524,19 @@ def card_raw(
         text = resolved.open("r", encoding="utf-8", newline="").read()
     except OSError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+    from ...config import config_for_project
+    from ...secrets_guard import SensitiveContentError, enforce_secret_policy
+    from ...work_queue import find_project_dir
+    project_root = find_project_dir(config=cfg, cwd=resolved.parent)
+    effective_config = config_for_project(cfg, project_root)
+    try:
+        enforce_secret_policy(
+            text,
+            policy=effective_config.secret_policy,
+            allow_sensitive=allow_sensitive,
+        )
+    except SensitiveContentError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     return JSONResponse(
         {
             "path": resolved.as_posix(),
@@ -568,7 +587,7 @@ def card_detail(
                     "type": r.type,
                     "state": r.state,
                     "state_label": r.state_label,
-                    "title": r.title,
+                    "title": "[sensitive]" if r.sensitive else r.title,
                 })
                 break
 

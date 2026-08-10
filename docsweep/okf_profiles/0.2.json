@@ -1,0 +1,23 @@
+{
+  "format": "okf",
+  "spec_version": "0.2",
+  "lifecycle_default": "draft",
+  "lifecycle_values": ["draft", "stable", "deprecated"],
+  "required_frontmatter": ["type"],
+  "reserved_files": {
+    "index.md": "directory_index",
+    "log.md": "update_log"
+  },
+  "unknown_types": "allow",
+  "unknown_fields": "preserve",
+  "broken_links": "warning",
+  "missing_optional_fields": "allow",
+  "docsweep_status_map": {
+    "planned": "draft",
+    "in-progress": "draft",
+    "watching": "draft",
+    "done": "stable",
+    "discarded": "deprecated",
+    "pending": "draft"
+  }
+}

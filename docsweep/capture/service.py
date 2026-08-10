@@ -6,7 +6,9 @@ import os
 import re
 from pathlib import Path
 
-from ..config import Config
+from ..config import Config, config_for_project
+from ..secrets_guard import enforce_secret_policy, format_warnings
+from ..work_queue import ensure_write_allowed
 from .heuristics import extract_drafts_heuristic
 from .llm import LLMRequest, get_llm
 from .models import Draft
@@ -73,6 +75,7 @@ def extract_drafts(
     project: str | None = None,
     max_drafts: int = 5,
     use_llm: bool = False,
+    allow_sensitive: bool = False,
 ) -> list[Draft]:
     """会話履歴 ``text`` から Draft 候補のリストを返す。
 
@@ -82,10 +85,29 @@ def extract_drafts(
         project: 配置先プロジェクト名（None なら cwd プロジェクト推定）
         max_drafts: 候補上限
         use_llm: True で LLM 経路（config.capture_llm_provider を使う）
+        allow_sensitive: 高確度 secret を含む入力を明示的に許可する
 
     Returns:
         抽出された Draft のリスト（空でも可）。
     """
+    # capture_extract は draft body を JSON / UI へ返す経路でもあるため、保存前の
+    # capture_save だけに任せず、抽出結果を組み立てる前に同じポリシーを適用する。
+    from ..work_queue import find_project_dir
+    if config.project_dir is not None:
+        project_root = config.project_dir
+    elif project:
+        project_root = find_project_dir(config=config, project=project)
+    elif len(config.roots) == 1:
+        project_root = Path(config.roots[0])
+    else:
+        project_root = Path.cwd()
+    effective_config = config_for_project(config, project_root)
+    enforce_secret_policy(
+        text,
+        policy=effective_config.secret_policy,
+        allow_sensitive=allow_sensitive,
+    )
+
     if use_llm:
         provider = getattr(config, "capture_llm_provider", None) or "mock"
         client = get_llm(provider)
@@ -103,13 +125,15 @@ def save_drafts(
     config: Config,
     target_dir: Path,
     overwrite: bool = False,
+    project_dir: Path | None = None,
+    allow_sensitive: bool = False,
 ) -> list[Path]:
     """採用された Draft を ``target_dir`` 配下に書き出す。
 
     Args:
         drafts: 採用された Draft のリスト
         config: ロード済み Config（owner / lang などを参照する余地）
-        target_dir: 書き出し先（プロジェクトの ``docs/local/`` を想定）
+        target_dir: 書き出し先（設定済み project-relative work_dir を想定）
         overwrite: 既存ファイルを上書きしてよいか
 
     Returns:
@@ -120,14 +144,30 @@ def save_drafts(
             いずれかの draft の ``suggested_filename`` が不正（パスセパレータ含む /
             ``.md`` 以外 / 空 / 記号混入）のとき。
     """
-    # 書き込み境界: roots が設定されているなら target_dir は必ずその配下でなければならない。
-    # roots 未設定の場合（config 無しでの単発呼び出し・テスト等）は cwd フォールバックに委ねる。
-    if config.roots and not _target_under_roots(target_dir, config.roots):
-        raise CaptureScopeError(
-            f"target_dir はスキャンルート配下である必要があります: {target_dir}"
-        )
     # basename・.md 限定の filename 検証は全 draft を先に走らせて、部分書き込みを避ける。
     safe_names = [_sanitize_filename(d.suggested_filename) for d in drafts]
+
+    # プロジェクト境界・Git privacy・本文 secret policy は mkdir より前に全件検査する。
+    root = Path(project_dir or config.project_dir or (config.roots[0] if config.roots else target_dir))
+    effective_config = config_for_project(config, root)
+    warnings: list[tuple[str, str]] = []
+    for d in drafts:
+        try:
+            ensure_write_allowed(
+                config=effective_config,
+                project_dir=root,
+                target_dir=target_dir,
+                content=d.body,
+                allow_sensitive=allow_sensitive,
+            )
+        except PermissionError as exc:
+            raise CaptureScopeError(str(exc)) from exc
+        hits = enforce_secret_policy(
+            d.body,
+            policy=effective_config.secret_policy,
+            allow_sensitive=allow_sensitive,
+        )
+        warnings.extend((d.suggested_filename, w) for w in format_warnings(hits))
 
     target_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
@@ -144,13 +184,10 @@ def save_drafts(
                     path = cand
                     break
                 n += 1
-        try:
-            from ..secrets_guard import format_warnings, scan_secrets
-            for w in format_warnings(scan_secrets(d.body)):
+        for filename, warning in warnings:
+            if filename == d.suggested_filename:
                 import sys
-                print(f"warn: {path.name}: {w}", file=sys.stderr)
-        except Exception:
-            pass
+                print(f"warn: {path.name}: {warning}", file=sys.stderr)
         path.write_text(d.body, encoding="utf-8")
         written.append(path)
     return written

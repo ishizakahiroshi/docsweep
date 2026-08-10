@@ -7,16 +7,18 @@
 from __future__ import annotations
 
 import re
+import os
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from .archive import _now_iso, append_move_log, archive_file
-from .atomic import write_atomic
-from .config import Config, project_archive_dir
+from .atomic import ConflictError, write_atomic
+from .config import Config, archive_dir_for_project
 from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from .models import Action, Flag, FileRecord, MoveLogEntry
-from .scan import ScannedDoc, scan
+from .scan import ScannedDoc, _build_doc, detect_project_root, scan
+from .services.status import update_status
 
 
 def classify(doc: ScannedDoc, config: Config) -> None:
@@ -111,6 +113,50 @@ def run_scan(config: Config) -> ScanResult:
     return ScanResult(docs=docs)
 
 
+def doc_for_path(path: Path, config: Config) -> ScannedDoc | None:
+    """Load one explicitly named document even when its directory is ignored.
+
+    Explicit write commands must not turn an ignored ``docs/local`` plan into
+    an apparent missing target.  The normal scanner still honors gitignore;
+    this narrow helper is used only after the user supplied the exact path.
+    """
+    candidate = Path(path)
+    if not candidate.is_file():
+        return None
+    type_def = config.match_type(candidate.name)
+    if type_def is None:
+        return None
+    lexical = Path(os.path.abspath(os.path.normpath(os.fspath(candidate))))
+    scope_root: Path | None = None
+    for raw_root in config.roots:
+        root = Path(raw_root)
+        root_lexical = Path(os.path.abspath(os.path.normpath(os.fspath(root))))
+        try:
+            lexical.relative_to(root_lexical)
+        except ValueError:
+            continue
+        if scope_root is None or len(root_lexical.parts) > len(scope_root.parts):
+            scope_root = root_lexical
+    if scope_root is None:
+        return None
+    project_root = detect_project_root(
+        lexical.parent, scope_root, config.project_markers, {}
+    )
+    doc = _build_doc(candidate, scope_root, config, type_def, project_root)
+    if doc is None:
+        return None
+    classify(doc, config)
+    return doc
+
+
+def _path_is_under(candidate: Path, root: Path) -> bool:
+    try:
+        candidate.resolve().relative_to(root.resolve())
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return True
+
+
 def scan_records(config: Config, *, project: str | None = None) -> list[FileRecord]:
     """読み取り系コマンド用の高速版 ``run_scan``。``FileRecord`` のリストだけ返す。
 
@@ -128,6 +174,23 @@ def scan_records(config: Config, *, project: str | None = None) -> list[FileReco
         recs = load_records_from_index(config, project_filter=project)
         if recs is not None:
             recs = filter_records_by_excluded(recs)
+            # A shared/default index can contain records for another set of
+            # roots.  Treat an entirely out-of-scope index as a cache miss so
+            # commands such as fix-conflict fall back to the requested roots.
+            scoped: list[FileRecord] = []
+            for rec in recs:
+                candidate = Path(rec.path)
+                if any(
+                    _path_is_under(candidate, Path(root))
+                    for root in config.roots
+                ):
+                    scoped.append(rec)
+            if recs and not scoped:
+                recs = None
+            else:
+                recs = scoped
+        if recs is not None:
+            _mark_sensitive_records(recs)
             return recs
     except Exception:
         # 索引が壊れていてもユーザー体験は止めない。run_scan へ落とす。
@@ -136,7 +199,20 @@ def scan_records(config: Config, *, project: str | None = None) -> list[FileReco
     records = list(result.records)
     if project:
         records = [r for r in records if r.project == project]
+    _mark_sensitive_records(records)
     return records
+
+
+def _mark_sensitive_records(records: list[FileRecord]) -> None:
+    """SQLite の旧 schema から復元した record にも本文 privacy を付ける。"""
+    from .secrets_guard import high_confidence_hits, scan_secrets
+
+    for record in records:
+        try:
+            text = Path(record.path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        record.sensitive = bool(high_confidence_hits(scan_secrets(text)))
 
 
 def _project_dir_for(doc: ScannedDoc, config: Config) -> tuple[Path, Path]:
@@ -222,10 +298,7 @@ def promote_state(
             continue
         project_dir, root = _project_dir_for(doc, config)
         if not dry_run:
-            if not relabel_file(Path(rec.path), f"[{target.label(config.lang)}]", config):
-                raise ValueError(
-                    f"H1 ラベルを書き換えられないため昇格を中止しました（H1 が無い/UTF-8 でない）: {rec.path}"
-                )
+            _update_doc_state(doc, to_state, config)
         dst = archive_file(
             src=Path(rec.path), project_dir=project_dir, archive_dir=_archive_dir_for(doc, config),
             root=root, project=rec.project, status=to_state, op="promote", dry_run=dry_run,
@@ -243,14 +316,41 @@ def _archive_dir_for(doc: ScannedDoc, config: Config) -> str:
     # sweep / promote は複数プロジェクト横断で動くため、起動時に読んだ単一 config ではなく
     # 対象プロジェクト自身の .docsweep.yaml（あれば）を優先する。これにより cwd や
     # --project-dir フラグに依存せず、どこから実行しても各プロジェクトの設定が効く。
-    from_project = project_archive_dir(Path(doc.record.project_root))
-    if from_project:
-        return from_project
-    return config.archive_dir
+    return archive_dir_for_project(Path(doc.record.project_root), config)
+
+
+def _update_doc_state(
+    doc: ScannedDoc,
+    target_key: str,
+    config: Config,
+    *,
+    allow_type_override: bool = False,
+) -> None:
+    """Update H1 and docsweep frontmatter through the shared status service."""
+    try:
+        update_status(
+            Path(doc.record.path),
+            target_key,
+            project_root=Path(doc.record.project_root),
+            config=config,
+            # The interactive review is an explicit human decision and has
+            # historically allowed a pending card to graduate to watching or
+            # done. CLI relabel/apply keeps the normal type transition guard.
+            file_type=None if allow_type_override else doc.record.type,
+            expected_mtime=doc.record.mtime,
+        )
+    except (ConflictError, OSError, UnicodeError, ValueError) as exc:
+        raise ValueError(f"状態を書き換えられません: {doc.record.path}: {exc}") from exc
 
 
 def apply_action(
-    doc: ScannedDoc, action: str, config: Config, *, to: str | None = None, dry_run: bool = False
+    doc: ScannedDoc,
+    action: str,
+    config: Config,
+    *,
+    to: str | None = None,
+    dry_run: bool = False,
+    allow_type_override: bool = False,
 ) -> MoveLogEntry:
     """triage の閉じた action を 1 ファイルへ機械実行する。"""
     rec = doc.record
@@ -275,11 +375,10 @@ def apply_action(
         st = sm.by_key(target_key)
         if st and not dry_run:
             # ラベルを書き換えられない（H1 が無い/読めない）まま移送すると、配置と
-            # ラベルが矛盾した archive ファイルができる。書換失敗時は移送を中止する。
-            if not relabel_file(path, f"[{st.label(config.lang)}]", config):
-                raise ValueError(
-                    f"H1 ラベルを書き換えられないため移送を中止しました（H1 が無い/UTF-8 でない）: {rec.path}"
-                )
+            # frontmatter が矛盾した archive ファイルになるため共通状態経路を先に通す。
+            _update_doc_state(
+                doc, target_key, config, allow_type_override=allow_type_override
+            )
         dst = archive_file(
             src=path, project_dir=project_dir, archive_dir=_archive_dir_for(doc, config),
             root=root, project=rec.project, status=target_key, op=action, dry_run=dry_run,
@@ -291,17 +390,25 @@ def apply_action(
         target_key = "in-progress"
         st = sm.by_key(target_key)
         if st and not dry_run:
-            relabel_file(path, f"[{st.label(config.lang)}]", config)
+            _update_doc_state(
+                doc, target_key, config, allow_type_override=allow_type_override
+            )
             append_move_log(root, MoveLogEntry(ts=_now_iso(), op="resume", project=rec.project, status=target_key, src=rec.path, dst=None))
         return MoveLogEntry(ts="", op="resume", project=rec.project, status=target_key, src=rec.path, dst=None)
 
     if action == Action.RELABEL.value:
         if not to:
             raise ValueError("relabel には to（ラベル名）が必要です")
-        st = sm.match(to)
-        label = f"[{st.label(config.lang)}]" if st else (to if to.startswith("[") else f"[{to}]")
+        token = str(to).strip()
+        if token.startswith("[") and token.endswith("]"):
+            token = token[1:-1].strip()
+        st = sm.match(token)
+        if st is None:
+            raise ValueError(f"未知の state label: {to}")
         if not dry_run:
-            relabel_file(path, label, config)
+            _update_doc_state(
+                doc, st.key, config, allow_type_override=allow_type_override
+            )
             append_move_log(root, MoveLogEntry(ts=_now_iso(), op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None))
         return MoveLogEntry(ts="", op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None)
 

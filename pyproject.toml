@@ -76,6 +76,10 @@ docsweep = "docsweep.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["docsweep"]
 
+# OKF rules are data, not Python source; keep bundled profiles in the wheel.
+[tool.hatch.build.targets.wheel.force-include]
+"docsweep/okf_profiles" = "docsweep/okf_profiles"
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

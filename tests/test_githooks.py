@@ -52,15 +52,14 @@ def test_hook_passes_when_no_frontmatter(tmp_path: Path):
     assert r.returncode == 0
 
 
-def test_hook_fails_on_invalid_type(tmp_path: Path):
+def test_hook_allows_unknown_type(tmp_path: Path):
     p = tmp_path / "plan_bad.md"
     p.write_text(
         "---\ntype: weirdtype\nstatus: planned\n---\n# [計画] bad\n",
         encoding="utf-8",
     )
     r = _run([p])
-    assert r.returncode == 1
-    assert "type=" in r.stderr
+    assert r.returncode == 0, r.stderr
 
 
 def test_hook_fails_on_invalid_status(tmp_path: Path):

@@ -7,6 +7,7 @@ C4 で Web UI からの tags/owner/related/review_status 編集を受けるた�
 - frontmatter が無いファイルは新規に挿入する（``update_due`` の作法を踏襲）
 - list 型（``tags`` / ``related``）はフロー記法 ``[a, b]`` でシリアライズする
 - ``review_status`` / ``owner`` はスカラ（空文字を渡したら値を空に・行は残す）
+- ``docsweep_parent`` / ``docsweep_state`` は docsweep のスカラ拡張（親子関係と作業状態）
 - ``current_owner`` で git config / OS ログイン名から既定の owner 名を解決する
   （C2 の ``docsweep config user.name`` が来るまでの暫定動線）
 """
@@ -28,7 +29,17 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 # 単純なスカラ / list / フィールド名のみ。任意キーは受けない（API 側で許可リスト管理）。
 ALLOWED_FIELDS: frozenset[str] = frozenset(
-    {"tags", "owner", "related", "review_status", "last_reviewed", "due"}
+    {
+        "tags",
+        "owner",
+        "related",
+        "docsweep_parent",
+        "review_status",
+        "last_reviewed",
+        "due",
+        "status",
+        "docsweep_state",
+    }
 )
 LIST_FIELDS: frozenset[str] = frozenset({"tags", "related"})
 

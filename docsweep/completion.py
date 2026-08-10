@@ -16,7 +16,7 @@ _SUBCOMMANDS: tuple[str, ...] = (
     "scan", "triage", "apply", "sweep", "serve", "promote", "index", "pending",
     "report", "summary", "new", "review", "inject", "eject", "list", "mcp",
     "migrate-frontmatter", "fix-related", "show", "stale", "context", "claim",
-    "config", "timeline", "find", "completion",
+    "config", "timeline", "find", "completion", "closeout-check",
 )
 
 

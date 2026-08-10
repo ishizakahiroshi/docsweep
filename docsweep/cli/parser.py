@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from .. import __version__
-from ..config import load_config
+from ..config import SECRET_POLICIES, WORK_POLICIES, load_config
 
 def _add_scope_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("paths", nargs="*", help="単発スキャンするルート（config 不要）")
@@ -15,6 +15,10 @@ def _add_scope_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--config", help="グローバル config のパス（既定 ~/.docsweep/config.yaml）")
     p.add_argument("--project-dir", help="プロジェクト .docsweep.yaml を読むディレクトリ")
     p.add_argument("--lang", choices=("ja", "en"), help="表示言語")
+    p.add_argument("--work-dir", help="作業 queue のプロジェクト相対パス（既定 docs/local）")
+    p.add_argument("--work-policy", choices=sorted(WORK_POLICIES), help="private または shared")
+    p.add_argument("--secret-policy", choices=sorted(SECRET_POLICIES), help="秘密情報の block / warn / off")
+    p.add_argument("--allow-sensitive", action="store_true", help="秘密情報らしき本文の保存・表示を明示許可")
 
 
 def _build_config(args: argparse.Namespace):
@@ -30,6 +34,14 @@ def _build_config(args: argparse.Namespace):
     )
     if getattr(args, "lang", None):
         cfg.lang = args.lang
+    if getattr(args, "work_dir", None):
+        cfg.work_dir = str(args.work_dir)
+        cfg.work_dir_explicit = True
+    if getattr(args, "work_policy", None):
+        cfg.work_policy = str(args.work_policy)
+        cfg.work_policy_explicit = True
+    if getattr(args, "secret_policy", None):
+        cfg.secret_policy = str(args.secret_policy)
     return cfg
 
 
@@ -196,8 +208,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_capture.add_argument("--project", help="配置先プロジェクト名（既定は cwd）")
     p_capture.add_argument("--max", type=int, default=5, help="抽出候補上限（既定 5）")
     p_capture.add_argument("--save-all", action="store_true",
-                           help="抽出された候補を全部 docs/local/ へ保存")
-    p_capture.add_argument("--out-dir", help="保存先ディレクトリ（既定はプロジェクトの docs/local）")
+                           help="抽出された候補を全部 configured work_dir へ保存")
+    p_capture.add_argument("--out-dir", help="保存先ディレクトリ（既定は configured work_dir）")
     p_capture.add_argument("--json", action="store_true", help="JSON 出力（既定は人間向け）")
 
     # C5 (wings): linkcheck / auto-triage / graph
@@ -257,6 +269,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("type", choices=("plan", "bugfix", "pending"))
     p_new.add_argument("topic", help="ケバブケースの topic")
     p_new.add_argument("--title", help="H1 タイトル（既定は topic）")
+    p_new.add_argument("--config", help="グローバル config のパス（既定 ~/.docsweep/config.yaml）")
+    p_new.add_argument("--work-dir", help="作業 queue のプロジェクト相対パス（既定 docs/local）")
+    p_new.add_argument("--work-policy", choices=sorted(WORK_POLICIES), help="private または shared")
+    p_new.add_argument("--secret-policy", choices=sorted(SECRET_POLICIES), help="秘密情報の block / warn / off")
+    p_new.add_argument("--allow-sensitive", action="store_true", help="秘密情報らしき本文の保存を明示許可")
     p_new.add_argument(
         "--project-dir",
         default=None,
@@ -275,7 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_new.add_argument(
         "--split", type=int, default=0, metavar="N",
-        help="親 plan + 子 N 本を一括生成し related 双方向を結ぶ（UX W3 / P26）",
+        help="親 plan + 子 N 本を一括生成し related 双方向と docsweep_parent を付ける（UX W3 / P26）",
     )
 
     p_review = sub.add_parser("review", help="対話チェックリストで選択分を archive へ一括移送")
@@ -445,7 +462,47 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-archive", action="store_true",
         help="archive/ 配下も含める（既定は除外）",
     )
+    p_export.add_argument(
+        "--okf-version", default="0.2",
+        help="使用する同梱 OKF profile の version（既定: 0.2）",
+    )
+    p_export.add_argument(
+        "--okf-profile", help="OKF profile のローカル JSON または明示 URL（通常は取得しない）",
+    )
+    p_export.add_argument(
+        "--okf-profile-sha256", help="外部 OKF profile の SHA-256 固定値",
+    )
     p_export.add_argument("--json", action="store_true")
+
+    p_okf_check = sub.add_parser(
+        "okf-check",
+        help="任意の OKF Bundle を read-only 検査（未知 type / link は reject しない）",
+    )
+    p_okf_check.add_argument("bundle", help="Bundle ディレクトリまたは zip")
+    p_okf_check.add_argument("--okf-version", default="0.2")
+    p_okf_check.add_argument("--okf-profile", help="ローカル JSON または明示 URL")
+    p_okf_check.add_argument("--okf-profile-sha256", help="profile の SHA-256 固定値")
+    p_okf_check.add_argument("--json", action="store_true")
+
+    p_okf_profiles = sub.add_parser(
+        "okf-profiles", help="同梱 OKF profile の一覧を表示"
+    )
+    p_okf_profiles.add_argument("--json", action="store_true")
+
+    p_closeout = sub.add_parser(
+        "closeout-check",
+        help="親 plan と child plan の closeout 条件を read-only 検査",
+    )
+    p_closeout.add_argument(
+        "--path", required=True,
+        help="検査する親 plan（絶対パスまたは cwd 基準の repo-relative path）",
+    )
+    p_closeout.add_argument(
+        "--to", choices=("watching", "done"), default="watching",
+        help="進める前提の状態（既定: watching）",
+    )
+    p_closeout.add_argument("--project-dir", help="repo 境界を明示")
+    p_closeout.add_argument("--json", action="store_true", help="機械可読 JSON で出力")
 
     # UX W1: doctor / init / undo
     p_doctor = sub.add_parser(
@@ -454,6 +511,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_doctor.add_argument("--json", action="store_true", help="機械可読 JSON で出力")
     p_doctor.add_argument("--config", help="グローバル config のパス（既定 ~/.docsweep/config.yaml）")
+    p_doctor.add_argument("--project-dir", help="privacy check 対象のプロジェクト境界")
 
     p_init = sub.add_parser(
         "init",

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 import yaml
 
 from .config import TypeDef
+from .okf import is_okf_lifecycle_status
 from .services.frontmatter import read_frontmatter_text
 from .states import StateModel
 
@@ -64,6 +65,9 @@ class Detection:
     owner: str | None = None
     review_status: str | None = None  # draft / review / published / archived 等の自由値
     related: list[str] = field(default_factory=list)
+    # docsweep extension: a direction-specific parent reference.  ``related``
+    # remains a generic many-to-many relation and is not replaced by this key.
+    docsweep_parent: str | None = None
     last_reviewed: str | None = None  # YYYY-MM-DD（パース失敗時は素の文字列で保持）
     frontmatter_type: str | None = None  # frontmatter の type 値（plan/bugfix/pending 等）
     type_conflict: bool = False  # frontmatter type と filename 由来 type が食い違う
@@ -71,6 +75,10 @@ class Detection:
     # sweep 挙動の指示。既定は「関連リリース or 親 plan が archive されたら道連れ」= None 相当。
     # ``never_archive`` を指定すると sweep/promote の archive 移送対象から外れる（可視化はする）。
     docsweep_policy: str | None = None
+    # OKF v0.2 の lifecycle と docsweep の作業状態は別軸。
+    docsweep_state: str | None = None
+    okf_status: str | None = None
+    state_field: str | None = None  # docsweep_state | legacy status | h1 | filename | None
 
 
 def _read_head(text: str, limit: int = 8000) -> str:
@@ -155,11 +163,14 @@ def _extract_okf_fields(data: dict | None) -> dict:
         return {
             "tags": [], "owner": None, "review_status": None,
             "related": [], "last_reviewed": None, "frontmatter_type": None,
-            "docsweep_policy": None,
+            "docsweep_parent": None, "docsweep_policy": None,
+            "docsweep_state": None, "okf_status": None,
         }
     owner_raw = data.get("owner")
     review_raw = data.get("review_status")
     type_raw = data.get("type")
+    state_raw = data.get("docsweep_state")
+    status_raw = data.get("status")
     policy_raw = data.get("docsweep_policy")
     policy: str | None = None
     if policy_raw is not None:
@@ -171,9 +182,17 @@ def _extract_okf_fields(data: dict | None) -> dict:
         "owner": (str(owner_raw).strip() or None) if owner_raw is not None else None,
         "review_status": (str(review_raw).strip() or None) if review_raw is not None else None,
         "related": _coerce_str_list(data.get("related")),
+        "docsweep_parent": (
+            str(data.get("docsweep_parent")).strip()
+            if isinstance(data.get("docsweep_parent"), str)
+            and str(data.get("docsweep_parent")).strip()
+            else None
+        ),
         "last_reviewed": _coerce_date_str(data.get("last_reviewed")),
         "frontmatter_type": (str(type_raw).strip() or None) if type_raw is not None else None,
         "docsweep_policy": policy,
+        "docsweep_state": (str(state_raw).strip() or None) if state_raw is not None else None,
+        "okf_status": (str(status_raw).strip() or None) if status_raw is not None else None,
     }
 
 
@@ -181,8 +200,17 @@ def _detect_frontmatter(text: str, sm: StateModel) -> str | None:
     data = _parse_frontmatter_dict(text)
     if not data:
         return None
+    docsweep_state = data.get("docsweep_state")
+    if docsweep_state is not None:
+        s = sm.match(str(docsweep_state))
+        return s.key if s else None
     status = data.get("status")
     if status is None:
+        return None
+    # OKF v0.2 `status` is lifecycle, not docsweep's work state.  A legacy
+    # docsweep state is still accepted when it is not one of the lifecycle
+    # values.
+    if is_okf_lifecycle_status(status):
         return None
     s = sm.match(str(status))
     return s.key if s else None
@@ -258,6 +286,15 @@ def detect_status(
     okf = _extract_okf_fields(fm_dict)
     warnings: list[str] = []
 
+    docsweep_state = sm.match(okf["docsweep_state"]) if okf["docsweep_state"] else None
+    legacy_status = None
+    if okf["okf_status"] and not is_okf_lifecycle_status(okf["okf_status"]):
+        legacy_status = sm.match(okf["okf_status"])
+    if okf["docsweep_state"] and docsweep_state is None:
+        warnings.append(
+            f"docsweep_state='{okf['docsweep_state']}' を docsweep state に解決できません"
+        )
+
     # frontmatter type と filename 由来 type の食い違いを warn 扱いで surface する。
     # 自動上書きしない（plan_okf-adoption_2026-06-29.md C1 の方針）。
     fm_type = okf["frontmatter_type"]
@@ -271,7 +308,11 @@ def detect_status(
     # （既存の `conflict` フラグだけだと「どこが」分からないため）。
     if fm is not None and h1_key is not None and fm != h1_key:
         warnings.append(
-            f"frontmatter status='{fm}' と H1 ラベル由来 status='{h1_key}' が食い違います"
+            f"frontmatter 作業状態 status='{fm}' と H1 ラベル由来 state='{h1_key}' が食い違います"
+        )
+    if docsweep_state and legacy_status and docsweep_state.key != legacy_status.key:
+        warnings.append(
+            "docsweep_state と旧 status の docsweep 作業状態が食い違います"
         )
 
     # 検出された候補（None 以外）が複数あり食い違うか。
@@ -311,11 +352,21 @@ def detect_status(
         owner=okf["owner"],
         review_status=okf["review_status"],
         related=okf["related"],
+        docsweep_parent=okf["docsweep_parent"],
         last_reviewed=okf["last_reviewed"],
         frontmatter_type=okf["frontmatter_type"],
         type_conflict=type_conflict,
         frontmatter_warnings=warnings,
         docsweep_policy=okf["docsweep_policy"],
+        docsweep_state=docsweep_state.key if docsweep_state else None,
+        okf_status=okf["okf_status"],
+        state_field=(
+            "docsweep_state" if docsweep_state else
+            "legacy status" if legacy_status else
+            "h1" if h1_key is not None else
+            "filename" if fn is not None else
+            None
+        ),
     )
 
 

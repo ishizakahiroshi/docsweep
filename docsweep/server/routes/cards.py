@@ -158,14 +158,21 @@ def post_content(
     path: str = Form(...),
     content: str = Form(default=""),
     expected_mtime: str | None = Form(default=None),
+    allow_sensitive: bool = Form(default=False),
 ):
     """本文全置換（楽観ロック・mtime 不一致は 409）。"""
     check_token(request, token, status_code=403, detail="invalid or missing token")
     resolved = _resolve(request, path)
     expected = _parse_mtime(expected_mtime)
     try:
-        res = update_content(resolved, content, expected_mtime=expected)
-    except ContentValidationError as e:
+        res = update_content(
+            resolved,
+            content,
+            expected_mtime=expected,
+            config=request.app.state.docsweep.config,
+            allow_sensitive=allow_sensitive,
+        )
+    except (ContentValidationError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e

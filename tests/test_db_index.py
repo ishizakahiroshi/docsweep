@@ -95,6 +95,24 @@ def test_expand_search_paths_exclude(workspace: Path, tmp_path: Path) -> None:
     assert "alpha" in names and "beta" not in names
 
 
+def test_sync_index_excludes_obsidian_artifacts(workspace: Path, tmp_path: Path) -> None:
+    _write(
+        workspace / "alpha" / "docs" / "obsidian" / "recap_2026-08-09_index.md",
+        "---\ntype: recap\nstatus: stable\ndocsweep_policy: never_archive\n---\n# recap\n",
+    )
+    cfg = _config_with_search(workspace, tmp_path)
+    cfg.ignore = ["docs/obsidian", "**/docs/obsidian", "**/docs/obsidian/**"]
+    db_path = tmp_path / "obsidian-index.db"
+
+    sync_index(cfg, full=True, db_path_override=db_path)
+
+    with db.connect(db_path) as conn:
+        rows = conn.execute("SELECT rel_path, abs_path FROM files").fetchall()
+    paths = {row[1] for row in rows}
+    assert any(path.endswith("docs/local/plan_one.md") for path in paths)
+    assert not any("docs/obsidian" in path.replace("\\", "/") for path in paths)
+
+
 def test_expand_search_paths_fallback_to_roots(tmp_path: Path) -> None:
     """search_paths 未設定なら roots をフォールバックとして使う（後方互換）。"""
     root = tmp_path / "fallback"

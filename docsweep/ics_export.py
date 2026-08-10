@@ -38,7 +38,8 @@ def build_ics(config: Config) -> str:
         except ValueError:
             continue
         uid = f"docsweep-{abs(hash(r.path))}@local"
-        summary = _ics_escape(f"{r.state_label or ''} {r.title or Path(r.path).name}".strip())
+        display_title = "[sensitive]" if r.sensitive else (r.title or Path(r.path).name)
+        summary = _ics_escape(f"{r.state_label or ''} {display_title}".strip())
         desc = _ics_escape(r.path)
         day = d.strftime("%Y%m%d")
         lines.extend([

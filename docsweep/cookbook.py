@@ -14,6 +14,12 @@ SCENARIOS: dict[str, list[dict[str, str]]] = {
         {"cmd": "docsweep sweep --dry-run", "why": "完了/廃止の移送確認"},
         {"cmd": "docsweep undo", "why": "誤移送を戻す"},
     ],
+    "closeout": [
+        {"cmd": "python -m docsweep closeout-check --path docs/local/plan_<parent>.md --to watching --json", "why": "親子 plan を read-only 検査"},
+        {"cmd": "python -m docsweep apply --root . --path docs/local/<child>.md --action relabel --to watching", "why": "承認後に child から状態同期"},
+        {"cmd": "python -m docsweep apply --root . --path docs/local/plan_<parent>.md --action relabel --to watching", "why": "child 後に親を状態同期"},
+        {"cmd": "python -m docsweep sweep --dry-run --json", "why": "done/archive は別承認で下見"},
+    ],
     "onboard": [
         {"cmd": "docsweep init --yes", "why": "config 作成"},
         {"cmd": "docsweep index-sync", "why": "索引同期"},

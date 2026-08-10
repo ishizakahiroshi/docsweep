@@ -33,7 +33,7 @@ def build_overdue_message(config: Config) -> tuple[str, str]:
     if n == 0:
         body = "やり忘れは 0 件です"
     else:
-        sample = overdue[0].title or Path_name(overdue[0].path)
+        sample = "[sensitive]" if overdue[0].sensitive else (overdue[0].title or Path_name(overdue[0].path))
         body = f"やり忘れ {n} 件（例: {sample}）"
     return title, body
 

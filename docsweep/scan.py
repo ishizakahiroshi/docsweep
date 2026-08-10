@@ -12,9 +12,10 @@ from datetime import datetime, timezone
 from fnmatch import fnmatch
 from pathlib import Path
 
-from .config import Config, TypeDef
+from .config import Config, TypeDef, project_work_settings, resolve_work_dir
 from .detect import Detection, detect_status, extract_summary
 from .models import FileRecord
+from .secrets_guard import high_confidence_hits, scan_secrets
 
 # 常に除外するディレクトリ名。
 # docsweep 自身の生成物（INDEX.md / moves.jsonl）を再スキャンしないよう .docsweep も除外。
@@ -59,6 +60,22 @@ def _age_days(mtime: float) -> int:
     return max(0, int((now - mtime) // 86400))
 
 
+def _is_work_queue_path(path: Path, root: Path, config: Config, cache: dict[Path, Path]) -> bool:
+    """.gitignore 済みでも、設定済み private queue は brief/triage の対象に残す。"""
+    try:
+        project_root = detect_project_root(path if path.is_dir() else path.parent, root, config.project_markers, cache)
+        queue = resolve_work_dir(project_root, project_work_settings(project_root, config)[0])
+        path_abs = path.resolve()
+        queue_abs = queue.resolve()
+        return (
+            path_abs == queue_abs
+            or path_abs.is_relative_to(queue_abs)
+            or queue_abs.is_relative_to(path_abs)
+        )
+    except (OSError, ValueError):
+        return False
+
+
 def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
     """1 つのスキャンルート配下を走査し ScannedDoc のリストを返す。"""
     root = root.resolve()
@@ -90,7 +107,10 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
             if d in ALWAYS_SKIP_DIRS or d in archive_names:
                 continue
             child_rel = f"{rel_dir}/{d}".lstrip("/") if rel_dir != "." else d
-            if _is_ignored(child_rel, d, base_patterns):
+            child_path = cur / d
+            if _is_ignored(child_rel, d, base_patterns) and not _is_work_queue_path(
+                child_path, root, config, proj_cache
+            ):
                 continue
             pruned.append(d)
         dirnames[:] = pruned
@@ -102,7 +122,9 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
                 continue
             fpath = cur / fn
             rel = fpath.relative_to(root).as_posix()
-            if _is_ignored(rel, fn, base_patterns):
+            if _is_ignored(rel, fn, base_patterns) and not _is_work_queue_path(
+                fpath, root, config, proj_cache
+            ):
                 continue
             type_def = config.match_type(fn)
             # 命名規約（plan_*.md / mockup_*.html 等の type パターン）に一致しないファイルは
@@ -198,6 +220,7 @@ def _build_doc(
     stat = fpath.stat()
     age = _age_days(stat.st_mtime)
     state = sm.by_key(det.state_key) if det.state_key else None
+    sensitive = bool(high_confidence_hits(scan_secrets(text)))
 
     # 型矛盾は warn として stderr へ出す（自動上書きしない）。
     # plan_okf-adoption_2026-06-29.md C1 の方針: 矛盾を可視化するが直さない。
@@ -233,8 +256,12 @@ def _build_doc(
         owner=det.owner,
         review_status=det.review_status,
         related=list(det.related),
+        docsweep_parent=det.docsweep_parent,
         last_reviewed=det.last_reviewed,
         docsweep_policy=det.docsweep_policy,
+        docsweep_state=det.docsweep_state,
+        okf_status=det.okf_status,
+        sensitive=sensitive,
     )
     return ScannedDoc(record=record, detection=det, type_def=type_def, text=text)
 

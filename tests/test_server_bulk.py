@@ -115,7 +115,10 @@ def test_bulk_status_relabels_all(client):
     assert body["archive"] is None  # in-progress は archive_triggered ではない
     # 各ファイルの H1 が書き換わっている
     for n in ("plan_a.md", "plan_b.md", "plan_c.md"):
-        assert (proj / n).read_text(encoding="utf-8").splitlines()[3].startswith("# [実行中]")
+        assert any(
+            line.startswith("# [実行中]")
+            for line in (proj / n).read_text(encoding="utf-8").splitlines()
+        )
 
 
 def test_bulk_status_done_triggers_archive(client):

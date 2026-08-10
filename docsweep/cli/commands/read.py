@@ -20,7 +20,8 @@ def _print_records_table(records, lang: str) -> None:
     for r in records:
         label = r.state_label or "[?]"
         flags = f" !{','.join(r.flags)}" if r.flags else ""
-        summary = f" — {r.summary}" if r.summary else ""
+        summary_value = None if getattr(r, "sensitive", False) else r.summary
+        summary = f" — {summary_value}" if summary_value else (" — [sensitive]" if getattr(r, "sensitive", False) else "")
         print(f"{label:<8} {r.age_days:>4}d  {r.project}/{Path(r.path).name}{flags}{summary}")
 
 
@@ -81,7 +82,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     from ...doctor import format_human, run_doctor
 
     global_path = Path(args.config) if getattr(args, "config", None) else None
-    report = run_doctor(global_path=global_path)
+    report = run_doctor(
+        global_path=global_path,
+        project_dir=Path(args.project_dir) if getattr(args, "project_dir", None) else None,
+    )
     if getattr(args, "json", False):
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     else:
@@ -324,10 +328,10 @@ def _copy_context_to_clipboard(file_path: str, cfg) -> None:
         return
     try:
         bundle = collect_context(file_path, cfg)
-    except (FileNotFoundError, ValueError) as e:
+    except (FileNotFoundError, ValueError, PermissionError) as e:
         print(f"context 生成失敗: {e}", file=sys.stderr)
         return
-    text = render_context(bundle, fmt="prompt")
+    text = render_context(bundle, fmt="markdown")
     if to_clipboard(text):
         print(f"context をクリップボードへコピー: {Path(file_path).name}")
     else:
@@ -612,8 +616,12 @@ def cmd_context(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
     target_path = Path(args.file).resolve().as_posix()
     try:
-        bundle = collect_context(target_path, cfg)
-    except (FileNotFoundError, ValueError) as e:
+        bundle = collect_context(
+            target_path,
+            cfg,
+            allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
+        )
+    except (FileNotFoundError, ValueError, PermissionError) as e:
         print(str(e), file=sys.stderr)
         return 2
     text = render_context(bundle, fmt=args.format)
@@ -668,16 +676,25 @@ def cmd_find(args: argparse.Namespace) -> int:
 def cmd_export(args: argparse.Namespace) -> int:
     """``docsweep export --okf`` — OKF 互換 zip を書き出す。"""
     from ...export import run_export
+    from ...okf import OkfProfileError
 
     cfg = _build_config(args)
     # ``--okf`` 未指定でも現状は OKF 一択なので暗黙に有効化（将来 ``--format`` 追加余地）。
     out = Path(args.out) if getattr(args, "out", None) else None
-    result = run_export(
-        cfg,
-        out=out,
-        project=getattr(args, "project", None),
-        include_archive=getattr(args, "include_archive", False),
-    )
+    try:
+        result = run_export(
+            cfg,
+            out=out,
+            project=getattr(args, "project", None),
+            include_archive=getattr(args, "include_archive", False),
+            okf_version=getattr(args, "okf_version", "0.2"),
+            okf_profile=getattr(args, "okf_profile", None),
+            okf_profile_sha256=getattr(args, "okf_profile_sha256", None),
+            allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
+        )
+    except (OkfProfileError, ValueError) as exc:
+        print(f"export: {exc}", file=sys.stderr)
+        return 2
     if getattr(args, "json", False):
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
@@ -685,3 +702,87 @@ def cmd_export(args: argparse.Namespace) -> int:
     if result.include_archive:
         print("  (archive/ 配下も含めました)")
     return 0
+
+
+def cmd_okf_check(args: argparse.Namespace) -> int:
+    """任意の OKF Bundle を read-only で検査する。"""
+    from ...okf import OkfProfileError, load_okf_profile
+    from ...okf_check import check_bundle
+
+    try:
+        profile = load_okf_profile(
+            getattr(args, "okf_version", "0.2"),
+            source=getattr(args, "okf_profile", None),
+            sha256=getattr(args, "okf_profile_sha256", None),
+            cache_dir=Path.home() / ".docsweep" / "okf",
+        )
+        result = check_bundle(Path(args.bundle), profile)
+    except (OkfProfileError, ValueError) as exc:
+        print(f"okf-check: {exc}", file=sys.stderr)
+        return 2
+    if getattr(args, "json", False):
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        status = "OK" if result.ok else "NG"
+        print(f"OKF check: {status} / {result.files_checked} files / profile {profile.spec_version}")
+        for issue in result.errors:
+            print(f"  [error] {issue.path}: {issue.message}")
+        for issue in result.warnings:
+            print(f"  [warning] {issue.path}: {issue.message}")
+    return 0 if result.ok else 1
+
+
+def cmd_okf_profiles(args: argparse.Namespace) -> int:
+    """同梱 profile の一覧を表示する。"""
+    from ...okf import available_okf_profiles
+
+    versions = available_okf_profiles()
+    if getattr(args, "json", False):
+        print(json.dumps({"profiles": versions}, ensure_ascii=False, indent=2))
+    else:
+        for version in versions:
+            print(version)
+    return 0
+
+
+def cmd_closeout_check(args: argparse.Namespace) -> int:
+    """親 plan と child plan を read-only で closeout 検査する。"""
+    from ...closeout import CloseoutInputError, check_closeout
+
+    try:
+        result = check_closeout(
+            args.path,
+            target_state=getattr(args, "to", "watching"),
+            project_dir=getattr(args, "project_dir", None),
+        )
+    except (CloseoutInputError, OSError, ValueError) as exc:
+        if getattr(args, "json", False):
+            print(json.dumps({
+                "error": {
+                    "code": "invalid_input",
+                    "message": str(exc),
+                }
+            }, ensure_ascii=False, indent=2))
+        else:
+            print(f"closeout-check: {exc}", file=sys.stderr)
+        return 2
+
+    if getattr(args, "json", False):
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(f"closeout-check: {result.verdict} ({result.target_state})")
+        print(f"parent: {result.parent.get('relative_path', result.parent.get('path'))}")
+        print(f"children: {len(result.children)}")
+        for blocker in result.blockers:
+            print(f"  [blocker] {blocker.get('message', blocker.get('code'))}")
+        for check in result.manual_checks:
+            print(f"  [manual] {check.get('description', check.get('section'))}")
+        if result.suggested_order:
+            print("suggested order:")
+            for path in result.suggested_order:
+                print(f"  {path}")
+    return {
+        "ready": 0,
+        "manual_review_required": 1,
+        "not_ready": 2,
+    }.get(result.verdict, 2)
