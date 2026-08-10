@@ -273,17 +273,31 @@ def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     assert not gpath.exists()
 
 
+def _closeout_cmd_fragment() -> str:
+    """closeout-check の起動コマンドを、その OS の引用規則で組み立てた実物で得る。
+
+    POSIX の ``shlex.join`` は ``<parent-plan>`` をリダイレクトと解釈されないよう
+    ``'<parent-plan>'`` へ引用するが、Windows の ``list2cmdline`` は引用しない。
+    期待値を Windows 表記でベタ書きすると Linux の CI だけ落ちるので、同じ helper で作る。
+    """
+    from docsweep.inject import docsweep_command
+
+    cmd = docsweep_command("closeout-check", "--path", "<parent-plan>", "--json")
+    return cmd.split("-m docsweep ", 1)[1]
+
+
 def test_preview_global_central_only_for_claude(tmp_path, monkeypatch):
     """preview_global は中央ファイルの行を @import 参照する claude でだけ返す（Codex は出さない）。"""
     from docsweep import inject as I
 
     monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "g.md")
+    fragment = _closeout_cmd_fragment()
     claude = I.preview_global(agent="claude", target=tmp_path / "c" / "CLAUDE.md")
     assert claude["guidance"] and claude["guidance_path"]
-    assert "closeout-check --path <parent-plan> --json" in claude["guidance"]
+    assert fragment in claude["guidance"]
     codex = I.preview_global(agent="codex", target=tmp_path / "x" / "AGENTS.md")
     assert codex["guidance"] is None and codex["guidance_path"] is None
-    assert "closeout-check --path <parent-plan> --json" in codex["blocks"][0]["text"]
+    assert fragment in codex["blocks"][0]["text"]
 
 
 def test_generate_guidance_closeout_contract_ja_en():
@@ -292,12 +306,13 @@ def test_generate_guidance_closeout_contract_ja_en():
 
     ja = generate_guidance_block("ja")
     en = generate_guidance_block("en")
+    closeout_cmd = _closeout_cmd_fragment()
 
     for text, required in [
         (
             ja,
             (
-                "closeout-check --path <parent-plan> --json",
+                closeout_cmd,
                 "機械 blocker",
                 "手動確認",
                 "dirty worktree",
@@ -315,7 +330,7 @@ def test_generate_guidance_closeout_contract_ja_en():
         (
             en,
             (
-                "closeout-check --path <parent-plan> --json",
+                closeout_cmd,
                 "machine blockers",
                 "manual checks",
                 "dirty-worktree overlap",

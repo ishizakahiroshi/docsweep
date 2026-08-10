@@ -51,8 +51,11 @@
 
 ### Security
 
-- **`docsweep[mcp]` の下限を `mcp>=1.28.1` に引き上げた。** 従来の `mcp>=1.0` では
+- **`docsweep[mcp]` の範囲を `mcp>=1.28.1,<2` にした。** 従来の `mcp>=1.0` では
   CVE-2026-59950（fix: 1.28.1）を含む版が install され得た（2026-07-21 監査 F-06）。
+  上限を切ったのは **mcp 2.0.0 で `mcp.server.fastmcp` が無くなり、`docsweep mcp` が
+  import 時点で落ちる**ため（上限なしだと新規 install が 2.0.0 を掴んで即座に壊れる）。
+  2.0 系への対応は次の版で行う。
 
 ### Fixed
 

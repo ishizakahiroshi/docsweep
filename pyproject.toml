@@ -41,8 +41,10 @@ review = [
 # MCP stdio サーバー
 # 下限は 1.28.1。1.28.1 未満には CVE-2026-59950 があり、`>=1.0` のままだと
 # 脆弱な版が install され得た（2026-07-21 監査 F-06）。
+# 上限 <2: mcp 2.0.0 で `mcp.server.fastmcp` が無くなり、docsweep の MCP サーバーが
+# import 時点で落ちる（CI で実測）。2.0 系への対応は別途行う。
 mcp = [
-    "mcp>=1.28.1",
+    "mcp>=1.28.1,<2",
 ]
 # index-watch 用ファイル監視（任意・``docsweep watch`` だけが依存する）
 watch = [
