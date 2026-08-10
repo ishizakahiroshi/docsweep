@@ -370,6 +370,17 @@ def detect_status(
     )
 
 
+def detect_h1_state(text: str, sm: StateModel) -> str | None:
+    """H1 ラベル**だけ**から作業状態キーを取り出す（frontmatter を見ない）。
+
+    ``detect_status()`` が返す ``state_key`` は「frontmatter > H1 > filename」の
+    優先順で解決した**結果**なので、frontmatter がある限り H1 の値は取り出せない。
+    `fix-conflict --prefer h1` のように「H1 の値そのもの」が要る呼び出しはこちらを使う。
+    """
+    key, _token, _title = _detect_h1(_read_head(text), sm)
+    return key
+
+
 def extract_summary(text: str, section: str) -> str | None:
     """``## <section>`` セクション直下の先頭 1〜2 行（非空）を返す。"""
     # コードフェンスの ``` 行やフェンス内見出しを概要本文に拾わないようマスクする。

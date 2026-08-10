@@ -257,10 +257,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "0BSD License。Web UI の hypermedia ライブラリとして同梱。",
         "en": "0BSD License. Bundled as the hypermedia library for the Web UI.",
     },
-    "about_cdn_heading": {"ja": "CDN から読み込むソフトウェア", "en": "Software loaded from CDN"},
     "about_oss_cytoscape": {
-        "ja": "MIT License。graph ページのネットワーク可視化に使用（同梱せず unpkg CDN から取得）。",
-        "en": "MIT License. Used for the network view on the graph page (fetched from the unpkg CDN, not bundled).",
+        "ja": "MIT License。graph ページのネットワーク可視化に使用（v0.4.0 より同梱・外部取得なし）。",
+        "en": "MIT License. Used for the network view on the graph page (bundled since v0.4.0; no external fetch).",
     },
     "about_deps_heading": {"ja": "実行時依存（pip で個別取得）", "en": "Runtime dependencies (installed via pip)"},
     "about_deps_note": {

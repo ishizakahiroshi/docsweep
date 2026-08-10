@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .config import Config
+from .detect import detect_h1_state
 from .engine import scan_records
 from .interactive import _update_frontmatter_status
 from .okf import is_okf_lifecycle_status
@@ -163,26 +164,48 @@ def fix_conflicts(
         project_root = Path(r.project_root) if r.project_root else path.parent
 
         if prefer_h1:
-            if not r.state:
+            # `r.state` は「frontmatter > H1 > filename」で解決した**結果**なので、
+            # frontmatter がある conflict では常に frontmatter の値になる。これをそのまま
+            # 書き戻すと、成功を報告しながら何も直らない（値は同じまま、ファイルだけ
+            # 書き換わって整形が崩れる）。H1 の値は本文から取り直す。
+            try:
+                h1_state = detect_h1_state(path.read_text(encoding="utf-8"), config.state_model)
+            except (OSError, UnicodeDecodeError) as e:
+                items.append(ConflictFix(path=r.path, fixed=False, detail=str(e)))
+                continue
+            if not h1_state:
                 items.append(ConflictFix(
                     path=r.path, fixed=False, detail="H1 state unknown",
                     old_h1=h1_label, old_fm=str(fm_status) if fm_status else None,
                 ))
                 continue
+
+            # 現在の作業状態（新形式は docsweep_state、旧形式は status）と同値なら書かない。
+            current_raw = str(fm_state) if fm_state is not None else ""
+            if not current_raw and fm_status is not None and not is_okf_lifecycle_status(fm_status):
+                current_raw = str(fm_status)
+            current_match = config.state_model.match(current_raw) if current_raw else None
+            if current_match is not None and current_match.key == h1_state:
+                items.append(ConflictFix(
+                    path=r.path, fixed=False, detail="already in sync",
+                    old_h1=h1_label, old_fm=str(fm_status) if fm_status else None,
+                ))
+                continue
+
             if dry_run:
                 items.append(ConflictFix(
                     path=r.path, fixed=True,
                     detail="dry-run: frontmatter status ← H1",
                     old_h1=h1_label, old_fm=str(fm_status) if fm_status else None,
-                    new_value=r.state,
+                    new_value=h1_state,
                 ))
                 continue
-            ok = _update_frontmatter_status(path, r.state, state_model=config.state_model)
+            ok = _update_frontmatter_status(path, h1_state, state_model=config.state_model)
             items.append(ConflictFix(
                 path=r.path, fixed=ok,
                 detail="frontmatter status ← H1 state" if ok else "no frontmatter status line",
                 old_h1=h1_label, old_fm=str(fm_status) if fm_status else None,
-                new_value=r.state,
+                new_value=h1_state,
             ))
         else:
             # 新形式は docsweep_state、旧形式だけ status を作業状態として読む。

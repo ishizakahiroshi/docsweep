@@ -18,7 +18,13 @@ _HIGH_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("github_pat", re.compile(r"ghp_[A-Za-z0-9]{20,}")),
     ("github_fine_grained", re.compile(r"github_pat_[A-Za-z0-9_]{20,}")),
     ("anthropic_sk", re.compile(r"sk-ant-[A-Za-z0-9\-_]{20,}")),
-    ("openai_sk", re.compile(r"sk-[A-Za-z0-9]{20,}")),
+    # `sk-<20桁以上>` の旧形式に加えて `sk-proj-...` / `sk-svcacct-...` 等の現行形式も拾う。
+    # 旧パターンは `sk-` の直後に英数 20 文字以上を要求するため、間に `-` が入る現行キーを
+    # 取りこぼしていた（`sk-proj-` は `proj` の 4 文字で切れる）。
+    ("openai_sk", re.compile(r"sk-(?:[a-z]+-)?[A-Za-z0-9_\-]{20,}")),
+    ("slack_token", re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
+    ("google_api_key", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
+    ("stripe_secret", re.compile(r"[rs]k_live_[0-9A-Za-z]{16,}")),
     (
         "generic_bearer",
         re.compile(
@@ -26,8 +32,10 @@ _HIGH_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
     (
+        # DSA / PGP / 暗号化済み鍵など、種別語が何であっても PRIVATE KEY ブロックは弾く。
+        # 列挙方式だと新しい種別が出るたびに素通りする。
         "private_key_block",
-        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+        re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----"),
     ),
 ]
 
@@ -92,6 +100,12 @@ def enforce_secret_policy(
     normalized = (policy or "block").strip().lower()
     if normalized == "off":
         return []
+    # 未知の値（設定の打ち間違い等）は warn へ落とさず block として扱う。
+    # 綴り違いで保護が黙って無効化されるのは、この関数でもっとも危険な失敗の仕方。
+    # 設定ファイル経由では config 側でも正規化しているが、API/MCP から生の文字列が
+    # 渡る経路があるため、ここでも fail-closed にしておく。
+    if normalized not in {"block", "warn"}:
+        normalized = "block"
     high = high_confidence_hits(hits)
     if normalized == "block" and high and not allow_sensitive:
         kinds = ", ".join(sorted({str(h.get("kind", "unknown")) for h in high}))

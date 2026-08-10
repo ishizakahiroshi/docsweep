@@ -60,10 +60,18 @@ def _age_days(mtime: float) -> int:
     return max(0, int((now - mtime) // 86400))
 
 
-def _is_work_queue_path(path: Path, root: Path, config: Config, cache: dict[Path, Path]) -> bool:
+def _is_work_queue_path(
+    path: Path,
+    root: Path,
+    config: Config,
+    cache: dict[Path, Path],
+    aliases: dict[Path, Path] | None = None,
+) -> bool:
     """.gitignore 済みでも、設定済み private queue は brief/triage の対象に残す。"""
     try:
-        project_root = detect_project_root(path if path.is_dir() else path.parent, root, config.project_markers, cache)
+        project_root = detect_project_root(
+            path if path.is_dir() else path.parent, root, config.project_markers, cache, aliases
+        )
         queue = resolve_work_dir(project_root, project_work_settings(project_root, config)[0])
         path_abs = path.resolve()
         queue_abs = queue.resolve()
@@ -97,6 +105,7 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
 
     docs: list[ScannedDoc] = []
     proj_cache: dict[Path, Path] = {}
+    aliases = work_dir_aliases(root, config)
     for dirpath, dirnames, filenames in os.walk(root):
         cur = Path(dirpath)
         rel_dir = cur.relative_to(root).as_posix()
@@ -109,7 +118,7 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
             child_rel = f"{rel_dir}/{d}".lstrip("/") if rel_dir != "." else d
             child_path = cur / d
             if _is_ignored(child_rel, d, base_patterns) and not _is_work_queue_path(
-                child_path, root, config, proj_cache
+                child_path, root, config, proj_cache, aliases
             ):
                 continue
             pruned.append(d)
@@ -123,7 +132,7 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
             fpath = cur / fn
             rel = fpath.relative_to(root).as_posix()
             if _is_ignored(rel, fn, base_patterns) and not _is_work_queue_path(
-                fpath, root, config, proj_cache
+                fpath, root, config, proj_cache, aliases
             ):
                 continue
             type_def = config.match_type(fn)
@@ -131,26 +140,133 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
             # docsweep の管理対象外。拾わない（プロジェクトの LP や README を巻き込まない）。
             if type_def is None:
                 continue
-            project_root = detect_project_root(cur, root, config.project_markers, proj_cache)
+            project_root = detect_project_root(
+                cur, root, config.project_markers, proj_cache, aliases
+            )
             doc = _build_doc(fpath, root, config, type_def, project_root)
             if doc is not None:
                 docs.append(doc)
     return docs
 
 
+def _iter_project_roots(root: Path, config: Config) -> "list[Path]":
+    """スキャンルート配下の「project marker を持つディレクトリ」を列挙する。
+
+    ファイルは読まずディレクトリだけを辿る（marker の ``exists()`` 判定のみ）。
+    入れ子リポジトリがあるため、marker を見つけても配下の走査は止めない。
+    """
+    found: list[Path] = []
+    for dirpath, dirnames, _filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in ALWAYS_SKIP_DIRS]
+        cur = Path(dirpath)
+        if any((cur / m).exists() for m in config.project_markers):
+            found.append(cur)
+    return found
+
+
+def build_work_dir_aliases(root: Path, config: Config) -> dict[Path, Path]:
+    """「work_dir の実体パス → それを宣言したプロジェクトルート」の対応を作る。
+
+    ``docs/local`` を junction / symlink でリポジトリ外へ逃がしている構成では、
+    実体パスから上へ辿っても元のリポジトリには戻れない。marker が 1 つも見つからないと
+    ``detect_project_root`` はスキャンルート直下の先頭セグメントへフォールバックするため、
+    **別プロジェクトの持ち物として黙って登録されてしまう**（cwd 判定は実体ディレクトリを
+    見るので別名になり、``brief`` が警告なしで 0 件を返す）。
+
+    work_dir は「そのプロジェクトの作業キュー」と宣言済みの設定なので、実体側から
+    プロジェクトへ引き戻す対応表をここで作り、判定の入口で優先する。
+    """
+    aliases: dict[Path, Path] = {}
+    conflicts: set[Path] = set()
+    for proj in _iter_project_roots(root, config):
+        try:
+            work_dir_name = project_work_settings(proj, config)[0]
+            work_dir = resolve_work_dir(proj, work_dir_name)
+        except (OSError, ValueError):
+            continue
+        try:
+            if not work_dir.exists():
+                continue
+            real = work_dir.resolve()
+            proj_real = proj.resolve()
+        except OSError:
+            continue
+        if real == work_dir:
+            continue  # junction / symlink ではない（実体がそのまま）
+        try:
+            real.relative_to(proj_real)
+            continue  # 実体がプロジェクト内に収まっているなら引き戻す必要がない
+        except ValueError:
+            pass
+        prev = aliases.get(real)
+        if prev is not None and prev != proj:
+            # 同じ実体を 2 つのプロジェクトが work_dir として宣言している。
+            # どちらが正しいか機械には決められないので、黙って片方を採らず両方外す。
+            conflicts.add(real)
+            continue
+        aliases[real] = proj
+    for real in conflicts:
+        aliases.pop(real, None)
+    return aliases
+
+
+# (root, project_markers, グローバル work_dir) 単位の alias キャッシュ。
+# sync_index は 1 ファイルごとに detect_project_for_path を呼ぶため、毎回列挙すると走査が二乗になる。
+_ALIAS_CACHE: dict[tuple[str, tuple[str, ...], str], dict[Path, Path]] = {}
+
+
+def clear_work_dir_alias_cache() -> None:
+    """alias キャッシュを捨てる（テスト・設定変更後の再計算用）。"""
+    _ALIAS_CACHE.clear()
+
+
+def work_dir_aliases(root: Path, config: Config) -> dict[Path, Path]:
+    """``build_work_dir_aliases`` のキャッシュ付き入口。"""
+    key = (root.as_posix(), tuple(config.project_markers), str(config.work_dir))
+    cached = _ALIAS_CACHE.get(key)
+    if cached is None:
+        cached = build_work_dir_aliases(root, config)
+        _ALIAS_CACHE[key] = cached
+    return cached
+
+
+def _alias_project(aliases: dict[Path, Path] | None, start_dir: Path) -> Path | None:
+    """``start_dir`` が work_dir の実体配下なら、宣言元プロジェクトを返す。"""
+    if not aliases:
+        return None
+    best_key: Path | None = None
+    best_proj: Path | None = None
+    for real, proj in aliases.items():
+        if start_dir == real or start_dir.is_relative_to(real):
+            if best_key is None or len(real.parts) > len(best_key.parts):
+                best_key, best_proj = real, proj
+    return best_proj
+
+
 def detect_project_root(
-    start_dir: Path, root: Path, markers: list[str], cache: dict[Path, Path]
+    start_dir: Path,
+    root: Path,
+    markers: list[str],
+    cache: dict[Path, Path],
+    aliases: dict[Path, Path] | None = None,
 ) -> Path:
     """プロジェクト境界を判定する。
 
-    ファイルのフォルダから上へ辿り、``markers``（既定 .git/.docsweep.yaml/package.json/
-    pyproject.toml）のいずれかを持つ最寄りの祖先をプロジェクトとする。スキャンルートより
-    上へは辿らない。見つからなければルート直下の先頭セグメントへフォールバック。
+    まず work_dir の実体パス（junction / symlink 解決後）に一致すれば、その work_dir を
+    宣言したプロジェクトへ引き戻す。一致しなければファイルのフォルダから上へ辿り、
+    ``markers``（既定 .git/.docsweep.yaml/package.json/pyproject.toml）のいずれかを持つ
+    最寄りの祖先をプロジェクトとする。スキャンルートより上へは辿らない。見つからなければ
+    ルート直下の先頭セグメントへフォールバック。
 
     フォルダ構成（docs/local 等）を一切決め打ちせず、開発者が既に定義済みの実体で判定する。
     """
     if start_dir in cache:
         return cache[start_dir]
+
+    aliased = _alias_project(aliases, start_dir)
+    if aliased is not None:
+        cache[start_dir] = aliased
+        return aliased
 
     chain: list[Path] = []
     cur = start_dir
@@ -199,7 +315,9 @@ def detect_project_for_path(
     # 入れ子の root がある場合は、もっとも近い（長い）方を境界にする。
     root = max(roots, key=lambda p: len(p.parts))
     start_dir = candidate if candidate.is_dir() else candidate.parent
-    return detect_project_root(start_dir, root, config.project_markers, {})
+    return detect_project_root(
+        start_dir, root, config.project_markers, {}, work_dir_aliases(root, config)
+    )
 
 
 def _build_doc(

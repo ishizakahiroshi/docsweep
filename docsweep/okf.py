@@ -183,6 +183,15 @@ def _read_remote_profile(url: str) -> bytes:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise OkfProfileError(f"OKF profile URL が不正です: {url!r}")
+    # 取得内容を固定しない使い方は「今日たまたま取れたルール」で判定することになる。
+    # 拒否はしない（明示的な opt-in なので利用者の判断）が、黙って受け入れもしない。
+    import sys
+
+    if parsed.scheme == "http":
+        print(
+            f"warning: OKF profile を平文 HTTP で取得します（改竄を検知できません）: {url}",
+            file=sys.stderr,
+        )
     request = urllib.request.Request(
         url,
         headers={"Accept": "application/json", "User-Agent": "docsweep-okf-profile/1"},
@@ -224,6 +233,14 @@ def load_okf_profile(
 
     parsed = urllib.parse.urlparse(source_text)
     if parsed.scheme in {"http", "https"}:
+        if not sha256:
+            import sys
+
+            print(
+                "warning: OKF profile を SHA-256 なしで取得します。取得先が差し替わっても"
+                f"検知できません（--okf-profile-sha256 で固定してください）: {source_text}",
+                file=sys.stderr,
+            )
         cached: bytes | None = None
         if cache_dir and sha256:
             candidate = _cache_path(Path(cache_dir), sha256.strip().lower())

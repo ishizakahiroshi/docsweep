@@ -78,20 +78,37 @@ def _git_available(project_dir: Path) -> bool:
 def _git_ignored(project_dir: Path, path: Path) -> bool | None:
     if not _git_available(project_dir):
         return None
-    rel = os.path.relpath(str(path), str(project_dir)).replace(os.sep, "/")
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(project_dir), "check-ignore", "--no-index", "-q", "--", rel],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode == 0:
+    rel = os.path.relpath(str(path), str(project_dir)).replace(os.sep, "/").rstrip("/")
+
+    def _check(target: str) -> int | None:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(project_dir), "check-ignore", "--no-index", "-q", "--", target],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return result.returncode
+
+    code = _check(rel)
+    if code == 0:
         return True
-    if result.returncode == 1:
+    if code is None:
+        return None
+    # ディレクトリ限定パターン（`docs/local/` のように末尾 / 付き）は、対象がまだ
+    # **存在しない**と一致しない。git は実在しないパスをディレクトリと判断できないため。
+    # 作業 queue の初回作成時はまさにこの状態なので、`.gitignore` が正しく書けているのに
+    # 「ignore されていません」で保存が丸ごと止まっていた（新規プロジェクトの 1 本目が作れない）。
+    # 末尾 / 付きでもう一度問い合わせる。
+    code_dir = _check(f"{rel}/")
+    if code_dir == 0:
+        return True
+    if code_dir is None:
+        return None
+    if code == 1:
         return False
     return None
 
@@ -235,10 +252,18 @@ def ensure_write_allowed(
     )
     errors = list(result.errors)
     if not privacy_enforced(config):
-        errors = [
+        downgraded = [
             error for error in errors
-            if "private work queue" not in error and "private queue" not in error
+            if "private work queue" in error or "private queue" in error
         ]
+        errors = [error for error in errors if error not in downgraded]
+        # 互換 fallback で error を落とすときは、黙って落とさず warning として残す。
+        # 落としたことが見えないと「保護されている」と誤解したまま運用が続く。
+        for error in downgraded:
+            result.warnings.append(
+                f"{error}（work_dir / work_policy が未設定のため警告に留めています。"
+                "強制するには .docsweep.yaml で work_policy を明示してください）"
+            )
     if errors:
         raise WorkQueueError("; ".join(errors) + f": {result.path}")
     return result

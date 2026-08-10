@@ -4,9 +4,9 @@ docsweep 自体は MIT License で配布されています（リポジトリ直�
 本ファイルは **配布物に bundle されているサードパーティ・ソフトウェア** の出典と
 ライセンスを記録するためのものです。
 
-> 注: ここに挙げる依存はいずれも **法的に著作権表記が必須なライセンスではありません**
-> （bundle 対象は現状 0BSD のみ）。それでも透明性・将来 BSD/MIT 等を bundle する場合の
-> 足場・利用者への情報提供の観点から記録を残しています。
+> 注: bundle 対象のうち **cytoscape.js は MIT License** であり、著作権表記とライセンス全文の
+> 保持が配布条件です（下記 "Bundled" に転載）。htmx は 0BSD のため法的には不要ですが、
+> 透明性・利用者への情報提供の観点から同じ形式で記録しています。
 >
 > **pip install で別途解決される依存**（PyYAML / FastAPI / Jinja2 / mcp 等）は
 > bundle ではないため本ファイル対象外です。各依存パッケージは PyPI 上で自身の
@@ -30,14 +30,40 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-## Loaded from CDN (not bundled)
-
 ### cytoscape.js 3.30.0
 
 - 用途: Web UI の graph ページのネットワーク可視化
-- 読込元: `https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js`（実行時に CDN から取得・配布物には含まれない）
+- 同梱パス: `docsweep/server/static/cytoscape.min.js`
 - 出典: https://github.com/cytoscape/cytoscape.js
-- ライセンス: **MIT License**（同梱していないため転載義務はないが、利用の透明性のため記録）
+- 取得元: `https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js`（2026-08-10 取得）
+- SHA-256: `a298b253e4b9b08bd0b2fe222ad67b2b9f42d057d7c17f7a050512079c46fddd`
+- ライセンス: **MIT License**
+- 著作権表記: `Copyright (c) 2016-2024, The Cytoscape Consortium.`（原 LICENSE 全文を下記に記載）
+
+```
+Copyright (c) 2016-2024, The Cytoscape Consortium.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+> 2026-08-10（v0.4.0）より前は CDN（unpkg）から実行時取得していました。オフライン完結と
+> 外部への利用状況の送信回避のため同梱へ切り替えています。
 
 ## Runtime dependencies (not bundled — pulled by pip)
 

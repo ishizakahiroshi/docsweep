@@ -300,10 +300,25 @@ def collect_export(
     out_files: list[ExportedFile] = []
     pairs: list[tuple[str, str]] = []
 
+    excluded_private = 0
+    # 「work_policy は private だが、互換 fallback により除外していない」プロジェクト。
+    # 除外条件を満たさないこと自体は仕様（export の主目的が作業記録の bundle 化なので、
+    # 既定で全部落とすと export が空になる）だが、**黙って含めると利用者が bundle の
+    # 中身を過信する**。zip を共有・添付するのは export の主用途なので、必ず通知する。
+    nominally_private: set[str] = set()
+
     def is_private_path(path: Path, project_root: Path) -> bool:
         effective = config_for_project(config, project_root)
         work_dir, work_policy, _secret_policy = project_work_settings(project_root, effective)
-        if work_policy != "private" or not privacy_enforced(effective):
+        if work_policy != "private":
+            return False
+        if not privacy_enforced(effective):
+            try:
+                queue = resolve_work_dir(project_root, work_dir)
+                path.resolve().relative_to(queue.resolve())
+                nominally_private.add(project_root.name)
+            except (OSError, ValueError):
+                pass
             return False
         try:
             queue = resolve_work_dir(project_root, work_dir)
@@ -319,8 +334,10 @@ def collect_export(
         if rec.type is None:
             continue
         if rec.sensitive and not allow_sensitive:
+            excluded_private += 1
             continue
         if is_private_path(Path(rec.path), Path(rec.project_root)) and not allow_sensitive:
+            excluded_private += 1
             continue
         zip_entry = _zip_entry_path(rec.path, rec.project_root, rec.project)
         state = rec.docsweep_state or rec.state
@@ -350,16 +367,20 @@ def collect_export(
                 archive_path = Path(abs_path)
                 try:
                     if is_private_path(archive_path, Path(project_root)):
+                        excluded_private += 1
                         continue
                 except OSError:
+                    excluded_private += 1
                     continue
                 try:
                     from .secrets_guard import high_confidence_hits, scan_secrets
                     if high_confidence_hits(
                         scan_secrets(archive_path.read_text(encoding="utf-8", errors="replace"))
                     ):
+                        excluded_private += 1
                         continue
                 except OSError:
+                    excluded_private += 1
                     continue
             # archive 配下は scan を通らないので、type はファイル名から推測する。
             name = Path(abs_path).name
@@ -378,6 +399,25 @@ def collect_export(
                 )
             )
             pairs.append((f"_archive/{zip_entry}", abs_path))
+
+    # 除外も「除外しなかったこと」も黙って行わない。どちらも利用者が bundle の中身を
+    # 誤解する原因になる（v0.3.1 は非公開の docs/local が意図せず外へ出た事故だった）。
+    import sys
+
+    if excluded_private:
+        print(
+            f"note: private work queue / 秘密情報らしき {excluded_private} 件を export から"
+            "除外しました（含める場合は --allow-sensitive）",
+            file=sys.stderr,
+        )
+    if nominally_private and not allow_sensitive:
+        names = ", ".join(sorted(nominally_private))
+        print(
+            f"warning: work_policy=private の作業 queue を export に含めました（{names}）。"
+            "work_dir / work_policy が明示されていないため除外を強制していません。"
+            "除外するには .docsweep.yaml で work_policy を明示してください",
+            file=sys.stderr,
+        )
     return out_files, pairs
 
 

@@ -25,7 +25,10 @@ import yaml
 
 from ..atomic import update_line
 
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+# 区切り行の末尾は空白・タブ・CR だけを吸収する。`\s*` にすると閉じ `---` の後ろの
+# **空行まで飲み込み**、書き戻すときに落ちる（frontmatter を 1 フィールド直すたびに
+# 本文との間の空行が消え、tracked な docs では毎回よけいな差分が出る）。
+_FRONTMATTER_RE = re.compile(r"^---[ \t\r]*\n(.*?)\n---[ \t\r]*\n", re.DOTALL)
 
 # 単純なスカラ / list / フィールド名のみ。任意キーは受けない（API 側で許可リスト管理）。
 ALLOWED_FIELDS: frozenset[str] = frozenset(
