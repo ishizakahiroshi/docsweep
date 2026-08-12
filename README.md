@@ -395,6 +395,18 @@ Git ignore されていても設定済み queue を確認できます。秘密�
 `work_id`、固定の `ai_author_*`、`ai_execution_refs` を追加し、実行本体はリポ外の
 個人台帳へ1実行1行で保存できます。
 
+作成したセッションのtranscript（AI CLI 自身が残す生ログ）のフルパスを `ai_session_logs` に
+記録します。md の記述だけでは追えない判断の経緯へ、後から会話ログで戻れるようにするためです。
+記録するのはパスだけで中身は読みません。`work_policy: private` のqueueに限り、かつ実在する
+ときだけ書きます。
+
+対応は Claude Code / Codex / Grok / Copilot / Cursor Agent です。Claude Code はセッションIDを
+環境変数に出すため確実に一致します。それ以外は「作業ディレクトリが一致し、直近まで書かれ続けて
+いるセッションが1つだけ」のときに限って記録し、**2つ以上に絞れなければ何も書きません**
+（別セッションのログを指すくらいなら残さない）。opencode は全セッションが単一のSQLiteに集約され
+1セッションを特定できないため対象外です。自動解決できないときは `--ai-session-log <path>` で
+明示するか、`DOCSWEEP_AI_SESSION_LOG` を設定します。
+
 ```yaml
 provenance:
   enabled: true

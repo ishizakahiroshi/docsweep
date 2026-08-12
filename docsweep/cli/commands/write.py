@@ -334,6 +334,7 @@ def cmd_new(args: argparse.Namespace) -> int:
         reasoning_profile=getattr(args, "ai_reasoning", None),
         model_source=getattr(args, "ai_model_source", None),
         actor_key=getattr(args, "actor_key", None),
+        session_log=getattr(args, "ai_session_log", None),
     )
 
     def register_provenance(path: Path) -> dict | None:

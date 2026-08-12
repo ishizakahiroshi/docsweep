@@ -21,10 +21,13 @@ from pathlib import Path
 from .atomic import update_line, write_atomic
 from .config import Config
 from .services.frontmatter import (
+    FrontmatterValidationError,
     _format_value,
     _replace_or_insert,
+    _validate_list_item,
     read_frontmatter,
 )
+from .session_logs import resolve_current_session_log
 
 PROVENANCE_VERSION = "1"
 ROLES = frozenset({"authoring", "implementation", "review", "verification"})
@@ -69,11 +72,48 @@ ENV_FIELDS = {
     "model_source": "DOCSWEEP_AI_MODEL_SOURCE",
     "actor_key": "DOCSWEEP_AI_ACTOR_KEY",
 }
+SESSION_LOG_FIELD = "ai_session_logs"
+SESSION_LOG_ENV = "DOCSWEEP_AI_SESSION_LOG"
 _CONTEXT_RE = re.compile(r"^C[1-9][0-9]*$")
 
 
 class ProvenanceError(ValueError):
     """Provenance input, consistency, or storage error."""
+
+
+def resolve_session_logs(*, explicit: str | None = None) -> tuple[str, ...]:
+    """Locate the provider-owned transcript of the session writing this document.
+
+    Only the path is recorded; contents are never read. The per-provider layouts
+    and the "refuse to guess when it cannot be narrowed to one" rule live in
+    :mod:`docsweep.session_logs`.
+
+    ``DOCSWEEP_AI_SESSION_LOG`` overrides everything, for runtimes that cannot be
+    identified from inside their own session.
+    """
+    for candidate in (explicit, os.environ.get(SESSION_LOG_ENV)):
+        resolved = _existing_log_path(candidate)
+        if resolved:
+            return (resolved,)
+    resolved = resolve_current_session_log()
+    return (resolved,) if resolved else ()
+
+
+def _existing_log_path(value: str | None) -> str | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    path = Path(text)
+    if not path.is_absolute():
+        return None
+    try:
+        # Copilot と Cursor Agent は 1 セッションがディレクトリなので、
+        # is_file() で判定するとその 2 つを取りこぼす。
+        if not path.exists():
+            return None
+    except OSError:
+        return None
+    return str(path)
 
 
 @dataclass(frozen=True)
@@ -86,9 +126,11 @@ class AIMetadata:
     reasoning_profile: str = "unknown"
     model_source: str = "unavailable"
     actor_key: str = "unknown"
+    session_logs: tuple[str, ...] = ()
 
     @classmethod
     def resolve(cls, *, actor_default: str | None = None, **overrides: str | None) -> "AIMetadata":
+        session_log = overrides.pop("session_log", None)
         values: dict[str, str] = {}
         for name, env_name in ENV_FIELDS.items():
             raw = overrides.get(name) or os.environ.get(env_name)
@@ -99,10 +141,12 @@ class AIMetadata:
         if values["model_source"] == "unavailable":
             values["model_id"] = "unknown"
             values["model_display"] = "unknown"
-        return cls(**values)
+        return cls(**values, session_logs=resolve_session_logs(explicit=session_log))
 
     @classmethod
     def unknown(cls, *, actor_key: str | None = None) -> "AIMetadata":
+        # Backfill path: the caller is filling in a document written earlier, so
+        # the transcript of the current session is not this document's evidence.
         return cls(actor_key=_clean(actor_key or "unknown", "actor_key"))
 
 
@@ -229,6 +273,25 @@ def _frontmatter_refs(data: dict) -> list[str]:
         value = raw.strip().strip("[]")
         return [part.strip() for part in value.split(",") if part.strip()]
     raise ProvenanceError("ai_execution_refs は YAML list である必要があります")
+
+
+def _session_log_lines(config: Config, metadata: AIMetadata) -> list[str]:
+    """Return the transcript paths that may be written into this document.
+
+    An absolute path carries the OS user name, so it stays in private queues.
+    """
+    if str(getattr(config, "work_policy", "private")).strip().lower() != "private":
+        return []
+    safe: list[str] = []
+    for path in metadata.session_logs:
+        try:
+            safe.append(_validate_list_item(path))
+        except FrontmatterValidationError:
+            # Flow-style YAML cannot carry a path containing `,` or a quote.
+            # The field is supplementary, so drop it instead of failing the
+            # document generation it is attached to.
+            continue
+    return safe
 
 
 def _patch_frontmatter(path: Path, fields: dict[str, str | list[str]]) -> None:
@@ -380,19 +443,23 @@ def initialize_document(
         refs.append(execution_id)
     with _ledger_lock(config.provenance_ledger):
         previous_rows = _append_row(config.provenance_ledger, row)
+        fields: dict[str, str | list[str]] = {
+            "work_id": work_id,
+            "ai_provenance_version": PROVENANCE_VERSION,
+            "ai_author_agent": metadata.agent,
+            "ai_author_runtime": metadata.runtime,
+            "ai_author_provider": metadata.provider,
+            "ai_author_model_id": metadata.model_id,
+            "ai_author_model_display": metadata.model_display,
+            "ai_author_reasoning": metadata.reasoning_profile,
+            "ai_author_model_source": metadata.model_source,
+            "ai_execution_refs": refs,
+        }
+        session_logs = _session_log_lines(config, metadata)
+        if session_logs:
+            fields[SESSION_LOG_FIELD] = session_logs
         try:
-            _patch_frontmatter(path, {
-                "work_id": work_id,
-                "ai_provenance_version": PROVENANCE_VERSION,
-                "ai_author_agent": metadata.agent,
-                "ai_author_runtime": metadata.runtime,
-                "ai_author_provider": metadata.provider,
-                "ai_author_model_id": metadata.model_id,
-                "ai_author_model_display": metadata.model_display,
-                "ai_author_reasoning": metadata.reasoning_profile,
-                "ai_author_model_source": metadata.model_source,
-                "ai_execution_refs": refs,
-            })
+            _patch_frontmatter(path, fields)
         except Exception:
             _write_ledger(config.provenance_ledger, previous_rows)
             raise

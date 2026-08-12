@@ -303,6 +303,10 @@ def build_parser() -> argparse.ArgumentParser:
         ("--ai-reasoning", "ai_reasoning", "reasoning profile"),
         ("--ai-model-source", "ai_model_source", "orchestrator/runtime/cli/ui/user-reported/unavailable"),
         ("--actor-key", "actor_key", "AIを操作した人間の安定key"),
+        (
+            "--ai-session-log", "ai_session_log",
+            "本家CLIセッションの生ログのフルパス（省略時は環境変数から自動解決。Claude Code のみ自動）",
+        ),
     ):
         p_new.add_argument(flag, dest=dest, help=help_text)
 

@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- 作業 md の frontmatter に `ai_session_logs` を追加。その md を書いた AI セッションの
+  transcript（AI CLI 自身が残す生ログ）のフルパスを記録し、md の記述だけでは追えない判断の
+  経緯へ後から会話ログで戻れるようにする。対応は Claude Code / Codex / Grok / Copilot /
+  Cursor Agent。Claude Code はセッション ID が環境変数に出るため一致で確定し、それ以外は
+  「作業ディレクトリが一致し、直近まで書かれ続けているセッションが 1 つだけ」のときに限って
+  記録する（2 つ以上に絞れなければ何も書かない）。opencode は全セッションが単一 SQLite に
+  集約され 1 セッションを特定できないため対象外。記録するのはパスだけで内容は読まない。
+  `work_policy: private` の queue に限る。`new --ai-session-log <path>` と
+  `DOCSWEEP_AI_SESSION_LOG` で明示指定もできる。
+
 ## [0.4.0] - 2026-08-10
 
 ### アップグレード時の注意

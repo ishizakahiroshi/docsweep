@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from docsweep import session_logs
+
 
 @pytest.fixture(autouse=True)
 def isolate_index_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -32,3 +34,26 @@ def isolate_index_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     target = tmp_path / "docsweep-index.db"
     monkeypatch.setenv("DOCSWEEP_INDEX_DB", str(target))
     return target
+
+
+@pytest.fixture(autouse=True)
+def isolate_session_log_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """全テストで「実行中セッションの生ログ」解決を実環境から切り離す。
+
+    ``AIMetadata.resolve`` は env と provider のホームから transcript を解決して
+    frontmatter に載せる。遮断しないと provenance 系テストの期待値が「テストを
+    流した開発者のセッション」に依存する（索引 DB と同型の実環境混入）。
+
+    env を落とすだけでは足りない。Codex / Grok / Copilot / Cursor は cwd 一致で
+    探すため、テストを流した開発者の実ホームに同じ cwd のセッションが残っていると
+    それを拾う。``_home`` だけを差し替えるのは、``HOME`` / ``USERPROFILE`` を丸ごと
+    移すと git config などテスト外の挙動まで巻き込むため。
+    """
+    for name in (
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CONFIG_DIR",
+        "DOCSWEEP_AI_SESSION_LOG",
+        "CODEX_HOME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(session_logs, "_home", lambda: tmp_path / "no-such-home")

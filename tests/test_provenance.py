@@ -96,6 +96,89 @@ def test_initialize_start_finish_and_check(tmp_path: Path):
     assert rows[1]["evidence_refs"] == "pytest"
 
 
+_SESSION_ID = "11111111-2222-4333-8444-555555555555"
+
+
+def _fake_claude_transcript(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Claude Code の transcript を模した実ファイルを作り、env をそこへ向ける。
+
+    ディレクトリ名は cwd 由来だが、``docsweep new --project-dir`` は別リポの md を
+    作れるため、解決は glob で行う。ここでも project_dir とは無関係な名前を使い、
+    cwd からの機械変換に依存していないことを担保する。
+    """
+    claude_dir = tmp_path / "claude"
+    (claude_dir / "projects" / "D--dev-example").mkdir(parents=True)
+    transcript = claude_dir / "projects" / "D--dev-example" / f"{_SESSION_ID}.jsonl"
+    transcript.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_dir))
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", _SESSION_ID)
+    return transcript
+
+
+def test_session_log_is_recorded_from_claude_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    project, config = _config(tmp_path)
+    transcript = _fake_claude_transcript(tmp_path, monkeypatch)
+    doc = new_doc("plan", "session-log", project_dir=project, config=config, offset_days={})
+
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+
+    frontmatter = read_frontmatter(doc.path) or {}
+    assert frontmatter["ai_session_logs"] == [str(transcript)]
+
+
+def test_session_log_is_absent_when_transcript_does_not_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """パスは組めてもファイルが無ければ書かない（存在しない証跡を残さない）。"""
+    project, config = _config(tmp_path)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", _SESSION_ID)
+    doc = new_doc("plan", "missing-log", project_dir=project, config=config, offset_days={})
+
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+
+    assert "ai_session_logs" not in (read_frontmatter(doc.path) or {})
+
+
+def test_session_log_is_not_written_to_a_shared_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """絶対パスは OS ユーザー名を含むため private queue に限る。"""
+    project, config = _config(tmp_path)
+    _fake_claude_transcript(tmp_path, monkeypatch)
+    doc = new_doc("plan", "shared-queue", project_dir=project, config=config, offset_days={})
+    config.work_policy = "shared"
+
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+
+    assert "ai_session_logs" not in (read_frontmatter(doc.path) or {})
+
+
+def test_explicit_session_log_wins_over_claude_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Claude 以外の CLI は明示指定で入れる（自動解決の逃げ道）。"""
+    project, config = _config(tmp_path)
+    _fake_claude_transcript(tmp_path, monkeypatch)
+    explicit = tmp_path / "rollout-2026-08-12.jsonl"
+    explicit.write_text("{}\n", encoding="utf-8")
+    doc = new_doc("plan", "explicit-log", project_dir=project, config=config, offset_days={})
+    metadata = AIMetadata.resolve(
+        agent="codex",
+        runtime="many-ai-cli",
+        provider="openai",
+        model_source="orchestrator",
+        actor_key="ishizaka",
+        session_log=str(explicit),
+    )
+
+    initialize_document(doc.path, project_dir=project, config=config, metadata=metadata)
+
+    assert (read_frontmatter(doc.path) or {})["ai_session_logs"] == [str(explicit)]
+
+
 def test_repo_manager_delegates_without_creating_generic_ledger(tmp_path: Path):
     project, config = _config(tmp_path)
     (project / ".docsweep.yaml").write_text(
