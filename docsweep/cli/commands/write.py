@@ -9,9 +9,45 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from ...atomic import write_atomic
 from ...config import load_config
 from ...engine import apply_action, auto_sweep, doc_for_path, run_scan
 from ..parser import _build_config
+
+
+def _rollback_generated_documents(
+    created: list,
+    *,
+    ledger_path: Path | None = None,
+    ledger_before: bytes | None = None,
+) -> list[str]:
+    """Remove only files created by one ``new`` invocation and restore its ledger.
+
+    ``new_doc`` allocates a fresh path (with a suffix on collision), so these
+    paths are safe rollback targets.  The ledger snapshot makes a split command
+    all-or-nothing even when a later document fails provenance registration.
+    """
+    errors: list[str] = []
+    for doc in reversed(created):
+        path = getattr(doc, "path", None)
+        if not path or not getattr(doc, "created", False):
+            continue
+        try:
+            if path.is_file():
+                path.unlink()
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+    if ledger_path is not None:
+        try:
+            if ledger_before is None:
+                if ledger_path.is_file():
+                    ledger_path.unlink()
+            else:
+                write_atomic(ledger_path, ledger_before.decode("utf-8"), encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            errors.append(f"{ledger_path}: {exc}")
+    return errors
+
 
 def cmd_fix_conflict(args: argparse.Namespace) -> int:
     """conflict 修理（UX W2 / P37）。"""
@@ -205,7 +241,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
                 project_dir=project_root,
                 allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
             )
-        except (PermissionError, ValueError) as exc:
+        except PermissionError as exc:
             print(str(exc), file=sys.stderr)
             return 2
 
@@ -291,7 +327,7 @@ def cmd_auto_triage(args: argparse.Namespace) -> int:
 
 
 def cmd_new(args: argparse.Namespace) -> int:
-    from ...provenance import AIMetadata, ProvenanceError, initialize_document
+    from ...provenance import AIMetadata, initialize_document
     from ...similar_guard import find_similar_open
     from ...templates_gen import new_doc, new_split_plans
     from ...work_queue import find_project_dir
@@ -346,6 +382,16 @@ def cmd_new(args: argparse.Namespace) -> int:
             config=cfg,
             metadata=metadata,
         )
+
+    provenance_active = bool(cfg.provenance_enabled or cfg.provenance_manager == "repo")
+
+    def ledger_snapshot() -> bytes | None:
+        if not provenance_active:
+            return None
+        if not cfg.provenance_ledger.is_file():
+            return None
+        return cfg.provenance_ledger.read_bytes()
+
     split_n = int(getattr(args, "split", 0) or 0)
     if split_n > 0:
         if args.type != "plan":
@@ -362,13 +408,28 @@ def cmd_new(args: argparse.Namespace) -> int:
                 config=cfg,
                 allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
             )
-        except (PermissionError, ValueError) as exc:
+        except (OSError, ValueError) as exc:
             print(f"保存を中止しました: {exc}", file=sys.stderr)
             return 2
         try:
+            before = ledger_snapshot()
+        except OSError as exc:
+            rollback_errors = _rollback_generated_documents(created)
+            print(f"provenance 台帳の事前読み取りに失敗しました。生成物をロールバックしました: {exc}", file=sys.stderr)
+            for error in rollback_errors:
+                print(f"ロールバック失敗: {error}", file=sys.stderr)
+            return 2
+        try:
             provenance_results = [register_provenance(doc.path) for doc in created]
-        except ProvenanceError as exc:
-            print(f"provenance 登録に失敗しました: {exc}", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001 - new must rollback every registration failure
+            rollback_errors = _rollback_generated_documents(
+                created,
+                ledger_path=cfg.provenance_ledger if provenance_active else None,
+                ledger_before=before,
+            )
+            print(f"provenance 登録に失敗しました。生成物をロールバックしました: {exc}", file=sys.stderr)
+            for error in rollback_errors:
+                print(f"ロールバック失敗: {error}", file=sys.stderr)
             return 2
         for d in created:
             print(f"生成しました: {d.path}" + (f" (due={d.due})" if d.due else ""))
@@ -384,13 +445,28 @@ def cmd_new(args: argparse.Namespace) -> int:
             config=cfg,
             allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
         )
-    except (PermissionError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"保存を中止しました: {exc}", file=sys.stderr)
         return 2
     try:
+        before = ledger_snapshot()
+    except OSError as exc:
+        rollback_errors = _rollback_generated_documents([doc])
+        print(f"provenance 台帳の事前読み取りに失敗しました。生成物をロールバックしました: {exc}", file=sys.stderr)
+        for error in rollback_errors:
+            print(f"ロールバック失敗: {error}", file=sys.stderr)
+        return 2
+    try:
         provenance_result = register_provenance(doc.path)
-    except ProvenanceError as exc:
-        print(f"provenance 登録に失敗しました: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - new must rollback every registration failure
+        rollback_errors = _rollback_generated_documents(
+            [doc],
+            ledger_path=cfg.provenance_ledger if provenance_active else None,
+            ledger_before=before,
+        )
+        print(f"provenance 登録に失敗しました。生成物をロールバックしました: {exc}", file=sys.stderr)
+        for error in rollback_errors:
+            print(f"ロールバック失敗: {error}", file=sys.stderr)
         return 2
     if doc.due:
         print(f"生成しました: {doc.path} (due={doc.due})")

@@ -16,14 +16,12 @@ from pathlib import Path
 
 import yaml
 
+from ..atomic import write_atomic
 from ..config import GLOBAL_CONFIG_PATH
 
 # トップレベル ``roots:`` キーのブロック（ブロック形式の続き行 = インデント行 or リスト行、
 # または同一行 flow 形式）にマッチする。続き行には空行を含めない（次キーとの境界を保つ）。
-_ROOTS_BLOCK_RE = re.compile(
-    r"^roots:[^\n]*\n(?:[ \t]+[^\n]*\n|[ \t]*-[^\n]*\n)*",
-    re.MULTILINE,
-)
+_ROOTS_BLOCK_RE = re.compile(r"^roots:[^\n]*\n(?:[ \t]*-[^\n]*\n)*", re.MULTILINE)
 
 
 def _render_roots_block(roots: list[Path]) -> str:
@@ -56,6 +54,5 @@ def update_global_roots(roots: list[Path], *, config_path: Path | None = None) -
     if not isinstance(parsed, dict) or "roots" not in parsed:
         raise ValueError("roots 置換後の config.yaml が不正です（書き込みを中止しました）")
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(new_text, encoding="utf-8")
+    write_atomic(path, new_text, encoding="utf-8")
     return path

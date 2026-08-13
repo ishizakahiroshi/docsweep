@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .atomic import update_line, write_atomic
-from .config import Config
+from .config import Config, privacy_enforced
 from .services.frontmatter import (
     FrontmatterValidationError,
     _format_value,
@@ -129,7 +129,7 @@ class AIMetadata:
     session_logs: tuple[str, ...] = ()
 
     @classmethod
-    def resolve(cls, *, actor_default: str | None = None, **overrides: str | None) -> "AIMetadata":
+    def resolve(cls, *, actor_default: str | None = None, **overrides: str | None) -> AIMetadata:
         session_log = overrides.pop("session_log", None)
         values: dict[str, str] = {}
         for name, env_name in ENV_FIELDS.items():
@@ -144,7 +144,7 @@ class AIMetadata:
         return cls(**values, session_logs=resolve_session_logs(explicit=session_log))
 
     @classmethod
-    def unknown(cls, *, actor_key: str | None = None) -> "AIMetadata":
+    def unknown(cls, *, actor_key: str | None = None) -> AIMetadata:
         # Backfill path: the caller is filling in a document written earlier, so
         # the transcript of the current session is not this document's evidence.
         return cls(actor_key=_clean(actor_key or "unknown", "actor_key"))
@@ -219,7 +219,9 @@ def _ledger_lock(path: Path, timeout: float = 5.0):
             except FileNotFoundError:
                 continue
             if time.monotonic() >= deadline:
-                raise ProvenanceError(f"provenance 台帳のlock取得がtimeoutしました: {lock}")
+                raise ProvenanceError(
+                    f"provenance 台帳のlock取得がtimeoutしました: {lock}"
+                ) from None
             time.sleep(0.05)
     try:
         os.write(fd, f"pid={os.getpid()}\n".encode("ascii"))
@@ -280,7 +282,10 @@ def _session_log_lines(config: Config, metadata: AIMetadata) -> list[str]:
 
     An absolute path carries the OS user name, so it stays in private queues.
     """
-    if str(getattr(config, "work_policy", "private")).strip().lower() != "private":
+    if (
+        str(getattr(config, "work_policy", "private")).strip().lower() != "private"
+        or not privacy_enforced(config)
+    ):
         return []
     safe: list[str] = []
     for path in metadata.session_logs:

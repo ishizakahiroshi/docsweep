@@ -246,3 +246,13 @@ def test_nothing_is_resolved_on_a_clean_machine(
     _fake_home(tmp_path, monkeypatch)
 
     assert resolve_current_session_log(cwd=_work_dir(tmp_path), now=datetime.now()) is None
+
+
+def test_future_mtime_is_not_fresh(tmp_path: Path):
+    path = tmp_path / "future.jsonl"
+    path.write_text("{}\n", encoding="utf-8")
+    now = datetime.now()
+    future = (now + timedelta(minutes=5)).timestamp()
+    os.utime(path, (future, future))
+
+    assert session_logs._is_fresh(path, now) is False

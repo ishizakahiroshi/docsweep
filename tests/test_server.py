@@ -347,6 +347,25 @@ def test_update_global_roots_preserves_other_keys(tmp_path):
     assert "C:/old/root" not in text
 
 
+def test_update_global_roots_preserves_indented_comments(tmp_path):
+    """roots リスト内のコメントを、次キーの一部として誤認して消さない。"""
+    from docsweep.server.config_write import update_global_roots
+
+    gpath = tmp_path / "config.yaml"
+    gpath.write_text(
+        "roots:\n"
+        "  - C:/old/root\n"
+        "  # このコメントは残す\n"
+        "lang: ja\n",
+        encoding="utf-8",
+    )
+
+    update_global_roots([tmp_path / "new-root"], config_path=gpath)
+    text = gpath.read_text(encoding="utf-8")
+    assert "# このコメントは残す" in text
+    assert "new-root" in text
+
+
 def test_board_subtitle_has_no_kanban(client):
     """トップバーから「看板（カンバン）/ Kanban」表記を撤去した。"""
     c, root, _ = client

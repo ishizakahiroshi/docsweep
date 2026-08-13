@@ -28,10 +28,13 @@ dependencies = [
 # Web UI (FastAPI + htmx/Jinja2) — UX 主役。core だけ使う cron/AI 委譲では不要。
 web = [
     "fastapi>=0.110",
+    # FastAPI Form は Starlette の URL-encoded form parser を通るため、
+    # form size 制限を強制できる security floor を明示する。
+    "starlette>=1.3.1",
     "uvicorn>=0.29",
     "jinja2>=3.1",
     "markdown>=3.6",
-    "python-multipart>=0.0.18",
+    "python-multipart>=0.0.30",
     "nh3>=0.2",
 ]
 # 対話チェックリスト（--review 専用）

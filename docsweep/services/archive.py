@@ -20,6 +20,7 @@ Undo:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import uuid
 from dataclasses import dataclass, field
@@ -164,15 +165,39 @@ def _read_log(root: Path) -> list[dict]:
     return out
 
 
+def _path_key(value: str) -> str:
+    """Normalize a move-log path for matching archive and restore entries."""
+    try:
+        return os.path.normcase(os.path.normpath(os.path.abspath(value)))
+    except (OSError, TypeError, ValueError):
+        return os.path.normcase(os.path.normpath(str(value)))
+
+
+def _undo_key(entry: dict) -> tuple[str, str] | None:
+    """Return ``(archive_path, original_path)`` for a move-log entry."""
+    src = entry.get("src")
+    dst = entry.get("dst")
+    if not src or not dst:
+        return None
+    # archive/promote: src=original, dst=archive
+    # restore: src=archive, dst=original
+    if entry.get("op") == "restore":
+        return _path_key(str(src)), _path_key(str(dst))
+    return _path_key(str(dst)), _path_key(str(src))
+
+
 def _find_latest_undoable_batch(entries: list[dict]) -> str | None:
     """最新の「まだ復元されていない」archive/promote バッチの batch_id を返す。
 
-    既に restore エントリが書かれているバッチは飛ばし、次に古いバッチを返す。
-    batch_id を持たない古いエントリは Undo 対象外（None を返す）。
+    部分復元されたバッチは残りの項目があれば選び直す。全項目が restore
+    済みなら飛ばし、次に古いバッチを返す。batch_id を持たない古いエントリは
+    Undo 対象外（None を返す）。
     """
-    restored_batches = {
-        e.get("batch_id") for e in entries
-        if e.get("op") == "restore" and e.get("batch_id")
+    restored_items = {
+        key for e in entries
+        if e.get("op") == "restore"
+        for key in [_undo_key(e)]
+        if key is not None
     }
     for e in reversed(entries):
         if e.get("op") not in ("archive", "promote"):
@@ -180,7 +205,7 @@ def _find_latest_undoable_batch(entries: list[dict]) -> str | None:
         bid = e.get("batch_id")
         if not bid:
             continue
-        if bid in restored_batches:
+        if _undo_key(e) in restored_items:
             continue
         return bid
     return None
@@ -203,6 +228,16 @@ def undo_last_batch(*, config: Config) -> UndoResult:
             e for e in entries
             if e.get("batch_id") == bid and e.get("op") in ("archive", "promote")
         ]
+        restored_items = {
+            key for e in entries
+            if e.get("op") == "restore"
+            for key in [_undo_key(e)]
+            if key is not None
+        }
+        # A previous undo may have restored only some entries in a batch.  Do
+        # not attempt to move those files a second time; continue with the
+        # remaining items in the same batch.
+        batch = [e for e in batch if _undo_key(e) not in restored_items]
         result.batch_id = bid
         for entry in batch:
             src = Path(entry["src"])  # 元の場所

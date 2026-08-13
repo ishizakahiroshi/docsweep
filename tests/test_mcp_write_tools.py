@@ -281,6 +281,25 @@ def test_archive_done_auto_moves_done_and_discarded(tmp_path: Path):
     assert moved_names == {"plan_done.md", "plan_disc.md"}
 
 
+def test_capture_save_normalizes_oserror(tmp_path: Path, monkeypatch):
+    """保存先の一般 OSError も MCP tool の error dict 契約へ正規化する。"""
+    import docsweep.capture as capture
+
+    root, _ = _setup(tmp_path)
+    server = build_server(_cfg(root))
+
+    def fail(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(capture, "save_drafts", fail)
+    result = _tools(server)["capture_save"](
+        [{"id": "d1", "kind": "plan", "title": "x", "body": "# x", "suggested_filename": "x.md"}],
+        project="proj",
+    )
+
+    assert result == {"error": "disk full", "saved": [], "count": 0}
+
+
 def test_archive_done_explicit_paths(tmp_path: Path):
     root, proj = _setup(tmp_path)
     f = _write(proj / "docs" / "plan_done.md", "# [完了] x\n\n## 概要\n\na\n")

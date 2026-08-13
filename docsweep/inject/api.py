@@ -21,6 +21,7 @@ from pathlib import Path
 
 import yaml
 
+from ..atomic import write_atomic
 from ..config import DEFAULT_DUE_OFFSET_DAYS, GLOBAL_CONFIG_PATH, load_config, relative_work_dir
 from ..presets import Preset, get_preset
 from ..states import StateModel
@@ -532,8 +533,14 @@ def _write_managed_file(
         # ``Path.read_text`` / ``write_text`` は Windows で改行を暗黙変換する。
         # managed block 外をバイト上も保持するため、既存改行を読み取り時に維持し、
         # 新しい block だけ同じ改行へ合わせる。
-        with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
-            text = handle.read()
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                text = handle.read()
+        except UnicodeDecodeError as exc:
+            result.warnings.append(
+                f"{rel}: UTF-8として読み取れないため書き込みを中止しました ({exc.reason})"
+            )
+            return
         newline = "\r\n" if "\r\n" in text else "\n"
         new_block = raw_block.replace("\n", newline)
         spans = _find_all_blocks(text)
@@ -565,8 +572,7 @@ def _write_managed_file(
         new_text = raw_block.replace("\n", newline) + newline
 
     if not dry_run:
-        with path.open("w", encoding="utf-8", newline="") as handle:
-            handle.write(new_text)
+        write_atomic(path, new_text, encoding="utf-8")
     result.written.append(rel)
     (manifest_entry.setdefault("blocks", {}))[rel] = _block_hash(inner)
 
@@ -758,16 +764,21 @@ def eject(project_dir: Path, *, purge: bool = False, dry_run: bool = False) -> E
     manifest = load_manifest()
     key = project_dir.as_posix()
     entry = manifest["projects"].get(key, {"blocks": {}})
+    encoding_failed = False
 
     for fname in list((entry.get("blocks") or {}).keys()) or list(DEFAULT_TARGETS):
         path = project_dir / fname
         prev_hash = (entry.get("blocks") or {}).get(fname)
         if _strip_managed_blocks(path, prev_hash, result, dry_run=dry_run):
             result.removed.append(fname)
+        if any("UTF-8として読み取れない" in warning for warning in result.warnings):
+            encoding_failed = True
 
     if purge:
         yaml_path = project_dir / ".docsweep.yaml"
-        if yaml_path.is_file():
+        if encoding_failed:
+            result.warnings.append("UTF-8 decode failure のため .docsweep.yaml の purge を中止しました。")
+        elif yaml_path.is_file():
             if not dry_run:
                 yaml_path.unlink()
             result.purged_yaml = True

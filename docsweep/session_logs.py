@@ -264,7 +264,11 @@ def _is_fresh(path: Path, now: datetime) -> bool:
         written = datetime.fromtimestamp(stamp)
     except (OverflowError, OSError, ValueError):
         return False
-    return (now - written) <= FRESH_WINDOW
+    age = now - written
+    # The caller may capture ``now`` just before a provider writes its file;
+    # tolerate a small clock/mtime skew without accepting materially future
+    # timestamps as live sessions.
+    return -timedelta(minutes=1) <= age <= FRESH_WINDOW
 
 
 def _iter_dirs(root: Path):

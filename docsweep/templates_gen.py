@@ -267,35 +267,51 @@ def new_split_plans(
     if n < 1 or n > 20:
         raise ValueError("--split は 1〜20")
     parent_title = title or topic
-    parent = new_doc(
-        "plan", topic,
-        project_dir=project_dir, title=parent_title,
-        due=due, offset_days=offset_days,
-        config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
-    )
-    children: list[NewDoc] = []
-    child_names: list[str] = []
-    for i in range(1, n + 1):
-        child_topic = f"{topic}-c{i}"
-        child = new_doc(
-            "plan", child_topic,
-            project_dir=project_dir,
-            title=f"{parent_title} C{i}",
+    created: list[NewDoc] = []
+    try:
+        parent = new_doc(
+            "plan", topic,
+            project_dir=project_dir, title=parent_title,
             due=due, offset_days=offset_days,
             config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
         )
-        children.append(child)
-        child_names.append(child.path.name)
-    # parent related → children
-    _patch_related(parent.path, child_names)
-    # each child related → parent
-    # Keep the repo-relative reference lexical.  ``docs/local`` may be a
-    # junction whose resolved target is outside the project root; resolving it
-    # here would make a valid generated child relation fail at creation time.
-    parent_abs = Path(os.path.abspath(os.path.normpath(os.fspath(parent.path))))
-    project_abs = Path(os.path.abspath(os.path.normpath(os.fspath(project_dir))))
-    parent_ref = parent_abs.relative_to(project_abs).as_posix()
-    for ch in children:
-        _patch_related(ch.path, [parent.path.name])
-        _patch_scalar(ch.path, "docsweep_parent", parent_ref)
-    return [parent, *children]
+        created.append(parent)
+        children: list[NewDoc] = []
+        child_names: list[str] = []
+        for i in range(1, n + 1):
+            child_topic = f"{topic}-c{i}"
+            child = new_doc(
+                "plan", child_topic,
+                project_dir=project_dir,
+                title=f"{parent_title} C{i}",
+                due=due, offset_days=offset_days,
+                config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
+            )
+            created.append(child)
+            children.append(child)
+            child_names.append(child.path.name)
+        # parent related → children
+        _patch_related(parent.path, child_names)
+        # each child related → parent
+        # Keep the repo-relative reference lexical.  ``docs/local`` may be a
+        # junction whose resolved target is outside the project root; resolving it
+        # here would make a valid generated child relation fail at creation time.
+        parent_abs = Path(os.path.abspath(os.path.normpath(os.fspath(parent.path))))
+        project_abs = Path(os.path.abspath(os.path.normpath(os.fspath(project_dir))))
+        parent_ref = parent_abs.relative_to(project_abs).as_posix()
+        for ch in children:
+            _patch_related(ch.path, [parent.path.name])
+            _patch_scalar(ch.path, "docsweep_parent", parent_ref)
+        return created
+    except Exception:
+        # Every path above is freshly allocated by ``new_doc`` (collisions get a
+        # suffix), so removing only this call's created files cannot touch user data.
+        for doc in reversed(created):
+            try:
+                if doc.created and doc.path.is_file():
+                    doc.path.unlink()
+            except OSError:
+                # Preserve the original failure; the caller reports the partial
+                # cleanup as a follow-up warning when provenance registration fails.
+                pass
+        raise

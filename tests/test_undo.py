@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from docsweep.archive import _now_iso, append_move_log
 from docsweep.config import load_config
+from docsweep.models import MoveLogEntry
 from docsweep.services.archive import archive_done, undo_last_batch
 
 
@@ -56,6 +58,48 @@ def test_undo_restores_bulk_batch(tmp_path: Path):
     assert len(undo_res.restored) == 3
     for f in files:
         assert f.exists()
+
+
+def test_undo_restores_only_unrestored_items_in_partial_batch(tmp_path: Path):
+    """一部だけ先に復元された batch は、残りの項目だけを再度戻す。"""
+    import json
+
+    root = tmp_path / "dev"
+    proj = root / "proj"
+    proj.mkdir(parents=True)
+    files = [
+        _write(proj / f"plan_done_{i}.md", f"# [完了] x{i}\n\n## 概要\n\na\n")
+        for i in range(2)
+    ]
+    cfg = _cfg(root)
+
+    arc_res = archive_done(config=cfg, paths=[str(f) for f in files])
+    log = (root / ".docsweep" / "moves.jsonl").read_text(encoding="utf-8").splitlines()
+    batch_id = next(json.loads(line)["batch_id"] for line in reversed(log) if json.loads(line).get("batch_id"))
+
+    # 1 件分だけ undo 済みという状態を move log に再現する。
+    first_archive = Path(arc_res.moved[0].dst)
+    first_archive.replace(files[0])
+    append_move_log(
+        root,
+        MoveLogEntry(
+            ts=_now_iso(),
+            op="restore",
+            project="proj",
+            status="done",
+            src=str(first_archive),
+            dst=str(files[0]),
+            batch_id=batch_id,
+        ),
+    )
+
+    result = undo_last_batch(config=cfg)
+
+    assert result.batch_id == batch_id
+    assert len(result.restored) == 1
+    assert result.failed == []
+    assert files[0].exists()
+    assert files[1].exists()
 
 
 def test_undo_does_not_double_restore(tmp_path: Path):

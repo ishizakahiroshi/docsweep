@@ -27,7 +27,9 @@ def _config(tmp_path: Path):
         "  enabled: true\n"
         "  manager: docsweep\n"
         "  ledger: provenance/ai-executions.csv\n"
-        "  actor_key: ishizaka\n",
+        "  actor_key: ishizaka\n"
+        "work_dir: docs/local\n"
+        "work_policy: private\n",
         encoding="utf-8",
     )
     project = tmp_path / "repo"
@@ -150,6 +152,22 @@ def test_session_log_is_not_written_to_a_shared_queue(
     _fake_claude_transcript(tmp_path, monkeypatch)
     doc = new_doc("plan", "shared-queue", project_dir=project, config=config, offset_days={})
     config.work_policy = "shared"
+
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+
+    assert "ai_session_logs" not in (read_frontmatter(doc.path) or {})
+
+
+def test_session_log_is_not_written_for_unenforced_legacy_private_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """旧設定の nominal private は、絶対 session path を frontmatter に漏らさない。"""
+    project, config = _config(tmp_path)
+    _fake_claude_transcript(tmp_path, monkeypatch)
+    config.work_dir_explicit = False
+    config.work_policy_explicit = False
+    config.loaded_from_config = True
+    doc = new_doc("plan", "legacy-private", project_dir=project, config=config, offset_days={})
 
     initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
 

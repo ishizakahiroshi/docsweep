@@ -6,6 +6,7 @@ import os
 import re
 from pathlib import Path
 
+from ..atomic import write_atomic
 from ..config import Config, config_for_project
 from ..secrets_guard import enforce_secret_policy, format_warnings
 from ..work_queue import ensure_write_allowed
@@ -188,6 +189,6 @@ def save_drafts(
             if filename == d.suggested_filename:
                 import sys
                 print(f"warn: {path.name}: {warning}", file=sys.stderr)
-        path.write_text(d.body, encoding="utf-8")
+        write_atomic(path, d.body, encoding="utf-8")
         written.append(path)
     return written

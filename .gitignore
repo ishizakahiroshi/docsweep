@@ -72,6 +72,9 @@ secrets.*
 # docsweep の個人作業ログ（公開しない）
 docs/local/
 
+# AI 監査の生レポート（人間レビュー前は公開しない）
+/docs/ai-audit-prompts/
+
 # Obsidian knowledge artifacts are not public repository content.
 /docs/obsidian/
 

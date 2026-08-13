@@ -224,7 +224,6 @@ def build_server(config: Config):
         from pathlib import Path as _P
         from .capture import save_drafts
         from .capture.models import Draft as _Draft
-        from .capture.service import CaptureScopeError as _ScopeErr
         from .work_queue import resolve_work_target
 
         # dict -> Draft へ復元
@@ -255,7 +254,7 @@ def build_server(config: Config):
                 project_dir=project_root,
                 allow_sensitive=allow_sensitive,
             )
-        except (_ScopeErr, PermissionError, ValueError) as e:
+        except (OSError, ValueError) as e:
             # MCP は例外を JSON-RPC error に変換する。tool 契約に沿った error dict を返す。
             return {"error": str(e), "saved": [], "count": 0}
         return {"saved": [str(p) for p in saved], "count": len(saved)}

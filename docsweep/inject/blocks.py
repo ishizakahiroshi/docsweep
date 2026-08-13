@@ -6,6 +6,8 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
+from ..atomic import write_atomic
+
 MARK_START = "<!-- docsweep:managed:start -->"
 MARK_END = "<!-- docsweep:managed:end -->"
 
@@ -51,14 +53,20 @@ def _strip_managed_blocks(
     """ファイルから全管理ブロックを除去する。手編集は .bak へ退避する。"""
     if not path.is_file():
         return False
-    text = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        result.warnings.append(
+            f"{path.name}: UTF-8として読み取れないため除去を中止しました ({exc.reason})"
+        )
+        return False
     spans = _find_all_blocks(text)
     if not spans:
         return False
     if prev_hash and _block_hash(_inner_of(text, spans[0])) != prev_hash:
         result.warnings.append(f"{path.name}: 手編集を検出。.bak を作成しました。")
         if not dry_run:
-            path.with_suffix(path.suffix + ".bak").write_text(text, encoding="utf-8")
+            write_atomic(path.with_suffix(path.suffix + ".bak"), text, encoding="utf-8")
     new_text = text
     for span in reversed(spans):
         before = new_text[:span[0]].rstrip("\n")
@@ -67,5 +75,5 @@ def _strip_managed_blocks(
     new_text = new_text.rstrip("\n")
     new_text = new_text + "\n" if new_text else ""
     if not dry_run:
-        path.write_text(new_text, encoding="utf-8")
+        write_atomic(path, new_text, encoding="utf-8")
     return True
