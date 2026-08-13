@@ -35,6 +35,9 @@ desktop.ini
 
 # AI ツールのローカル状態・生成物
 .claude/
+# many-ai-cli が opencode セッション中だけ cwd に書く permission 設定と排他ロック。
+# セッションが kill されると置き去りになるため追跡しない。
+opencode.json*
 *.log
 *.jsonl
 *.tmp
