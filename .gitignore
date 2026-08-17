@@ -35,6 +35,9 @@ desktop.ini
 
 # AI ツールのローカル状態・生成物
 .claude/
+# Cursor Agent CLI にはグローバル指示の口が無いため、共通ルールへのポインタを .cursor/rules に置く。
+# 作者環境の絶対パスを含むので追跡しない。
+.cursor/
 # many-ai-cli が opencode セッション中だけ cwd に書く permission 設定と排他ロック。
 # セッションが kill されると置き去りになるため追跡しない。
 opencode.json*
