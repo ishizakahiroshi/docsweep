@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote
 
 from .config import (
     GLOBAL_CONFIG_PATH,
@@ -71,7 +72,10 @@ def _max_project_last_scanned(db_path: Path) -> str | None:
     if not db_path.is_file():
         return None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        # URI query/fragment characters are data in a Windows filename, not
+        # SQLite URI syntax. Keep drive/separators while quoting #, ?, and %.
+        uri_path = quote(Path(db_path).as_posix(), safe="/:")
+        conn = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True)
         try:
             row = conn.execute(
                 "SELECT MAX(last_scanned) FROM projects WHERE last_scanned IS NOT NULL"

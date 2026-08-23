@@ -23,7 +23,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
         )
         print(f"inject {r.project}{tag}: 書込={r.written or '-'} 温存/不変={r.skipped or '-'}")
         for w in r.warnings:
-            print(f"  ⚠ {w}")
+            print(f"  WARN: {w}")
         return 0
 
     r = inject(
@@ -34,7 +34,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
     if r.yaml_path:
         print(f"  .docsweep.yaml: {r.yaml_path}")
     for w in r.warnings:
-        print(f"  ⚠ {w}")
+        print(f"  WARN: {w}")
     return 0
 
 
@@ -46,7 +46,7 @@ def cmd_eject(args: argparse.Namespace) -> int:
         yaml = " +yaml" if getattr(r, "purged_yaml", False) else ""
         print(f"eject {r.project}{tag}: 除去={r.removed or '-'}{yaml}")
         for w in r.warnings:
-            print(f"  ⚠ {w}")
+            print(f"  WARN: {w}")
 
     if getattr(args, "is_global", False):
         _report(eject_global(agent=args.agent, target=args.global_target, dry_run=args.dry_run))

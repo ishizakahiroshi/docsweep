@@ -28,7 +28,10 @@ from ..atomic import update_line
 # 区切り行の末尾は空白・タブ・CR だけを吸収する。`\s*` にすると閉じ `---` の後ろの
 # **空行まで飲み込み**、書き戻すときに落ちる（frontmatter を 1 フィールド直すたびに
 # 本文との間の空行が消え、tracked な docs では毎回よけいな差分が出る）。
-_FRONTMATTER_RE = re.compile(r"^---[ \t\r]*\n(.*?)\n---[ \t\r]*\n", re.DOTALL)
+_FRONTMATTER_RE = re.compile(
+    r"^---[ \t]*(?:\r?\n)(.*?)(?:\r?\n)---[ \t]*(?:\r?\n)",
+    re.DOTALL,
+)
 
 # 単純なスカラ / list / フィールド名のみ。任意キーは受けない（API 側で許可リスト管理）。
 ALLOWED_FIELDS: frozenset[str] = frozenset(
@@ -76,6 +79,21 @@ class FrontmatterBlockStyleError(ValueError):
     """
 
 
+def _without_bom(text: str) -> tuple[str, str]:
+    """Return parser text and the original leading BOM, if any."""
+    if text.startswith("\ufeff"):
+        return text[1:], "\ufeff"
+    return text, ""
+
+
+def _preferred_newline(text: str) -> str:
+    """Choose the first physical line ending, defaulting to LF."""
+    pos = text.find("\n")
+    if pos > 0 and text[pos - 1] == "\r":
+        return "\r\n"
+    return "\n"
+
+
 def read_frontmatter_text(text: str) -> tuple[dict, str]:
     """テキスト先頭の YAML frontmatter と残りの本文を返す。
 
@@ -83,10 +101,11 @@ def read_frontmatter_text(text: str) -> tuple[dict, str]:
     ``({}, body)`` を返す。後者では frontmatter の囲み自体は認識できているため、本文から
     ブロックを分離した状態を維持する。
     """
-    match = _FRONTMATTER_RE.match(text)
+    parse_text, _bom = _without_bom(text)
+    match = _FRONTMATTER_RE.match(parse_text)
     if match is None:
         return {}, text
-    body = text[match.end():]
+    body = parse_text[match.end():]
     try:
         data = yaml.safe_load(match.group(1))
     except yaml.YAMLError:
@@ -108,7 +127,8 @@ def read_frontmatter(path: Path) -> dict | None:
         text = Path(path).read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         return None
-    match = _FRONTMATTER_RE.match(text)
+    parse_text, _bom = _without_bom(text)
+    match = _FRONTMATTER_RE.match(parse_text)
     if match is None:
         return None
     try:
@@ -182,7 +202,10 @@ def _format_value(field: str, value) -> str:
     return f"{field}: "
 
 
-_FIELD_LINE_TEMPLATE = r"^(?P<indent>[ \t]*){name}[ \t]*:[ \t]*(?P<value>.*)$"
+_FIELD_LINE_TEMPLATE = (
+    r"^(?P<indent>[ \t]*){name}[ \t]*:[ \t]*"
+    r"(?P<value>[^\r\n]*)(?P<eol>\r?\n|$)"
+)
 
 # block-style list の継続行検出（``  - item`` / ``  -\n`` / ``  -`` EOF）。
 # 行頭スペース/タブ 1 個以上 + ``-`` + (空白 or 行末)。
@@ -197,7 +220,8 @@ def _field_line_re(field: str) -> re.Pattern[str]:
 
 def _read_current(text: str, field: str) -> str | None:
     """frontmatter から指定フィールドの「行右辺」を生で返す（無ければ None）。"""
-    m = _FRONTMATTER_RE.match(text)
+    parse_text, _bom = _without_bom(text)
+    m = _FRONTMATTER_RE.match(parse_text)
     if not m:
         return None
     inner = m.group(1)
@@ -214,7 +238,8 @@ def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
     ``update_due._replace_or_insert_due`` のロジックをそのまま field 別に汎用化した。
     リプレース時はインデント幅を保つ（ネストフィールド対応・通常は 0 幅）。
     """
-    fm = _FRONTMATTER_RE.match(text)
+    parse_text, bom = _without_bom(text)
+    fm = _FRONTMATTER_RE.match(parse_text)
     line_re = _field_line_re(field)
     if fm:
         inner = fm.group(1)
@@ -223,10 +248,7 @@ def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
             # 手書き block 記法（``field:\n  - a\n  - b``）検出: フロー記法前提の
             # 行単位置換では継続行が孤立して YAML が壊れるので、書き換えを拒否する。
             after = inner[m_line.end():]
-            if after.startswith("\n"):
-                after = after[1:]
-            nl = after.find("\n")
-            next_line = after if nl == -1 else after[:nl]
+            next_line = after.splitlines()[0] if after else ""
             if next_line and _BLOCK_LIST_CONTINUATION_RE.match(next_line):
                 raise FrontmatterBlockStyleError(
                     f"frontmatter フィールド {field!r} が block-style list で書かれています "
@@ -235,15 +257,19 @@ def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
                     " 手動で flow 記法へ変換してから再実行してください。"
                 )
             indent = m_line.group("indent") or ""
-            replacement = f"{indent}{new_yaml_line}"
+            replacement = f"{indent}{new_yaml_line}{m_line.group('eol') or ''}"
             new_inner = inner[: m_line.start()] + replacement + inner[m_line.end():]
         else:
-            sep = "" if inner.endswith("\n") or not inner else "\n"
-            new_inner = f"{inner}{sep}{new_yaml_line}\n"
-        head = "---\n"
-        tail = "\n---\n" if not new_inner.endswith("\n") else "---\n"
-        return head + new_inner + tail + text[fm.end():]
-    return f"---\n{new_yaml_line}\n---\n{text}"
+            newline = _preferred_newline(parse_text)
+            sep = "" if not inner or inner.endswith(("\n", "\r")) else newline
+            new_inner = f"{inner}{sep}{new_yaml_line}"
+        newline = _preferred_newline(parse_text[: fm.end()])
+        return (
+            f"{bom}---{newline}{new_inner}{newline}---{newline}"
+            f"{parse_text[fm.end():]}"
+        )
+    newline = _preferred_newline(parse_text)
+    return f"{bom}---{newline}{new_yaml_line}{newline}---{newline}{parse_text}"
 
 
 def update_frontmatter_field(

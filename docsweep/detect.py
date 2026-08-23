@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date, datetime
 
 import yaml
 
@@ -97,6 +98,8 @@ def _parse_frontmatter_dict(text: str) -> dict | None:
     related/last_reviewed/docsweep_policy）の取り込みは 1 回パースしたものを共有する方が素直
     なので、共有ヘルパとして導入する。
     """
+    if text.startswith("\ufeff"):
+        text = text[1:]
     data, body = read_frontmatter_text(text)
     if body != text:
         return data
@@ -230,13 +233,20 @@ def _extract_due(text: str) -> tuple[str | None, bool]:
     raw = data["due"]
     if raw is None:
         return None, False
-    # YAML は YYYY-MM-DD を datetime.date に自動変換する。
-    if hasattr(raw, "isoformat"):
+    # PyYAML は date と timestamp をそれぞれ date/datetime に自動変換する。
+    # due は日単位の契約なので、timestamp は同じ日の date へ正規化する。
+    if isinstance(raw, datetime):
+        return raw.date().isoformat(), False
+    if isinstance(raw, date):
         return raw.isoformat(), False
     # 文字列で来た場合は YYYY-MM-DD 形式かチェックする。
     s = str(raw).strip()
     import re as _re
     if _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        try:
+            date.fromisoformat(s)
+        except ValueError:
+            return None, True
         return s, False
     return None, True
 
@@ -274,11 +284,18 @@ def _detect_filename(filename: str, sm: StateModel, type_name: str | None = None
 def detect_status(
     *, text: str, filename: str, sm: StateModel, _type: TypeDef | None = None
 ) -> Detection:
-    text = _read_head(text)
+    # UTF-8 BOM is a transport marker, not document content.  Normalize only
+    # this in-memory detection input; the scanner retains the original text so
+    # later byte-preserving writes can put the BOM back at offset zero.
+    if text.startswith("\ufeff"):
+        text = text[1:]
     parse_error = False
 
     fm = _detect_frontmatter(text, sm)
-    h1_key, h1_token, title = _detect_h1(text, sm)
+    # Parse the complete frontmatter first.  Only H1/meta scanning is bounded;
+    # a long tags/description field must not hide a policy or state at the end
+    # of the closing fence.
+    h1_key, h1_token, title = _detect_h1(_read_head(text), sm)
     fn = _detect_filename(filename, sm, _type.name if _type else None)
     due, due_parse_error = _extract_due(text)
 
@@ -377,6 +394,8 @@ def detect_h1_state(text: str, sm: StateModel) -> str | None:
     優先順で解決した**結果**なので、frontmatter がある限り H1 の値は取り出せない。
     `fix-conflict --prefer h1` のように「H1 の値そのもの」が要る呼び出しはこちらを使う。
     """
+    if text.startswith("\ufeff"):
+        text = text[1:]
     key, _token, _title = _detect_h1(_read_head(text), sm)
     return key
 

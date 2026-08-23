@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from .parser import _build_config, build_parser
 from .commands.read import cmd_activity, cmd_brief, cmd_closeout_check, cmd_context, cmd_cookbook, cmd_cross, cmd_day, cmd_doctor, cmd_export, cmd_find, cmd_graph, cmd_history, cmd_intent, cmd_linkcheck, cmd_list, cmd_okf_check, cmd_okf_profiles, cmd_pending, cmd_project, cmd_report, cmd_resurrect, cmd_scan, cmd_show, cmd_stale, cmd_summary, cmd_timeline, cmd_triage
@@ -84,7 +85,15 @@ _DISPATCH = {
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] not in _SUBCOMMANDS and raw[0] not in ("--version", "-h", "--help"):
-        raw = ["scan", *raw]
+        first = raw[0]
+        # Keep the convenient ``docsweep <existing-directory>`` scan shorthand,
+        # but do not turn a typo into an empty successful scan.  Leading flags
+        # remain scan flags for the historical ``docsweep --root ...`` form.
+        if first.startswith("-") or Path(first).is_dir():
+            raw = ["scan", *raw]
+        else:
+            print(f"docsweep: unknown command or scan directory: {first}", file=sys.stderr)
+            return 2
     parser = build_parser()
     args = parser.parse_args(raw)
     if args.command is None:

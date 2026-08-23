@@ -34,6 +34,7 @@ from .blocks import (
     _find_all_blocks,
     _find_block,
     _inner_of,
+    _private_backup,
     _strip_managed_blocks,
     _wrap,
 )
@@ -548,11 +549,13 @@ def _write_managed_file(
             current_inner = _inner_of(text, spans[0])
             current_hash = _block_hash(current_inner.replace("\r\n", "\n").replace("\r", "\n"))
             expected_hash = _block_hash(inner)
-            # 手編集検出: 前回注入と現在の（先頭）ブロックが食い違うなら .bak を取る。
+            # 手編集検出: 前回注入と現在の（先頭）ブロックが食い違うなら private backup を取る。
             if prev_hash and current_hash != prev_hash:
-                result.warnings.append(f"{rel}: 管理ブロックが手編集されています。.bak を作成しました。")
+                result.warnings.append(
+                    f"{rel}: 管理ブロックが手編集されています。private backup を作成しました。"
+                )
                 if not dry_run:
-                    path.with_suffix(path.suffix + ".bak").write_bytes(path.read_bytes())
+                    _private_backup(path, path.read_bytes())
             if len(spans) > 1:
                 result.warnings.append(f"{rel}: 管理ブロックが複数あります。1 つに統合しました。")
             if len(spans) == 1 and current_hash == expected_hash:

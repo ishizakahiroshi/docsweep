@@ -185,7 +185,10 @@ def test_inject_handedit_detection(tmp_path, manifest):
     p.write_text(text, encoding="utf-8")
     r = inject(proj, preset="claude-jp")
     assert any("手編集" in w for w in r.warnings)
-    assert (proj / "CLAUDE.md.bak").is_file()
+    assert not (proj / "CLAUDE.md.bak").exists()
+    backups = list((manifest.parent / "inject-backups").glob("*.bak"))
+    assert backups
+    assert backups[0].read_text(encoding="utf-8")
 
 
 def test_list_injected(tmp_path, manifest):

@@ -457,18 +457,21 @@ def run_export(
     # an undecodable concept is an explicit export error rather than a silent
     # non-conformant entry.
     export_payloads: list[tuple[str, bytes]] = []
-    for index, (zip_entry, abs_path) in enumerate(pairs):
+    exported_files: list[ExportedFile] = []
+    seen: set[str] = set()
+    for entry, (zip_entry, abs_path) in zip(files, pairs, strict=True):
         try:
             raw = Path(abs_path).read_bytes()
         except OSError:
             # Keep the historical best-effort behavior for files that vanish
-            # during a scan/export race.
+            # during a scan/export race.  The manifest/index must omit the
+            # same item, otherwise file_count and links describe a file that
+            # is not in the bundle.
             continue
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise ValueError(f"export 対象が UTF-8 ではありません: {abs_path}") from exc
-        entry = files[index]
         try:
             normalized, changed = _normalize_export_text(
                 text,
@@ -479,7 +482,26 @@ def run_export(
         except ValueError as exc:
             raise ValueError(f"{abs_path}: {exc}") from exc
         entry.normalized = changed
-        export_payloads.append((zip_entry, normalized.encode("utf-8")))
+
+        # Make the arcname unique before manifest/index generation so all
+        # bundle views point to the actual zip entry.
+        unique = zip_entry
+        n = 1
+        while unique in seen:
+            stem = Path(zip_entry).stem
+            suffix = Path(zip_entry).suffix
+            parent = str(Path(zip_entry).parent).replace("\\", "/")
+            unique = f"{parent}/{stem}__{n}{suffix}"
+            n += 1
+        seen.add(unique)
+        entry.path = unique
+        exported_files.append(entry)
+        export_payloads.append((unique, normalized.encode("utf-8")))
+
+    # Entries can disappear after scan or be renamed for an arcname collision.
+    # Keep the result object and manifest aligned with the payloads actually
+    # written below.
+    files = exported_files
 
     generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
     manifest = _build_manifest(
@@ -489,9 +511,6 @@ def run_export(
         profile=profile,
     )
 
-    # zip 内に重複エントリが入ると後勝ちで上書きされ実体が読めなくなるので、
-    # 同じパスが 2 度来たら数字サフィックスでユニーク化する。
-    seen: set[str] = set()
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
             "okf-manifest.json",
@@ -511,16 +530,7 @@ def run_export(
             index_lines.append(f"* [{entry.path}]({entry.path})")
         zf.writestr("index.md", "\n".join(index_lines) + "\n")
         for zip_entry, payload in export_payloads:
-            unique = zip_entry
-            n = 1
-            while unique in seen:
-                stem = Path(zip_entry).stem
-                suffix = Path(zip_entry).suffix
-                parent = str(Path(zip_entry).parent).replace("\\", "/")
-                unique = f"{parent}/{stem}__{n}{suffix}"
-                n += 1
-            seen.add(unique)
-            zf.writestr(unique, payload)
+            zf.writestr(zip_entry, payload)
 
     return ExportResult(
         out_path=out_path.as_posix(),

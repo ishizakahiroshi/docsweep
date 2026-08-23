@@ -33,7 +33,7 @@ from .services.frontmatter import read_frontmatter, read_frontmatter_text
 # 書き換え用の厳密版（共通 reader は閉じフェンス後の空行まで \s* で飲み込むため、
 # 再構築に使うと本文側の空行が失われる。行内空白のみ許容し、本文をバイト位置で温存する）。
 _FRONTMATTER_SPLIT_RE = re.compile(
-    r"^---[ \t]*(?P<open_nl>\r?\n)(?P<body>.*?)(?P<body_nl>\r?\n)"
+    r"^(?P<bom>\ufeff?)[-]{3}[ \t]*(?P<open_nl>\r?\n)(?P<body>.*?)(?P<body_nl>\r?\n)"
     r"---[ \t]*(?P<close_nl>\r?\n)",
     re.DOTALL,
 )
@@ -88,10 +88,21 @@ def _okf_key_lines(*, doc_type: str, status: str, today: str) -> list[tuple[str,
     ]
 
 
-def _build_frontmatter_block(*, doc_type: str, status: str, today: str) -> str:
+def _build_frontmatter_block(
+    *, doc_type: str, status: str, today: str, newline: str = "\n"
+) -> str:
     """先頭に挿入する最小 frontmatter ブロック（末尾改行 1 つ・本文側に空行は足さない）。"""
-    lines = "\n".join(line for _, line in _okf_key_lines(doc_type=doc_type, status=status, today=today))
-    return f"---\n{lines}\n---\n"
+    lines = newline.join(
+        line for _, line in _okf_key_lines(doc_type=doc_type, status=status, today=today)
+    )
+    return f"---{newline}{lines}{newline}---{newline}"
+
+
+def _preferred_newline(text: str) -> str:
+    pos = text.find("\n")
+    if pos > 0 and text[pos - 1] == "\r":
+        return "\r\n"
+    return "\n"
 
 
 def _parse_frontmatter_keys(text: str, path: Path) -> set[str] | None:
@@ -142,7 +153,9 @@ def _upgrade_frontmatter(
             flags=re.MULTILINE,
         )
     # 不足キーを正典順で先頭に置き、既存行（due: 等）はそのまま後ろへ温存する。
-    prefix = f"---{newline}" + (newline.join(missing) + newline if missing else "")
+    prefix = f"{m.group('bom')}---{newline}" + (
+        newline.join(missing) + newline if missing else ""
+    )
     return prefix + inner + f"---{m.group('close_nl')}" + text[m.end():]
 
 
@@ -257,9 +270,12 @@ def plan_migration(
                 )
             result.planned.append(plan)
             continue
-        new_text = _build_frontmatter_block(
+        bom = "\ufeff" if text.startswith("\ufeff") else ""
+        body_text = text[1:] if bom else text
+        new_text = bom + _build_frontmatter_block(
             doc_type=rec.type, status=status, today=today,
-        ) + text
+            newline=_preferred_newline(body_text),
+        ) + body_text
         plan = MigratePlan(path=rec.path, doc_type=rec.type, status=status, _new_text=new_text)
         plan.diff = "".join(
             unified_diff(
@@ -319,10 +335,17 @@ def apply_migration(
             plan.skipped_reason = "既に frontmatter があります（再検出）"
             result.skipped.append(plan)
             continue
-        block = _build_frontmatter_block(doc_type=plan.doc_type, status=plan.status, today=today)
+        bom = "\ufeff" if text.startswith("\ufeff") else ""
+        body_text = text[1:] if bom else text
+        block = bom + _build_frontmatter_block(
+            doc_type=plan.doc_type,
+            status=plan.status,
+            today=today,
+            newline=_preferred_newline(body_text),
+        )
 
         def _xform(_t: str, _block: str = block) -> str:
-            return _block + _t
+            return _block + (_t[1:] if _t.startswith("\ufeff") else _t)
 
         update_line(path, transform=_xform)
         result.applied.append(plan.path)

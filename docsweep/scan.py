@@ -6,6 +6,7 @@ fnmatch する best-effort 実装（v0.1.0）。プロジェクト＝スキャ�
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -393,6 +394,7 @@ def scan(config: Config) -> list[ScannedDoc]:
                 continue
             seen.add(d.record.path)
             docs.append(d)
+    _disambiguate_project_ids(docs)
     return docs
 
 
@@ -419,10 +421,9 @@ class SyncStats:
 def _project_remote_url(project_root: Path) -> str | None:
     """``git remote get-url origin`` の URL を返す（取れなければ None）。
 
-    ``projects.remote_url`` を埋めるためだけの補助。**project_id の採番には使わない**
-    — 索引の project 単位は ``FileRecord.project``（= ``project_root.name``）に揃えてある。
-    索引なしフォールバック経路（``r.project == project``）と同じ意味論にしないと、
-    ``--project <リポ名>`` が索引の有無で別物を指してしまうため。
+    ``projects.remote_url`` を埋めるためだけの補助。通常の **project_id の採番には
+    使わない** — 索引の project 単位は ``FileRecord.project``（= ``project_root.name``）
+    に揃え、同名 root の衝突時だけ root hash を付ける。
 
     ``.git`` を持たないディレクトリでは git を呼ばない。呼ぶと ``git -C`` が上位へ
     遡って親リポジトリの remote を拾い、monorepo 内のサブプロジェクトに親の URL が
@@ -445,6 +446,153 @@ def _project_remote_url(project_root: Path) -> str | None:
     return None
 
 
+def _project_root_key(root: Path) -> str:
+    """project root の比較・hash 用の OS 依存しない正規形を返す。"""
+    try:
+        resolved = root.resolve()
+    except OSError:
+        resolved = Path(os.path.abspath(os.fspath(root)))
+    return os.path.normcase(os.path.normpath(resolved.as_posix()))
+
+
+def _disambiguated_project_id(
+    basename: str,
+    root_key: str,
+    occupied: set[str],
+    reserved: set[str],
+) -> str:
+    """同名 root 用の、順序に依存しない project_id を作る。"""
+    digest = hashlib.sha256(root_key.encode("utf-8")).hexdigest()
+    for width in (12, 16, 24, 32, 64):
+        candidate = f"{basename}@{digest[:width]}"
+        if candidate not in occupied and candidate not in reserved:
+            return candidate
+    # SHA-256 の full digest が既存 ID と衝突する可能性は現実上ないが、完全に
+    # 想定外の DB でも同じ root を上書きしないよう最後の suffix を確保する。
+    counter = 2
+    candidate = f"{basename}@{digest}"
+    while candidate in occupied or candidate in reserved:
+        candidate = f"{basename}@{digest}-{counter}"
+        counter += 1
+    return candidate
+
+
+def _assign_project_ids(
+    root_groups: dict[str, tuple[str, Path, list[ScannedDoc]]],
+    existing_projects: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """root ごとの文書群へ project_id を割り当てる。
+
+    basename が一意なら従来どおり basename を維持する。同名 root がある時は、
+    既存 DB の ``root_path`` に対応する ID を優先し、初回は root の正規形を
+    lexicographic に並べて bare basename の担当を決める。したがって入力 root の
+    順序や os.walk の順序で identity が変わらない。
+    """
+    existing_projects = existing_projects or {}
+    existing_by_root: dict[str, list[str]] = {}
+    for existing_id, raw_root in existing_projects.items():
+        if not raw_root:
+            continue
+        existing_by_root.setdefault(
+            _project_root_key(Path(raw_root)), []
+        ).append(existing_id)
+    for ids in existing_by_root.values():
+        ids.sort()
+
+    by_basename: dict[str, list[str]] = {}
+    for root_key, (basename, _root, _docs) in root_groups.items():
+        by_basename.setdefault(basename, []).append(root_key)
+
+    # 生成した suffix が別プロジェクトの通常 basename と同じになるのを避ける。
+    reserved_bare = {
+        basename for basename, root_keys in by_basename.items() if len(root_keys) == 1
+    }
+    assigned: dict[str, str] = {}
+    occupied: set[str] = set()
+
+    for basename in sorted(by_basename):
+        root_keys = sorted(by_basename[basename])
+        if len(root_keys) == 1:
+            project_id = basename
+            assigned[root_keys[0]] = project_id
+            occupied.add(project_id)
+            continue
+
+        existing_ids_by_root = {
+            root_key: [
+                project_id for project_id in existing_by_root.get(root_key, [])
+                if project_id == basename or project_id.startswith(f"{basename}@")
+            ]
+            for root_key in root_keys
+        }
+        bare_root = next(
+            (
+                root_key for root_key in root_keys
+                if basename in existing_ids_by_root[root_key]
+            ),
+            root_keys[0],
+        )
+
+        for root_key in root_keys:
+            candidates = existing_ids_by_root[root_key]
+            assigned_id: str | None = None
+            if root_key == bare_root and basename not in occupied:
+                assigned_id = basename
+            else:
+                assigned_id = next(
+                    (
+                        candidate for candidate in candidates
+                        if candidate != basename
+                        and candidate not in occupied
+                        and candidate not in reserved_bare
+                    ),
+                    None,
+                )
+                if assigned_id is None:
+                    assigned_id = _disambiguated_project_id(
+                        basename, root_key, occupied, reserved_bare
+                    )
+            assert assigned_id is not None
+            assigned[root_key] = assigned_id
+            occupied.add(assigned_id)
+    return assigned
+
+
+def _group_scanned_docs(
+    docs: list[ScannedDoc],
+    existing_projects: dict[str, str] | None = None,
+) -> dict[str, tuple[Path, list[ScannedDoc]]]:
+    """文書を project root 単位に束ね、必要なら project_id を再付番する。"""
+    root_groups: dict[str, tuple[str, Path, list[ScannedDoc]]] = {}
+    for doc in docs:
+        rec = doc.record
+        project_root = Path(rec.project_root).resolve()
+        root_key = _project_root_key(project_root)
+        entry = root_groups.get(root_key)
+        if entry is None:
+            root_groups[root_key] = (
+                rec.project or project_root.name,
+                project_root,
+                [doc],
+            )
+        else:
+            entry[2].append(doc)
+
+    project_ids = _assign_project_ids(root_groups, existing_projects)
+    groups: dict[str, tuple[Path, list[ScannedDoc]]] = {}
+    for root_key, (_basename, project_root, project_docs) in root_groups.items():
+        project_id = project_ids[root_key]
+        for doc in project_docs:
+            doc.record.project = project_id
+        groups[project_id] = (project_root, project_docs)
+    return groups
+
+
+def _disambiguate_project_ids(docs: list[ScannedDoc]) -> None:
+    """索引を使わない scan fallback にも同じ同名 root 分離を適用する。"""
+    _group_scanned_docs(docs)
+
+
 def _expand_search_paths(config: Config) -> list[Path]:
     """``projects.search_paths`` のグロブパターンを展開し実在ディレクトリのみ返す。
 
@@ -458,8 +606,8 @@ def _expand_search_paths(config: Config) -> list[Path]:
 
     for pat in raw:
         # 環境変数 / ~ を展開してからグロブ展開
-        p = os.path.expandvars(os.path.expanduser(str(pat)))
-        for hit in glob.glob(p):
+        pattern = os.path.expandvars(os.path.expanduser(str(pat)))
+        for hit in glob.glob(pattern):
             cand = Path(hit).resolve()
             if cand.is_dir() and cand not in seen:
                 seen.add(cand)
@@ -476,11 +624,11 @@ def _expand_search_paths(config: Config) -> list[Path]:
     # exclude グロブで除外
     if config.search_exclude:
         filtered: list[Path] = []
-        for p in expanded:
-            posix = p.as_posix()
+        for candidate in expanded:
+            posix = candidate.as_posix()
             if any(fnmatch(posix, pat) for pat in config.search_exclude):
                 continue
-            filtered.append(p)
+            filtered.append(candidate)
         expanded = filtered
 
     return expanded
@@ -540,7 +688,8 @@ def sync_index(
     """``search_paths`` 配下を走査し SQLite 索引へ差分同期する。
 
     索引の project 単位は **スキャンルートではなくプロジェクトルート（リポジトリ）**。
-    ``projects.project_id`` には ``FileRecord.project``（= ``project_root.name``）を、
+    ``projects.project_id`` には通常 ``FileRecord.project``（= ``project_root.name``）を、
+    同じ basename の root が複数ある時だけ root hash 付きの安定 ID を入れる。
     ``projects.root_path`` には ``project_root`` を入れ、``files.rel_path`` は
     project_root 相対にする。理由は 2 つ:
 
@@ -576,7 +725,7 @@ def sync_index(
     # project_root ごとにまとめ直す。DB 書き込みより前に全走査を終えるのは、
     # full=True の ``DELETE FROM files`` 直後に走査で落ちると索引が空のまま残るため
     # （junction で ValueError を投げて実際に壊した実績がある）。
-    groups: dict[str, tuple[Path, list[ScannedDoc]]] = {}
+    scanned_docs: list[ScannedDoc] = []
     seen_abs: set[str] = set()
     for root in roots:
         for doc in scan_root(root, config):
@@ -589,12 +738,7 @@ def sync_index(
             project_root = detect_project_for_path(Path(rec.path), config, scope_roots=roots)
             if project_root is None:
                 project_root = Path(rec.project_root) if rec.project_root else root
-            project_id = rec.project or project_root.name
-            entry = groups.get(project_id)
-            if entry is None:
-                groups[project_id] = (project_root, [doc])
-            else:
-                entry[1].append(doc)
+            scanned_docs.append(doc)
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -603,6 +747,7 @@ def sync_index(
             r["project_id"]: (r["root_path"] or "")
             for r in conn.execute("SELECT project_id, root_path FROM projects").fetchall()
         }
+        groups = _group_scanned_docs(scanned_docs, existing_projects)
         current_ids = set(groups)
         # connect() は autocommit なので、rebuild の DELETE と再投入を明示的に
         # 同じ transaction に載せる。途中例外時は rollback され、旧索引を保持する。
@@ -719,7 +864,10 @@ def sync_index(
                     if not abs_path:
                         continue
                     actual_root = detect_project_for_path(Path(abs_path), config, scope_roots=roots)
-                    if actual_root is None or actual_root.name == project_id:
+                    if (
+                        actual_root is None
+                        or _project_root_key(actual_root) == _project_root_key(Path(root_path))
+                    ):
                         continue
                     db.delete_file(conn, project_id, stale_rel)
                     removed += 1

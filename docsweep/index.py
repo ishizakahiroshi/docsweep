@@ -19,6 +19,11 @@ from typing import Iterator
 
 SCHEMA_VERSION = 2
 
+
+class IndexSchemaError(RuntimeError):
+    """索引 DB の schema が壊れている、または未対応であることを示す。"""
+
+
 # DB 配置はホームディレクトリ直下の ~/.docsweep/index.db（OS 非依存）。
 # テスト等で差し替えたい場合は ``DOCSWEEP_INDEX_DB`` 環境変数で上書き可能。
 DEFAULT_DB_PATH = Path.home() / ".docsweep" / "index.db"
@@ -85,6 +90,17 @@ CREATE INDEX IF NOT EXISTS idx_tags_tag           ON tags(tag);
 CREATE INDEX IF NOT EXISTS idx_related_dst        ON related(dst_file_id);
 """
 
+# ``executescript`` は保留中の transaction を暗黙に commit するため、schema
+# 生成を ``BEGIN IMMEDIATE`` で囲めない。各 statement を個別に発行して、初期化と
+# migration の lock 境界を明示する。
+_SCHEMA_STATEMENTS = tuple(
+    statement.strip()
+    for statement in SCHEMA_SQL.split(";")
+    if statement.strip()
+)
+_REQUIRED_TABLES = frozenset({"meta", "projects", "files", "tags", "related"})
+_V1_SCHEMA_VERSION = 1
+
 
 def db_path(override: Path | None = None) -> Path:
     """DB ファイルパスを返す（``override`` > 環境変数 > 既定の順）。"""
@@ -126,25 +142,148 @@ def _migrate_to_v2(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE files ADD COLUMN {name} {sqltype}")
 
 
-def init_schema(conn: sqlite3.Connection) -> None:
-    """スキーマを idempotent に生成し schema_version を刻む。
+def _user_tables(conn: sqlite3.Connection) -> set[str]:
+    return {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    }
 
-    既存 DB が v1 だった場合は ALTER TABLE で v2 カラムを追加する（破壊しない）。
-    """
-    conn.executescript(SCHEMA_SQL)
-    # ここに来た時点で files テーブルは v2 定義で作られているか v1 のまま残っている。
-    # 既存 v1 への ALTER を冪等に行う。
-    _migrate_to_v2(conn)
+
+def _schema_version_or_error(conn: sqlite3.Connection) -> int | None:
+    """schema_version を読む。壊れた meta を現行版へ上書きしない。"""
+    row = conn.execute(
+        "SELECT value FROM meta WHERE key='schema_version'"
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        return int(str(row[0]).strip())
+    except (TypeError, ValueError) as exc:
+        raise IndexSchemaError(
+            "index schema_version is not numeric; restore the database or remove it "
+            "after taking a backup"
+        ) from exc
+
+
+def _schema_state(conn: sqlite3.Connection) -> int | None:
+    """DB の状態を返す。``None`` は user table のない未初期化 DB。"""
+    tables = _user_tables(conn)
+    if not tables:
+        return None
+    if "meta" not in tables:
+        raise IndexSchemaError(
+            "index database is partially initialized (meta table is missing)"
+        )
+    version = _schema_version_or_error(conn)
+    if version is None:
+        raise IndexSchemaError(
+            "index database has no schema_version; restore the database or remove it "
+            "after taking a backup"
+        )
+    return version
+
+
+def _missing_schema_parts(conn: sqlite3.Connection) -> list[str]:
+    missing = sorted(_REQUIRED_TABLES - _user_tables(conn))
+    if "files" in _user_tables(conn):
+        columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(files)").fetchall()
+        }
+        required_columns = {
+            "file_id", "project_id", "rel_path", "type", "status", "review_status",
+            "owner", "last_reviewed", "claimed_at", "mtime", "body_sha", "embedding",
+            *(name for name, _sqltype in _V2_COLUMNS),
+        }
+        missing.extend(f"files.{name}" for name in sorted(required_columns - columns))
+    return missing
+
+
+def _validate_current_schema(conn: sqlite3.Connection) -> None:
+    missing = _missing_schema_parts(conn)
+    if missing:
+        raise IndexSchemaError(
+            "index schema_version is current but the schema is incomplete: "
+            + ", ".join(missing)
+        )
+
+
+def _create_schema(conn: sqlite3.Connection) -> None:
+    for statement in _SCHEMA_STATEMENTS:
+        conn.execute(statement)
     conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
+        "INSERT INTO meta(key, value) VALUES('schema_version', ?)",
         (str(SCHEMA_VERSION),),
     )
-    conn.commit()
+
+
+def _validate_migration_base(conn: sqlite3.Connection) -> None:
+    missing = sorted(_REQUIRED_TABLES - _user_tables(conn))
+    if "files" in _user_tables(conn):
+        columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(files)").fetchall()
+        }
+        required_v1 = {
+            "file_id", "project_id", "rel_path", "type", "status", "review_status",
+            "owner", "last_reviewed", "claimed_at", "mtime", "body_sha", "embedding",
+        }
+        missing.extend(f"files.{name}" for name in sorted(required_v1 - columns))
+    if missing:
+        raise IndexSchemaError(
+            "index schema_version=1 is incomplete and cannot be migrated: "
+            + ", ".join(missing)
+        )
+
+
+def init_schema(conn: sqlite3.Connection) -> None:
+    """必要な時だけ schema を生成・移行する。
+
+    現行 schema の接続は SELECT/PRAGMA だけの fast path とし、未初期化 DB と v1
+    migration だけを ``BEGIN IMMEDIATE`` で直列化する。lock を取った後に必ず状態を
+    読み直すため、並行接続が同じ ALTER を二度実行することはない。
+    """
+    state = _schema_state(conn)
+    if state == SCHEMA_VERSION:
+        _validate_current_schema(conn)
+        return
+    if state not in (None, _V1_SCHEMA_VERSION):
+        raise IndexSchemaError(
+            f"unsupported index schema_version={state}; current version is {SCHEMA_VERSION}"
+        )
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        # 先に見た状態は lock 待ちの間に別接続が更新している可能性がある。
+        state = _schema_state(conn)
+        if state == SCHEMA_VERSION:
+            _validate_current_schema(conn)
+            conn.rollback()
+            return
+        if state not in (None, _V1_SCHEMA_VERSION):
+            raise IndexSchemaError(
+                f"unsupported index schema_version={state}; current version is {SCHEMA_VERSION}"
+            )
+
+        if state is None:
+            _create_schema(conn)
+        else:
+            _validate_migration_base(conn)
+            _migrate_to_v2(conn)
+            conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
+                (str(SCHEMA_VERSION),),
+            )
+        conn.commit()
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int | None:
-    row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-    return int(row[0]) if row else None
+    return _schema_version_or_error(conn)
 
 
 # C3 (bloat-mitigation): WAL の自動 checkpoint しきい値（ページ数）。SQLite の既定 1000 と
@@ -163,6 +302,7 @@ def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(str(target), isolation_level=None)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute(f"PRAGMA wal_autocheckpoint={WAL_AUTOCHECKPOINT_PAGES}")
@@ -432,7 +572,7 @@ def load_records_from_index(
     *,
     db_path_override: Path | None = None,
     project_filter: str | None = None,
-) -> list:
+) -> list | None:
     """SQLite 索引から ``FileRecord`` 一覧を再構成する。
 
     Returns:

@@ -148,15 +148,20 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
         write_index(cfg)
     if getattr(args, "json", False):
-        print(json.dumps([m.to_dict() for m in moved], ensure_ascii=False, indent=2))
+        payload = [m.to_dict() for m in moved]
+        if moved.failed:
+            payload = {"moved": payload, "failed": moved.failed}
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         verb = "移送予定" if args.dry_run else "移送"
         if not moved:
             print("自動移送対象なし（done/discarded のラベル確定ファイルが無い）")
         for m in moved:
             print(f"{verb}: {m.src} -> {m.dst}")
+        for failure in moved.failed:
+            print(f"失敗: {failure.get('path') or '(scan)'}: {failure.get('error')}", file=sys.stderr)
         _print_moves_summary(moved, cfg, action="移送", dry_run=args.dry_run)
-    return 0
+    return 1 if moved.failed else 0
 
 
 def cmd_promote(args: argparse.Namespace) -> int:
@@ -169,14 +174,19 @@ def cmd_promote(args: argparse.Namespace) -> int:
         print(str(e), file=sys.stderr)
         return 2
     if getattr(args, "json", False):
-        print(json.dumps([m.to_dict() for m in moved], ensure_ascii=False, indent=2))
+        payload = [m.to_dict() for m in moved]
+        if moved.failed:
+            payload = {"moved": payload, "failed": moved.failed}
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         if not moved:
             print(f"昇格対象なし（{args.state} のファイルが無い）")
         for m in moved:
             print(f"昇格→archive: {m.src} -> {m.dst}")
+        for failure in moved.failed:
+            print(f"失敗: {failure.get('path') or '(scan)'}: {failure.get('error')}", file=sys.stderr)
         _print_moves_summary(moved, cfg, action="昇格", dry_run=args.dry_run)
-    return 0
+    return 1 if moved.failed else 0
 
 
 def cmd_capture(args: argparse.Namespace) -> int:
@@ -267,26 +277,55 @@ def cmd_capture(args: argparse.Namespace) -> int:
 
 def _read_clipboard() -> str:
     """OS クリップボードから text を取得。失敗時は空文字。"""
+    import codecs
+
+    def _decode_clipboard(raw: bytes, *, windows: bool = False) -> str:
+        if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+            return raw.decode("utf-16")
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            if windows:
+                # Old Windows PowerShell can still ignore OutputEncoding when
+                # stdout is redirected.  cp932 is a lossless fallback for the
+                # ja-JP console; undecodable bytes remain an explicit failure.
+                return raw.decode("cp932")
+            raise
+
     try:
         import subprocess
         if sys.platform == "win32":
-            r = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Clipboard"],
-                               capture_output=True, text=True, timeout=3, encoding="utf-8")
+            r = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    (
+                        "$utf8 = New-Object System.Text.UTF8Encoding($false); "
+                        "[Console]::OutputEncoding = $utf8; "
+                        "Get-Clipboard -Raw"
+                    ),
+                ],
+                capture_output=True,
+                text=False,
+                timeout=3,
+            )
             if r.returncode == 0:
-                return r.stdout
+                return _decode_clipboard(r.stdout, windows=True)
         elif sys.platform == "darwin":
-            r = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=3)
+            r = subprocess.run(["pbpaste"], capture_output=True, text=False, timeout=3)
             if r.returncode == 0:
-                return r.stdout
+                return _decode_clipboard(r.stdout)
         else:
             for cmd in (["xclip", "-selection", "clipboard", "-o"], ["xsel", "-b"], ["wl-paste"]):
                 try:
-                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+                    r = subprocess.run(cmd, capture_output=True, text=False, timeout=3)
                     if r.returncode == 0:
-                        return r.stdout
+                        return _decode_clipboard(r.stdout)
                 except FileNotFoundError:
                     continue
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, UnicodeError, subprocess.SubprocessError):
         pass
     return ""
 
@@ -525,14 +564,17 @@ def cmd_fix_related(args: argparse.Namespace) -> int:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
     if not result.fixes:
-        print("fix-related: 対称化が必要な参照はありません")
-        return 0
+        if not result.failed:
+            print("fix-related: 対称化が必要な参照はありません")
+            return 0
     verb = "適用" if getattr(args, "apply", False) else "予定"
     print(f"fix-related {verb}: {len(result.fixes)} ファイルに追記")
     for fix in result.fixes:
         marker = "[適用済]" if fix.path in result.applied else "[予定]"
         print(f"  {marker} {fix.path}  + related: [{', '.join(fix.additions)}]")
-    return 0
+    for failure in result.failed:
+        print(f"  [失敗] {failure.get('path')}: {failure.get('error')}", file=sys.stderr)
+    return 1 if result.failed else 0
 
 
 def cmd_claim(args: argparse.Namespace) -> int:
@@ -545,6 +587,9 @@ def cmd_claim(args: argparse.Namespace) -> int:
         result = claim(path, unclaim=getattr(args, "unclaim", False))
     except FileNotFoundError:
         print(f"ファイルが見つかりません: {args.file}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print(f"claim: 書き換えに失敗しました: {exc}", file=sys.stderr)
         return 2
     except FrontmatterValidationError as e:
         print(f"frontmatter 書き換え失敗: {e}", file=sys.stderr)

@@ -15,6 +15,10 @@ from typing import Iterable
 EXCLUDED_PATH = Path.home() / ".docsweep" / "excluded.json"
 
 
+class ExcludedConfigError(RuntimeError):
+    """除外設定を安全に解釈できず、表示を続けてはいけない。"""
+
+
 def _norm(p: str | Path) -> str:
     try:
         return Path(os.path.realpath(str(p))).resolve().as_posix()
@@ -32,13 +36,13 @@ def load_excluded(*, path: Path | None = None) -> set[str]:
         return set()
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return set()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ExcludedConfigError("excluded 設定を読み取れません") from exc
     if not isinstance(data, dict):
-        return set()
+        raise ExcludedConfigError("excluded 設定の形式が不正です")
     raw = data.get("excluded") or []
     if not isinstance(raw, list):
-        return set()
+        raise ExcludedConfigError("excluded 設定の excluded が配列ではありません")
     return {_norm(x) for x in raw if x}
 
 

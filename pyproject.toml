@@ -32,7 +32,7 @@ web = [
     # form size 制限を強制できる security floor を明示する。
     "starlette>=1.3.1",
     "uvicorn>=0.29",
-    "jinja2>=3.1",
+    "jinja2>=3.1.6",
     "markdown>=3.6",
     "python-multipart>=0.0.30",
     "nh3>=0.2",

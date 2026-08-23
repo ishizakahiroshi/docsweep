@@ -40,35 +40,79 @@
     const dlg = document.getElementById("suggestions-dialog");
     const body = document.getElementById("suggestions-body");
     if (!dlg || !body) return;
-    body.innerHTML = "<p class='settings-note'>" + DS_T("loading") + "</p>";
+    body.replaceChildren();
+    const loading = document.createElement("p");
+    loading.className = "settings-note";
+    loading.textContent = DS_T("loading");
+    body.appendChild(loading);
     dlg.showModal();
     const res = await fetch("/api/suggestions", {
       headers: headers(),
     });
     const json = await safeJson(res);
     if (!res.ok) {
-      body.innerHTML = "<p class='settings-note'>failed: " + res.status + "</p>";
+      body.replaceChildren();
+      const failed = document.createElement("p");
+      failed.className = "settings-note";
+      failed.textContent = "failed: " + String(res.status);
+      body.appendChild(failed);
       return;
     }
     const items = (json && json.suggestions) || [];
     if (!items.length) {
-      body.innerHTML = "<h3>提案トレイ</h3><p class='settings-note'>" + DS_T("suggestions_empty") + "</p>";
+      body.replaceChildren();
+      const emptyTitle = document.createElement("h3");
+      emptyTitle.textContent = "提案トレイ";
+      const empty = document.createElement("p");
+      empty.className = "settings-note";
+      empty.textContent = DS_T("suggestions_empty");
+      body.append(emptyTitle, empty);
       return;
     }
-    let html = "<h3>提案トレイ</h3><ul class='suggestions-list'>";
+    body.replaceChildren();
+    const title = document.createElement("h3");
+    title.textContent = "提案トレイ";
+    const list = document.createElement("ul");
+    list.className = "suggestions-list";
     items.forEach(function (s, i) {
-      html += "<li class='suggestion-item' data-idx='" + i + "'>"
-        + "<div><b>" + (s.proposed_action || "") + "</b> "
-        + (s.proposed_to ? ("→ " + s.proposed_to + " ") : "")
-        + "<code>" + (s.path || "") + "</code></div>"
-        + "<div class='settings-note'>" + (s.reason || "") + " (c=" + (s.confidence || 0) + ")</div>"
-        + "<div class='tp-actions'>"
-        + "<button type='button' class='primary' data-action='suggestion-accept' data-path='" + (s.path || "") + "' data-act='" + (s.proposed_action || "") + "' data-to='" + (s.proposed_to || "") + "'>" + DS_T("suggestions_accept") + "</button> "
-        + "<button type='button' class='ghost' data-action='suggestion-skip'>" + DS_T("suggestions_skip") + "</button>"
-        + "</div></li>";
+      const li = document.createElement("li");
+      li.className = "suggestion-item";
+      li.dataset.idx = String(i);
+      const summary = document.createElement("div");
+      const action = document.createElement("b");
+      action.textContent = s.proposed_action || "";
+      summary.appendChild(action);
+      if (s.proposed_to) {
+        const to = document.createElement("span");
+        to.textContent = " → " + String(s.proposed_to) + " ";
+        summary.appendChild(to);
+      }
+      const code = document.createElement("code");
+      code.textContent = s.path || "";
+      summary.appendChild(code);
+      const reason = document.createElement("div");
+      reason.className = "settings-note";
+      reason.textContent = String(s.reason || "") + " (c=" + String(s.confidence || 0) + ")";
+      const actions = document.createElement("div");
+      actions.className = "tp-actions";
+      const accept = document.createElement("button");
+      accept.type = "button";
+      accept.className = "primary";
+      accept.dataset.action = "suggestion-accept";
+      accept.dataset.path = String(s.path || "");
+      accept.dataset.act = String(s.proposed_action || "");
+      accept.dataset.to = String(s.proposed_to || "");
+      accept.textContent = DS_T("suggestions_accept");
+      const skip = document.createElement("button");
+      skip.type = "button";
+      skip.className = "ghost";
+      skip.dataset.action = "suggestion-skip";
+      skip.textContent = DS_T("suggestions_skip");
+      actions.append(accept, document.createTextNode(" "), skip);
+      li.append(summary, reason, actions);
+      list.appendChild(li);
     });
-    html += "</ul>";
-    body.innerHTML = html;
+    body.append(title, list);
   }
 
   async function openSettings() {

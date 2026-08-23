@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import hashlib
 from pathlib import Path
 
 from .config import Config
@@ -37,7 +38,8 @@ def build_ics(config: Config) -> str:
             d = date.fromisoformat(r.due)
         except ValueError:
             continue
-        uid = f"docsweep-{abs(hash(r.path))}@local"
+        digest = hashlib.sha256(r.path.encode("utf-8")).hexdigest()[:16]
+        uid = f"docsweep-{digest}@local"
         display_title = "[sensitive]" if r.sensitive else (r.title or Path(r.path).name)
         summary = _ics_escape(f"{r.state_label or ''} {display_title}".strip())
         desc = _ics_escape(r.path)

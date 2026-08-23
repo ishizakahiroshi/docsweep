@@ -157,7 +157,31 @@ def to_clipboard(text: str) -> bool:
 
     candidates: list[list[str]] = []
     if sys.platform == "win32":
-        candidates.append(["clip"])
+        # ``clip.exe`` interprets stdin using the active ANSI/OEM code page.
+        # Feed PowerShell UTF-8 explicitly and let Set-Clipboard create the
+        # Unicode clipboard payload instead of reporting success for mojibake.
+        try:
+            proc = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    (
+                        "$utf8 = New-Object System.Text.UTF8Encoding($false); "
+                        "[Console]::InputEncoding = $utf8; "
+                        "$value = [Console]::In.ReadToEnd(); "
+                        "Set-Clipboard -Value $value"
+                    ),
+                ],
+                input=text.encode("utf-8"),
+                timeout=5,
+                check=False,
+                capture_output=True,
+            )
+            return proc.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
     elif sys.platform == "darwin":
         candidates.append(["pbcopy"])
     else:

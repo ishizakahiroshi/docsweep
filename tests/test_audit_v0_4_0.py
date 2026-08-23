@@ -42,6 +42,20 @@ def test_other_common_credential_formats_are_detected() -> None:
     assert "stripe_secret" in _kinds("sk_live_" + "9" * 20)
 
 
+def test_high_confidence_contextual_credentials_are_detected() -> None:
+    jwt = "eyJ" + "a" * 12 + "." + "b" * 12 + "." + "c" * 12
+    assert "jwt" in _kinds(jwt)
+    assert "authorization_bearer" in _kinds(
+        "Authorization: Bearer " + "A" * 32
+    )
+    assert "aws_secret_access_key" in _kinds(
+        "aws_secret_access_key = " + "A" * 40
+    )
+    assert "password_assignment" in _kinds(
+        "password: " + "p" * 24
+    )
+
+
 def test_private_key_block_is_not_limited_to_known_algorithms() -> None:
     for header in (
         "-----BEGIN PRIVATE KEY-----",

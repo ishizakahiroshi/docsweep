@@ -73,6 +73,28 @@ def _project_root_for(abs_path: Path, config: Config) -> Path:
     return abs_path.parent
 
 
+def _valid_project_dir(project: str | None, config: Config) -> Path | None:
+    """MCP の project write target を、実際に scan された project root に限定する。"""
+    if not project:
+        return None
+    try:
+        target = Path(project).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    try:
+        roots = {
+            Path(doc.record.project_root).resolve()
+            for doc in run_scan(config).docs
+        }
+    except (OSError, RuntimeError):
+        return None
+    target_key = target.as_posix().casefold()
+    for root in roots:
+        if root.as_posix().casefold() == target_key:
+            return target
+    return None
+
+
 def _resolve_or_error(path: str, config: Config) -> tuple[Path | None, dict | None]:
     """スコープ境界チェック。OK で (Path, None)、NG で (None, error dict)。"""
     try:
@@ -301,23 +323,29 @@ def build_server(config: Config):
             return {"error": str(e), "path": path}
 
     @mcp.tool()
-    def sweep(project: str | None = None, dry_run: bool = False) -> list[dict]:
+    def sweep(project: str | None = None, dry_run: bool = False) -> list[dict] | dict:
         """done/discarded を各プロジェクトの archive/ へ移送する（watching は触らない）。
 
         ``project`` を指定するとそのプロジェクト名に絞る（promote と対称）。
         """
-        moved = [m.to_dict() for m in auto_sweep(config, project=project, dry_run=dry_run)]
+        batch = auto_sweep(config, project=project, dry_run=dry_run)
+        moved = [m.to_dict() for m in batch]
         if not dry_run and config.roots:
             write_index(config)
+        if batch.failed:
+            return {"moved": moved, "failed": batch.failed}
         return moved
 
     @mcp.tool()
     def promote(from_state: str = "watching", to_state: str = "done",
-                project: str | None = None, dry_run: bool = False) -> list[dict]:
+                project: str | None = None, dry_run: bool = False) -> list[dict] | dict:
         """release sweep: 溜まった様子見をまとめて完了へ昇格し archive へ移送する。"""
         try:
-            return [m.to_dict() for m in promote_state(
-                config, from_state=from_state, to_state=to_state, project=project, dry_run=dry_run)]
+            batch = promote_state(
+                config, from_state=from_state, to_state=to_state, project=project, dry_run=dry_run)
+            if batch.failed:
+                return {"moved": [m.to_dict() for m in batch], "failed": batch.failed}
+            return [m.to_dict() for m in batch]
         except ValueError as e:
             return [{"error": str(e)}]
 
@@ -344,34 +372,47 @@ def build_server(config: Config):
         （CLI の --no-guidance 相当）。write_yaml=False で .docsweep.yaml を書かない（--no-yaml 相当）。
         lang（ja / en）で注入文言の言語を preset の既定から上書きできる。
         """
-        r = do_inject(Path(project), preset=preset, include_guidance=include_guidance,
-                      write_yaml=write_yaml, lang=lang, dry_run=dry_run)
+        project_dir = _valid_project_dir(project, config)
+        if project_dir is None:
+            return {"error": "project outside scan roots", "kind": "project_scope"}
+        try:
+            r = do_inject(project_dir, preset=preset, include_guidance=include_guidance,
+                          write_yaml=write_yaml, lang=lang, dry_run=dry_run)
+        except (OSError, ValueError) as e:
+            return {"error": str(e), "kind": "write"}
         return {"project": r.project, "written": r.written, "skipped": r.skipped,
                 "warnings": r.warnings, "yaml": r.yaml_path}
 
     @mcp.tool()
     def eject(project: str, purge: bool = False, dry_run: bool = False) -> dict:
         """注入した管理ブロックを剥がす（ユーザー手書きは温存）。"""
-        r = do_eject(Path(project), purge=purge, dry_run=dry_run)
+        project_dir = _valid_project_dir(project, config)
+        if project_dir is None:
+            return {"error": "project outside scan roots", "kind": "project_scope"}
+        try:
+            r = do_eject(project_dir, purge=purge, dry_run=dry_run)
+        except OSError as e:
+            return {"error": str(e), "kind": "write"}
         return {"project": r.project, "removed": r.removed, "warnings": r.warnings,
                 "purged_yaml": r.purged_yaml}
 
     @mcp.tool()
-    def inject_global(agent: str = "claude", target: str | None = None,
-                      lang: str = "ja", dry_run: bool = False) -> dict:
+    def inject_global(agent: str = "claude", lang: str = "ja", dry_run: bool = False) -> dict:
         """セッション開始時に triage を読む導線＋due ルールを AI ツールのグローバル設定へ注入する（全プロジェクトで効く）。"""
         try:
-            r = do_inject_global(agent=agent, target=target, lang=lang, dry_run=dry_run)
-        except ValueError as e:
+            # MCP では任意 target を受け付けない。CLI の --global-target は人間が
+            # 明示する互換経路として残し、AI 面は agent 規定の個人設定先へ固定する。
+            r = do_inject_global(agent=agent, lang=lang, dry_run=dry_run)
+        except (OSError, ValueError) as e:
             return {"error": str(e)}
         return {"project": r.project, "written": r.written, "skipped": r.skipped, "warnings": r.warnings}
 
     @mcp.tool()
-    def eject_global(agent: str = "claude", target: str | None = None, dry_run: bool = False) -> dict:
+    def eject_global(agent: str = "claude", dry_run: bool = False) -> dict:
         """グローバルへ注入した導線ブロックを剥がす。"""
         try:
-            r = do_eject_global(agent=agent, target=target, dry_run=dry_run)
-        except ValueError as e:
+            r = do_eject_global(agent=agent, dry_run=dry_run)
+        except (OSError, ValueError) as e:
             return {"error": str(e)}
         return {"project": r.project, "removed": r.removed, "warnings": r.warnings}
 

@@ -92,3 +92,14 @@ def test_bundled_assets_are_listed_in_notices() -> None:
     notices = (Path(__file__).resolve().parent.parent / "NOTICES.md").read_text(encoding="utf-8")
     for name in ("htmx.min.js", "cytoscape.min.js"):
         assert name in notices, f"{name} が NOTICES.md に記録されていません"
+
+
+def test_suggestion_fields_are_rendered_as_dom_text_not_html() -> None:
+    keymap = (STATIC / "keymap.js").read_text(encoding="utf-8")
+    start = keymap.index("async function openSuggestions")
+    end = keymap.index("async function openSettings", start)
+    section = keymap[start:end]
+    assert "body.innerHTML" not in section
+    assert "code.textContent = s.path" in section
+    assert "reason.textContent" in section
+    assert "accept.dataset.path" in section

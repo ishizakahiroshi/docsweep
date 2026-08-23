@@ -53,6 +53,7 @@ class ArchiveSkipEntry:
 class ArchiveDoneResult:
     moved: list[ArchiveMoveEntry] = field(default_factory=list)
     skipped: list[ArchiveSkipEntry] = field(default_factory=list)
+    failed: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -61,6 +62,7 @@ class ArchiveDoneResult:
                 for m in self.moved
             ],
             "skipped": [{"path": s.path, "reason": s.reason} for s in self.skipped],
+            "failed": list(self.failed),
         }
 
 
@@ -104,7 +106,11 @@ def archive_done(
                     )
                 )
             continue
-        entry = archive_doc(doc, config, dry_run=dry_run, batch_id=batch_id)
+        try:
+            entry = archive_doc(doc, config, dry_run=dry_run, batch_id=batch_id)
+        except (OSError, UnicodeError, ValueError) as exc:
+            result.failed.append({"path": rec.path, "error": str(exc)})
+            continue
         result.moved.append(
             ArchiveMoveEntry(
                 src=entry.src,

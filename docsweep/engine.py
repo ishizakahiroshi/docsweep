@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -83,6 +83,7 @@ def _allowed_actions(rec: FileRecord) -> list[str]:
 @dataclass
 class ScanResult:
     docs: list[ScannedDoc]
+    errors: list[str] = field(default_factory=list)
 
     @property
     def records(self) -> list[FileRecord]:
@@ -99,6 +100,24 @@ class ScanResult:
         return [d for d in self.docs if Flag.NEEDS_FIX.value in d.record.flags]
 
 
+class MoveBatchResult(list[MoveLogEntry]):
+    """Backward-compatible move list with per-document failures attached.
+
+    Existing callers iterate over the returned list, while batch commands
+    also need to report a failed document without discarding successful moves
+    or stopping at the first filesystem error.
+    """
+
+    def __init__(
+        self,
+        moved: list[MoveLogEntry] | None = None,
+        *,
+        failed: list[dict] | None = None,
+    ) -> None:
+        super().__init__(moved or [])
+        self.failed = list(failed or [])
+
+
 def run_scan(config: Config) -> ScanResult:
     docs = scan(config)
     for d in docs:
@@ -109,7 +128,12 @@ def run_scan(config: Config) -> ScanResult:
 
         docs = filter_docs_by_excluded(docs)
     except Exception:
-        pass
+        # 除外設定が壊れているときに全件を表示するのは privacy fail-open。
+        # 詳細な例外や設定内容は返さず、呼び出し側が扱える明示的なエラーだけ残す。
+        return ScanResult(
+            docs=[],
+            errors=["excluded 設定を検証できないため、安全側で scan 結果を非表示にしました"],
+        )
     return ScanResult(docs=docs)
 
 
@@ -231,7 +255,7 @@ def _project_dir_for(doc: ScannedDoc, config: Config) -> tuple[Path, Path]:
 
 def auto_sweep(
     config: Config, *, project: str | None = None, dry_run: bool = False,
-) -> list[MoveLogEntry]:
+) -> MoveBatchResult:
     """--auto: auto_move 対象を各プロジェクトの archive/ へ移送。watching は触らない。
 
     ``project`` を指定すると、その名前のプロジェクトに属する対象だけを処理する
@@ -240,21 +264,28 @@ def auto_sweep(
     """
     result = run_scan(config)
     moved: list[MoveLogEntry] = []
+    failed: list[dict] = [
+        {"path": None, "error": error} for error in result.errors
+    ]
     for doc in result.auto_movable():
         rec = doc.record
         if project and rec.project != project:
             continue
-        project_dir, root = _project_dir_for(doc, config)
-        archive_dir = _archive_dir_for(doc, config)
-        dst = archive_file(
-            src=Path(rec.path), project_dir=project_dir, archive_dir=archive_dir,
-            root=root, project=rec.project, status=rec.state, dry_run=dry_run,
-        )
+        try:
+            project_dir, root = _project_dir_for(doc, config)
+            archive_dir = _archive_dir_for(doc, config)
+            dst = archive_file(
+                src=Path(rec.path), project_dir=project_dir, archive_dir=archive_dir,
+                root=root, project=rec.project, status=rec.state, dry_run=dry_run,
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            failed.append({"path": rec.path, "error": str(exc)})
+            continue
         moved.append(MoveLogEntry(
             ts="(dry-run)" if dry_run else "", op="archive", project=rec.project,
             status=rec.state, src=rec.path, dst=dst.as_posix(),
         ))
-    return moved
+    return MoveBatchResult(moved, failed=failed)
 
 
 def archive_doc(
@@ -277,7 +308,7 @@ def archive_doc(
 def promote_state(
     config: Config, *, from_state: str = "watching", to_state: str = "done",
     project: str | None = None, dry_run: bool = False,
-) -> list[MoveLogEntry]:
+) -> MoveBatchResult:
     """release sweep: 溜まった from_state を to_state へ一括昇格し archive へ移送。"""
     result = run_scan(config)
     sm = config.state_model
@@ -287,6 +318,9 @@ def promote_state(
     if target is None:
         raise ValueError(f"未知の to_state: {to_state}")
     moved: list[MoveLogEntry] = []
+    failed: list[dict] = [
+        {"path": None, "error": error} for error in result.errors
+    ]
     for doc in result.docs:
         rec = doc.record
         if rec.state != from_state:
@@ -296,18 +330,23 @@ def promote_state(
         # docsweep_policy: never_archive は昇格しても archive しない（policy による保持）。
         if rec.docsweep_policy == "never_archive":
             continue
-        project_dir, root = _project_dir_for(doc, config)
-        if not dry_run:
-            _update_doc_state(doc, to_state, config)
-        dst = archive_file(
-            src=Path(rec.path), project_dir=project_dir, archive_dir=_archive_dir_for(doc, config),
-            root=root, project=rec.project, status=to_state, op="promote", dry_run=dry_run,
-        )
+        try:
+            project_dir, root = _project_dir_for(doc, config)
+            if not dry_run:
+                _update_doc_state(doc, to_state, config)
+            dst = archive_file(
+                src=Path(rec.path), project_dir=project_dir,
+                archive_dir=_archive_dir_for(doc, config), root=root,
+                project=rec.project, status=to_state, op="promote", dry_run=dry_run,
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            failed.append({"path": rec.path, "error": str(exc)})
+            continue
         moved.append(MoveLogEntry(
             ts="(dry-run)" if dry_run else "", op="promote", project=rec.project,
             status=to_state, src=rec.path, dst=dst.as_posix(),
         ))
-    return moved
+    return MoveBatchResult(moved, failed=failed)
 
 
 def _archive_dir_for(doc: ScannedDoc, config: Config) -> str:

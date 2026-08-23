@@ -152,26 +152,23 @@ def test_smoke_set_project_enabled_toggle(tmp_path, monkeypatch):
 
 
 def test_smoke_inject_global_dry_run(tmp_path):
-    """inject_global(dry_run=True, target=tmp_path) は書き込まず dict を返す。
+    """MCP inject_global は agent 規定先を使い、dry_run なら書き込まない。
 
-    target を明示指定することで ~/.claude/CLAUDE.md を触らない。dry_run=True で
-    guidance / manifest / config scaffold のいずれも書かない設計。
+    MCP 面では任意 target を受け付けない。dry_run=True で guidance / manifest /
+    config scaffold のいずれも書かない設計。
     """
     server = _build(tmp_path)
-    target = tmp_path / "CLAUDE.md"
     res = _tool_fns(server)["inject_global"](
-        agent="claude", target=str(target), dry_run=True
+        agent="claude", dry_run=True
     )
     assert isinstance(res, dict)
-    # dry_run なので target ファイルは生成されない
-    assert not target.exists()
+    assert "error" not in res
 
 
 def test_smoke_eject_global_dry_run(tmp_path):
-    """eject_global(dry_run=True, target=tmp_path) は書き込まず dict を返す。"""
+    """MCP eject_global は agent 規定先を使い、dry_run なら書き込まない。"""
     server = _build(tmp_path)
-    target = tmp_path / "CLAUDE.md"
     res = _tool_fns(server)["eject_global"](
-        agent="claude", target=str(target), dry_run=True
+        agent="claude", dry_run=True
     )
     assert isinstance(res, dict)

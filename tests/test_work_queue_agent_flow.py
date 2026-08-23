@@ -72,6 +72,41 @@ def test_capture_custom_queue_and_secret_is_checked_before_mkdir(tmp_path: Path)
     assert saved[0].parent == project / "docs" / "ai"
 
 
+def test_queue_root_link_is_allowed_but_nested_escape_is_rejected(tmp_path: Path):
+    """設定済み queue root の junction は許可し、内側の脱出 symlink は拒否する。"""
+    from docsweep.work_queue import WorkQueueError, resolve_work_target
+
+    project = tmp_path / "project"
+    project.mkdir()
+    queue_real = tmp_path / "private-queue"
+    queue_real.mkdir()
+    link = project / "docs" / "local"
+    link.parent.mkdir()
+    try:
+        link.symlink_to(queue_real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("ディレクトリ junction/symlink を作成できない環境")
+
+    cfg = load_config(
+        project_dir=project,
+        explicit_roots=[str(tmp_path)],
+        global_path=tmp_path / "missing.yaml",
+    )
+    root, target = resolve_work_target(cfg, project_dir=project)
+    assert root == project
+    assert target == link
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    escape = link / "escape"
+    try:
+        escape.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("配下 symlink を作成できない環境")
+    with pytest.raises(WorkQueueError):
+        resolve_work_target(cfg, project_dir=project, explicit_dir=escape)
+
+
 def test_private_queue_unignored_is_rejected_before_write(tmp_path: Path):
     project = tmp_path / "project"
     queue = project / "docs" / "ai"

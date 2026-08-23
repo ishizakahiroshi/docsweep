@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +33,28 @@ def dedupe_path(dst: Path) -> Path:
         if not cand.exists():
             return cand
         n += 1
+
+
+def _reserve_destination(dst: Path) -> Path:
+    """Atomically reserve an archive filename without replacing an existing file.
+
+    ``dedupe_path`` alone has a check-then-use race: two archive workers can
+    both observe the same free name and the later ``shutil.move`` can replace
+    the first document.  Creating the candidate with ``O_EXCL`` makes the
+    choice itself atomic.  The empty placeholder belongs to this operation
+    and is replaced only after the reservation succeeds.
+    """
+    stem, suffix, parent = dst.stem, dst.suffix, dst.parent
+    n = 1
+    while True:
+        candidate = dst if n == 1 else parent / f"{stem}_{n}{suffix}"
+        try:
+            fd = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            n += 1
+            continue
+        os.close(fd)
+        return candidate
 
 
 def move_log_path(root: Path) -> Path:
@@ -63,13 +86,23 @@ def archive_file(
     """
     src = src.resolve()
     dest_dir = (project_dir / archive_dir).resolve()
-    dst = dedupe_path(dest_dir / src.name)
 
     if dry_run:
-        return dst
+        return dedupe_path(dest_dir / src.name)
 
     dest_dir.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(src), str(dst))
+    dst = _reserve_destination(dest_dir / src.name)
+    try:
+        shutil.move(str(src), str(dst))
+    except Exception:
+        # Remove only the placeholder created above.  A failed cross-volume
+        # copy can leave a partial destination, which is also not a valid
+        # archive entry and must not be mistaken for a successful move.
+        try:
+            dst.unlink()
+        except OSError:
+            pass
+        raise
     append_move_log(
         root,
         MoveLogEntry(

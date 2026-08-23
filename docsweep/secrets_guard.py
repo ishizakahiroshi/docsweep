@@ -32,6 +32,30 @@ _HIGH_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
     (
+        "jwt",
+        re.compile(
+            r"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])"
+        ),
+    ),
+    (
+        "authorization_bearer",
+        re.compile(
+            r"(?i)\bauthorization\s*:\s*bearer\s+[A-Za-z0-9._~+/=-]{20,}"
+        ),
+    ),
+    (
+        "aws_secret_access_key",
+        re.compile(
+            r"(?i)\baws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*['\"]?[A-Za-z0-9/+=]{40}"
+        ),
+    ),
+    (
+        "password_assignment",
+        re.compile(
+            r"(?i)\b(?:password|passwd|pwd)\s*[:=]\s*['\"]?[A-Za-z0-9_./+=-]{24,}"
+        ),
+    ),
+    (
         # DSA / PGP / 暗号化済み鍵など、種別語が何であっても PRIVATE KEY ブロックは弾く。
         # 列挙方式だと新しい種別が出るたびに素通りする。
         "private_key_block",

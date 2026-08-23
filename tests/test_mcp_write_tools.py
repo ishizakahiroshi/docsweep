@@ -15,6 +15,7 @@ build_server から FastMCP 経由でツールを取り出し、関数本体を�
 from __future__ import annotations
 
 from datetime import date, timedelta
+import inspect
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,31 @@ def test_build_server_registers_new_write_tools(tmp_path: Path):
     # 新規
     for t in ("update_status", "update_due", "update_content", "archive_done"):
         assert t in tools, f"新規ツール {t} が登録されていない"
+
+
+def test_mcp_project_inject_and_eject_require_scanned_project(tmp_path: Path):
+    root, proj = _setup(tmp_path)
+    _write(proj / "docs" / "plan_a.md", "# [計画] x\n")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    server = build_server(_cfg(root))
+    tools = _tools(server)
+
+    valid = tools["inject"](str(proj), dry_run=True)
+    assert valid["project"] == proj.name
+
+    for name, kwargs in (("inject", {"dry_run": False}), ("eject", {"dry_run": False})):
+        result = tools[name](str(outside), **kwargs)
+        assert result["kind"] == "project_scope"
+        assert not (outside / "CLAUDE.md").exists()
+        assert not (outside / ".docsweep.yaml").exists()
+
+
+def test_mcp_global_tools_have_no_arbitrary_target_argument(tmp_path: Path):
+    server = build_server(_cfg(_setup(tmp_path)[0]))
+    tools = _tools(server)
+    assert "target" not in inspect.signature(tools["inject_global"]).parameters
+    assert "target" not in inspect.signature(tools["eject_global"]).parameters
 
 
 # ------------------------------------------------------------------

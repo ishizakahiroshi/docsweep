@@ -61,6 +61,40 @@ def _under(path: Path, root: Path) -> bool:
         return False
 
 
+def _under_real(path: Path, root: Path) -> bool:
+    """実体解決後に ``path`` が ``root`` 配下（または root 自体）か調べる。"""
+    try:
+        child = Path(os.path.normcase(os.path.realpath(os.fspath(path))))
+        parent = Path(os.path.normcase(os.path.realpath(os.fspath(root))))
+        child.relative_to(parent)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _same_lexical(path: Path, other: Path) -> bool:
+    return os.path.normcase(os.fspath(_absolute(path))) == os.path.normcase(
+        os.fspath(_absolute(other))
+    )
+
+
+def _target_realpath_allowed(
+    *, project_root: Path, target_dir: Path, queue_root: Path
+) -> bool:
+    """書き込み target の実体境界を検査する。
+
+    ``queue_root`` 自体は、private queue をリポジトリ外へ置くための junction / symlink
+    として正規利用されるので許可する。一方、その配下からさらに別の実体へ抜ける
+    symlink は許可しない。queue 外の明示 target は通常どおり project root の実体内だけ
+    を許可する。
+    """
+    if _same_lexical(target_dir, queue_root):
+        return True
+    if _under(target_dir, queue_root):
+        return _under_real(target_dir, queue_root)
+    return _under_real(target_dir, project_root)
+
+
 def _git_available(project_dir: Path) -> bool:
     try:
         result = subprocess.run(
@@ -179,7 +213,8 @@ def resolve_work_target(
     """``(project_root, queue_or_explicit_target)`` を返す。作成はしない。"""
     root = find_project_dir(config=config, project_dir=project_dir, project=project, cwd=cwd)
     effective = config_for_project(config, root)
-    target = _absolute(explicit_dir) if explicit_dir is not None else resolve_work_dir(root, effective.work_dir)
+    queue_root = resolve_work_dir(root, effective.work_dir)
+    target = _absolute(explicit_dir) if explicit_dir is not None else queue_root
     if not _under(target, root):
         raise WorkQueueError(f"作業先はプロジェクト配下である必要があります: {target}")
     if (
@@ -188,6 +223,13 @@ def resolve_work_target(
         and not any(_under(target, Path(r)) for r in config.roots)
     ):
         raise WorkQueueError(f"作業先はスキャン root 配下である必要があります: {target}")
+    if not _target_realpath_allowed(
+        project_root=root, target_dir=target, queue_root=queue_root
+    ):
+        raise WorkQueueError(
+            "作業先の実体がプロジェクトまたは設定済み queue の範囲外です: "
+            f"{target}"
+        )
     return root, target
 
 
@@ -204,10 +246,21 @@ def check_work_queue(
     target = _absolute(target_dir)
     policy = (config.work_policy or "private").strip().lower()
     result = WorkQueueCheck(path=target, project_dir=root, policy=policy)
+    try:
+        effective = config_for_project(config, root)
+        queue_root = resolve_work_dir(root, effective.work_dir)
+    except (OSError, ValueError):
+        queue_root = resolve_work_dir(root, config.work_dir)
     if policy not in {"private", "shared"}:
         result.errors.append("work_policy は private または shared で指定してください")
     if not _under(target, root):
         result.errors.append("作業 queue はプロジェクト配下である必要があります")
+    elif not _target_realpath_allowed(
+        project_root=root, target_dir=target, queue_root=queue_root
+    ):
+        result.errors.append(
+            "作業 queue の実体がプロジェクトまたは設定済み queue の範囲外です"
+        )
     if (
         config.roots
         and config.project_dir is None

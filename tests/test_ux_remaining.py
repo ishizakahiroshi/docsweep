@@ -39,6 +39,22 @@ def test_exclude_filters_scan(tmp_path: Path, monkeypatch):
     assert len(run_scan(cfg).records) == 2
 
 
+def test_broken_excluded_config_hides_scan_and_returns_error(tmp_path: Path, monkeypatch):
+    root = tmp_path / "dev"
+    project = root / "project"
+    _write(project / "plan_private.md", "# [計画] private\n")
+    excl = tmp_path / "excluded.json"
+    excl.write_bytes(b"{\xff")
+    monkeypatch.setattr(ex, "EXCLUDED_PATH", excl)
+    cfg = load_config(explicit_roots=[str(root)], global_path=tmp_path / "nog.yaml")
+
+    result = run_scan(cfg)
+
+    assert result.records == []
+    assert result.errors
+    assert "安全側" in result.errors[0]
+
+
 def test_new_split_plans(tmp_path: Path):
     created = new_split_plans("big-topic", n=2, project_dir=tmp_path)
     assert len(created) == 3

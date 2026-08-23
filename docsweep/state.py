@@ -97,7 +97,7 @@ def load(project_root: Path) -> StateDoc:
     try:
         raw = p.read_text(encoding="utf-8")
         data = json.loads(raw)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
         # 警告のみ・空で初期化（MD 正本主義）。
         return StateDoc()
     return StateDoc.from_dict(data)

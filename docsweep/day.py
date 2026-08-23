@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from .brief.service import build_brief
@@ -39,6 +39,13 @@ class DayCloseResult:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _local_day_bounds(day: date, tzinfo) -> tuple[float, float]:
+    """Return POSIX bounds for local midnight through the next local midnight."""
+    start_dt = datetime.combine(day, time.min, tzinfo=tzinfo)
+    end_dt = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tzinfo)
+    return start_dt.timestamp(), end_dt.timestamp()
 
 
 def _slim(rec: FileRecord) -> dict:
@@ -91,8 +98,7 @@ def day_close(config: Config, *, today: date | None = None) -> DayCloseResult:
     today = today or date.today()
     records = scan_records(config)
     now = datetime.now(timezone.utc).astimezone()
-    start = datetime(today.year, today.month, today.day, tzinfo=now.tzinfo).timestamp()
-    end = start + 86400
+    start, end = _local_day_bounds(today, now.tzinfo)
 
     touched: list[dict] = []
     incomplete: list[dict] = []

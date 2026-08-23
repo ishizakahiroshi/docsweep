@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
 from ..atomic import write_atomic
+from .manifest import MANIFEST_PATH
 
 MARK_START = "<!-- docsweep:managed:start -->"
 MARK_END = "<!-- docsweep:managed:end -->"
@@ -47,10 +49,26 @@ def _inner_of(text: str, span: tuple[int, int]) -> str:
     return segment[len(MARK_START):-len(MARK_END)].strip()
 
 
+def _private_backup(path: Path, content: bytes) -> Path:
+    """手編集退避を repo 直下ではなく docsweep の private 管理領域へ保存する。"""
+    path_key = os.path.normcase(str(path.resolve())).encode("utf-8", errors="replace")
+    digest = hashlib.sha256(path_key).hexdigest()[:16]
+    backup_dir = MANIFEST_PATH.parent / "inject-backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    candidate = backup_dir / f"{digest}-{path.name}.bak"
+    suffix = 2
+    while candidate.exists() and candidate.read_bytes() != content:
+        candidate = backup_dir / f"{digest}-{path.name}-{suffix}.bak"
+        suffix += 1
+    if not candidate.exists():
+        candidate.write_bytes(content)
+    return candidate
+
+
 def _strip_managed_blocks(
     path: Path, prev_hash: str | None, result: Any, *, dry_run: bool
 ) -> bool:
-    """ファイルから全管理ブロックを除去する。手編集は .bak へ退避する。"""
+    """ファイルから全管理ブロックを除去する。手編集は private 領域へ退避する。"""
     if not path.is_file():
         return False
     try:
@@ -64,9 +82,9 @@ def _strip_managed_blocks(
     if not spans:
         return False
     if prev_hash and _block_hash(_inner_of(text, spans[0])) != prev_hash:
-        result.warnings.append(f"{path.name}: 手編集を検出。.bak を作成しました。")
+        result.warnings.append(f"{path.name}: 手編集を検出。private backup を作成しました。")
         if not dry_run:
-            write_atomic(path.with_suffix(path.suffix + ".bak"), text, encoding="utf-8")
+            _private_backup(path, text.encode("utf-8"))
     new_text = text
     for span in reversed(spans):
         before = new_text[:span[0]].rstrip("\n")

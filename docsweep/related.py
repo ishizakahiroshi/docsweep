@@ -95,6 +95,7 @@ class FixRelatedResult:
 
     fixes: list[RelatedFix] = field(default_factory=list)
     applied: list[str] = field(default_factory=list)  # 実適用したファイルの path
+    failed: list[dict] = field(default_factory=list)  # 文書単位の読み書き失敗
 
     def to_dict(self) -> dict:
         return {
@@ -102,6 +103,7 @@ class FixRelatedResult:
                 {"path": f.path, "additions": list(f.additions)} for f in self.fixes
             ],
             "applied": list(self.applied),
+            "failed": list(self.failed),
         }
 
 
@@ -155,16 +157,21 @@ def apply_fix_related(config: Config) -> FixRelatedResult:
             seen.add(key)
             merged.append(ref if ref else key)
         path = Path(fix.path)
-        text = path.open("r", encoding="utf-8", newline="").read()
+        try:
+            text = path.open("r", encoding="utf-8", newline="").read()
+        except (OSError, UnicodeError) as exc:
+            plan.failed.append({"path": fix.path, "error": str(exc)})
+            continue
         _data, body = read_frontmatter_text(text)
         if body == text:
             # frontmatter が無い md には書けない（migrate-frontmatter を先に走らせる前提）。
+            plan.failed.append({"path": fix.path, "error": "frontmatter がありません"})
             continue
         try:
             update_frontmatter_field(path, "related", merged)
             plan.applied.append(fix.path)
-        except Exception:  # noqa: BLE001 - 個別ファイル失敗で全体を止めない
-            continue
+        except (OSError, UnicodeError, ValueError) as exc:
+            plan.failed.append({"path": fix.path, "error": str(exc)})
     return plan
 
 

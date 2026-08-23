@@ -409,7 +409,7 @@ def cmd_linkcheck(args: argparse.Namespace) -> int:
     for r in results:
         print(f"{r.plan_name}: {r.progress_hint}")
         for f in r.declared_files:
-            mark = "✓" if f.exists else "✗"
+            mark = "OK" if f.exists else "NG"
             mention = " (commit言及)" if f.mentioned_in_commit else ""
             print(f"  {mark} {f.path}  touches={f.touches_since_plan}{mention}")
     return 0
@@ -692,7 +692,7 @@ def cmd_export(args: argparse.Namespace) -> int:
             okf_profile_sha256=getattr(args, "okf_profile_sha256", None),
             allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
         )
-    except (OkfProfileError, ValueError) as exc:
+    except (OkfProfileError, OSError, ValueError) as exc:
         print(f"export: {exc}", file=sys.stderr)
         return 2
     if getattr(args, "json", False):
