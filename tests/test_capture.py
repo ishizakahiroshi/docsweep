@@ -62,7 +62,7 @@ def test_heuristic_bugfix_has_full_sections():
     text = "ログイン画面でバグが出ている"
     drafts = extract_drafts_heuristic(text)
     body = drafts[0].body
-    assert "# [対応中]" in body
+    assert "# [実行中]" in body
     for sec in ("## 症状", "## 根本原因", "## 修正内容", "## 変更ファイル", "## 検証", "## 備忘"):
         assert sec in body
 
@@ -133,7 +133,7 @@ def test_save_drafts_writes_files(tmp_path):
     drafts = [
         Draft(id="draft-001", kind="plan", title="t1", body="# [計画] t1\n",
               suggested_filename="plan_t1.md"),
-        Draft(id="draft-002", kind="bugfix", title="t2", body="# [対応中] t2\n",
+        Draft(id="draft-002", kind="bugfix", title="t2", body="# [実行中] t2\n",
               suggested_filename="bugfix_t2_2026-06-29.md"),
     ]
     saved = save_drafts(drafts, config=cfg, target_dir=tmp_path / "out")

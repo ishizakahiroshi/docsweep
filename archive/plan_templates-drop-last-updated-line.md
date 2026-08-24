@@ -4,7 +4,7 @@
 
 | C | 内容 | 種別 |
 |---|---|---|
-| C1 | `_plan_body` / `_bugfix_body` / `_pending_body` から `> 最終更新:` 行を削除し、未使用になる `_now_meta()` ヘルパーと `_WEEKDAYS` 定数も整理 | plan |
+| C1 | `_plan_body` / `_bugfix_body` / `_pending_body` から `> 最終更新:` 行を削除し、未使用になる `_now_meta()` ヘルパーと `_WEEKDAYS` 定数も整理 | planned |
 
 ---
 

@@ -6,8 +6,8 @@
 
 | C | 内容 | 種別 |
 |---|---|---|
-| C1 | 候補名のブレストと PyPI/npm 一次被りチェック | plan |
-| C2 | 本命「docsweep」の広域被り調査（GitHub/Win アプリ/Web/ドメイン）と最終判定 | plan |
+| C1 | 候補名のブレストと PyPI/npm 一次被りチェック | planned |
+| C2 | 本命「docsweep」の広域被り調査（GitHub/Win アプリ/Web/ドメイン）と最終判定 | planned |
 
 ---
 

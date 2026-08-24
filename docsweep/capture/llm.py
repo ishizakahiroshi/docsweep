@@ -131,9 +131,9 @@ def _render_body_seed(kind: str, title: str, seed: str) -> str:
     """kind に応じた必須セクションを持つテンプレ本文を組む。"""
     if kind == DraftKind.PLAN.value:
         label = "[計画]"
-        sections = "## context配分\n\n| C | 種別 | 内容 | 並列 |\n|---|---|---|---|\n| C1 | plan | <TODO> | — |\n\n## 概要\n\n<TODO: " + seed + ">\n"
+        sections = "## context配分\n\n| C | 内容 | 種別 |\n|---|---|---|\n| C1 | <TODO> | planned |\n\n## 概要\n\n<TODO: " + seed + ">\n"
     elif kind == DraftKind.BUGFIX.value:
-        label = "[対応中]"
+        label = "[実行中]"
         sections = (
             "## 症状\n\n<TODO: " + seed + ">\n\n"
             "## 根本原因\n\n<TODO>\n\n"

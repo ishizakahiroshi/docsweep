@@ -4,8 +4,8 @@
 
 | C | 内容 | 種別 |
 |---|---|---|
-| C1 | 配布物 `templates/CLAUDE.md` と運用解説 `docs/conventions.md`、自リポ `CLAUDE.md` から `> 最終更新:` 行に関する記述・実体を撤去 | plan |
-| C2 | CHANGELOG.md に Unreleased セクションを追加し、今回の一連の最終更新行撤去（templates_gen.py + 配布規約）を記録 | plan |
+| C1 | 配布物 `templates/CLAUDE.md` と運用解説 `docs/conventions.md`、自リポ `CLAUDE.md` から `> 最終更新:` 行に関する記述・実体を撤去 | planned |
+| C2 | CHANGELOG.md に Unreleased セクションを追加し、今回の一連の最終更新行撤去（templates_gen.py + 配布規約）を記録 | planned |
 
 ---
 

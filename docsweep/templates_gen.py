@@ -89,7 +89,7 @@ def _plan_body(title: str, *, due: str | None = None) -> str:
         _okf_frontmatter(doc_type="plan", state="planned", due=due)
         + f"# [計画] {title}\n\n"
         "## context配分\n\n"
-        "| C | 内容 | 種別 |\n|---|---|---|\n| C1 | <TODO> | plan |\n\n"
+        "| C | 内容 | 種別 |\n|---|---|---|\n| C1 | <TODO> | planned |\n\n"
         "## 概要\n\n<TODO: 何をしようとしているか>\n"
     )
 
