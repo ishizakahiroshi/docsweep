@@ -11,6 +11,8 @@ import json
 from dataclasses import dataclass
 from typing import Protocol
 
+from ..config import DEFAULT_DUE_OFFSET_DAYS
+from ..templates_gen import okf_frontmatter
 from .models import Draft, DraftKind
 
 
@@ -21,6 +23,7 @@ class LLMRequest:
     conversation: str
     project_hint: str | None = None
     max_drafts: int = 5
+    offset_days: dict[str, int] | None = None
 
 
 class LLMClient(Protocol):
@@ -60,6 +63,7 @@ class MockLLM:
                 body_seed=stripped,
                 source_hint="llm:mock",
                 project=request.project_hint,
+                offset_days=request.offset_days,
             ))
             if len(drafts) >= request.max_drafts:
                 break
@@ -103,6 +107,7 @@ def _make_draft(
     body_seed: str,
     source_hint: str,
     project: str | None,
+    offset_days: dict[str, int] | None = None,
 ) -> Draft:
     from .models import Draft as _Draft
 
@@ -115,7 +120,13 @@ def _make_draft(
     else:
         fname = f"{kind}_{slug}.md"
 
-    body = _render_body_seed(kind, title, body_seed)
+    # capture 経由でも ``docsweep new`` と同じ OKF frontmatter を載せる。
+    # 生まれ方で type / docsweep_state / due の有無が変わると queue の扱いがズレる。
+    front = okf_frontmatter(
+        kind,
+        offset_days=DEFAULT_DUE_OFFSET_DAYS if offset_days is None else offset_days,
+    )
+    body = front + _render_body_seed(kind, title, body_seed)
     return _Draft(
         id=f"draft-{idx:03d}",
         kind=kind,

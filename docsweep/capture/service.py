@@ -114,10 +114,16 @@ def extract_drafts(
         client = get_llm(provider)
         request = LLMRequest(
             conversation=text, project_hint=project, max_drafts=max_drafts,
+            offset_days=effective_config.due_default_offset_days,
         )
         return client.extract(request)
 
-    return extract_drafts_heuristic(text, project=project, max_drafts=max_drafts)
+    return extract_drafts_heuristic(
+        text,
+        project=project,
+        max_drafts=max_drafts,
+        offset_days=effective_config.due_default_offset_days,
+    )
 
 
 def save_drafts(

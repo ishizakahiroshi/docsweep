@@ -2,7 +2,8 @@
 
 設計の要点:
 - Heuristic 経路（LLM 無し）と LLM 経路（mock / 実 provider）の 2 系統
-- 草案は :class:`models.Draft` で表現し、ユーザーが番号選択で採用 → frontmatter 付き md を生成
+- 草案は :class:`models.Draft` で表現し、ユーザーが番号選択で採用 → md を生成
+- body には ``docsweep new`` と同じ OKF frontmatter を載せる（``templates_gen.okf_frontmatter``）
 - 実 LLM API（OpenAI/Anthropic）は本 plan では呼ばない（abstract + Mock のみ）
 """
 

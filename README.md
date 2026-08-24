@@ -440,9 +440,11 @@ python -m docsweep provenance check --path docs/local/plan_auth-refactor.md --js
 
 ## AI エージェント連携
 
-> **wings（v0.2 系）の方針**: 「全 AI 対応」を最優先し、自然言語起動の価値が高い **朝の入口 3 tool**
-> （`brief` / `cross` / `capture_extract`+`capture_save`）だけを MCP に露出、それ以外は **CLI 直叩き** で
-> 全 AI に対応します。詳細・自然言語マッピング表は [docs/ai-agent-integration.md](docs/ai-agent-integration.md)。
+> **方針**: 「全 AI 対応」を最優先し、MCP を使わない AI でも **CLI 直叩き**（`--json`）で同じことが
+> できるようにしています。自然言語起動の主役は **朝の入口**（`brief` / `cross` / `capture_extract`+`capture_save`）
+> ですが、MCP サーバーが露出する tool は v0.4.0 時点で 24 個あり、md を書き換える `apply` / `update_status` /
+> `archive_done` や、グローバル設定を書き換える `inject_global` / `eject_global` も含みます。
+> 一覧と権限の目安・自然言語マッピング表は [docs/ai-agent-integration.md](docs/ai-agent-integration.md)。
 
 ### 推奨運用: MCP 登録せず CLI 一本化
 

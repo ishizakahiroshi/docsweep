@@ -58,6 +58,29 @@ def test_heuristic_draft_has_required_sections():
     assert "## 概要" in body
 
 
+def test_heuristic_draft_has_okf_frontmatter():
+    """capture 経由でも `docsweep new` と同じ OKF frontmatter を載せる。
+
+    frontmatter 無しで生まれると type / docsweep_state / due が欠け、同じ work queue
+    なのに生まれ方で扱いが変わる（2026-08-25 の仕様点検で発覚）。
+    """
+    plan = extract_drafts_heuristic("TODO: API キャッシュを実装する")[0]
+    assert plan.body.splitlines()[0] == "---"
+    for line in ("type: plan", "status: draft", "docsweep_state: planned",
+                 "review_status: draft", "related: []"):
+        assert line in plan.body
+    assert "due: " in plan.body            # plan は既定 offset で due が付く
+    assert plan.body.index("# [計画]") > plan.body.index("docsweep_state")
+
+    pending = extract_drafts_heuristic("これは保留にする")[0]
+    assert "docsweep_state: pending" in pending.body
+    assert "due: " in pending.body
+
+    bugfix = extract_drafts_heuristic("ログイン画面でバグが出ている")[0]
+    assert "docsweep_state: in-progress" in bugfix.body
+    assert "due: " not in bugfix.body       # bugfix は新規時に due を付けない
+
+
 def test_heuristic_bugfix_has_full_sections():
     text = "ログイン画面でバグが出ている"
     drafts = extract_drafts_heuristic(text)

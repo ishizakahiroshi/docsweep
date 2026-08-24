@@ -3,12 +3,15 @@
 - 行単位の正規表現置換で本文を触らない（atomic.update_line 経由）
 - 軸 1 のラベル遷移時に postpone_count をリセット（state.should_reset_postpone）
 - ``[完了]`` / ``[廃止]`` は terminal 状態として返すが、archive は呼び出し側の責務
+- bugfix を ``[様子見]`` へ寝かせるとき、due が無ければ ``due.default_offset_days``
+  の ``bugfix_watching`` から期限を入れる（期限なしで眠り続けるのを防ぐ）
 - ファイル種別と無効ラベル組み合わせはバリデーション拒否
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 
 from ..atomic import update_line
@@ -51,6 +54,7 @@ class UpdateStatusResult:
     postpone_count_reset: bool
     archive_triggered: bool
     frontmatter_field: str | None = None
+    due_set: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -63,6 +67,7 @@ class UpdateStatusResult:
             "postpone_count_reset": self.postpone_count_reset,
             "archive_triggered": self.archive_triggered,
             "frontmatter_field": self.frontmatter_field,
+            "due_set": self.due_set,
         }
 
 
@@ -157,6 +162,22 @@ def update_status(
             ):
                 frontmatter_field = "status"
 
+    # bugfix を [様子見] へ寝かせるときだけ due を補う。
+    # - 既存 due は上書きしない（人が決めた日付が正）
+    # - frontmatter が無い legacy ファイルには新設しない（本ヘルパは frontmatter を作らない）
+    # - file_type が None（緩判定）でもファイル名接頭辞で bugfix を拾う。呼び出し口によって
+    #   期限が付いたり付かなかったりする方が事故になるため。
+    due_to_set: str | None = None
+    is_bugfix = file_type == "bugfix" or (
+        file_type is None and Path(abs_path).name.startswith("bugfix_")
+    )
+    if is_bugfix and new_state_key == "watching" and frontmatter is not None:
+        current_due = frontmatter.get("due")
+        if current_due is None or not str(current_due).strip():
+            offset = config.due_default_offset_days.get("bugfix_watching")
+            if offset is not None and int(offset) > 0:
+                due_to_set = (date.today() + timedelta(days=int(offset))).isoformat()
+
     def _combined_xform(text: str) -> str:
         updated = _xform(text)
         if frontmatter_field is not None:
@@ -165,6 +186,8 @@ def update_status(
                 frontmatter_field,
                 _format_value(frontmatter_field, new_state_key),
             )
+        if due_to_set is not None:
+            updated = _replace_or_insert(updated, "due", _format_value("due", due_to_set))
         return updated
 
     # H1 and frontmatter are one atomic replacement.  This prevents a malformed
@@ -188,6 +211,7 @@ def update_status(
         path=Path(abs_path).resolve().as_posix(),
         old_label=old_label,
         new_label=new_label,
+        due_set=due_to_set,
         new_mtime=new_mtime,
         old_state_key=old_state_key,
         new_state_key=new_state_key,

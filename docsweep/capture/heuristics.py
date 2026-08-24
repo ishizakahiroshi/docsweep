@@ -47,7 +47,11 @@ def _extract_title(para: str) -> str:
 
 
 def extract_drafts_heuristic(
-    text: str, *, project: str | None = None, max_drafts: int = 5
+    text: str,
+    *,
+    project: str | None = None,
+    max_drafts: int = 5,
+    offset_days: dict[str, int] | None = None,
 ) -> list[Draft]:
     """LLM 不要のヒューリスティック抽出。"""
     drafts: list[Draft] = []
@@ -63,6 +67,7 @@ def extract_drafts_heuristic(
             body_seed=para,
             source_hint="heuristic",
             project=project,
+            offset_days=offset_days,
         ))
         if len(drafts) >= max_drafts:
             break

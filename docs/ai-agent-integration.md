@@ -4,11 +4,24 @@ docsweep は **「全 AI エージェント対応」** を方針として、3 �
 
 | 経路 | 対象 AI | 仕組み |
 |---|---|---|
-| **MCP**（3 tool 限定） | Claude Code / Codex / Cursor / Continue 等、MCP 対応 AI 全般 | `python -m docsweep mcp` を MCP サーバーとして起動。AI が自然言語で `brief` / `cross` / `capture_extract` / `capture_save` を呼べる |
+| **MCP**（24 tool・書き込み系を含む） | Claude Code / Codex / Cursor / Continue 等、MCP 対応 AI 全般 | `python -m docsweep mcp` を MCP サーバーとして起動。自然言語起動の主役は `brief` / `cross` / `capture_extract` / `capture_save` だが、露出する tool はそれだけではない（下記一覧） |
 | **CLI 直叩き** | あらゆる AI（Bash ツールがあれば動く） | `docsweep <command>` をシェル経由で実行。`--json` で構造化出力を得てパースする |
 | **`/D` Skill**（Claude Code 専用） | Claude Code | `~/.claude/skills/D` 経由の薄いラッパー。MCP の主要 3 + CLI 直叩きをディスパッチ |
 
-> **設計の経緯**: 当初は全機能を MCP 露出する案だったが、`/D` 主体運用と AI の Bash ツール経由 CLI 実行で十分カバーできるため、MCP は「自然言語起動の価値が一番高い "朝の入口" 系」3 つに絞った。残りは CLI 直叩きで全 AI に対応する。詳細: `docs/local/plan_docsweep-wings_2026-06-29.md` の判断ログ。
+### MCP が露出する tool（v0.4.0 時点・24 個）
+
+scan / list_projects / set_project_enabled / route_intent / doctor / day / brief / capture_extract / capture_save / cross / triage / apply / sweep / promote / index / summary / inject / eject / inject_global / eject_global / update_status / update_due / update_content / archive_done
+
+**書き込み・設定変更を伴うもの**: `apply` / `sweep` / `promote` / `update_status` / `update_due` /
+`update_content` / `archive_done`（md を書き換える）、`inject` / `eject`（プロジェクト設定を書き換える）、
+`inject_global` / `eject_global` / `set_project_enabled`（ユーザーのグローバル設定を書き換える）。
+MCP 登録は「読み取り専用の朝の入口」ではないので、AI に許可を渡す前にこの範囲を把握しておくこと。
+tool を絞るオプションは現時点で無い（`docsweep mcp` に選択フラグは無い）。
+
+> **設計の経緯**: 当初の方針は「自然言語起動の価値が一番高い "朝の入口" 系だけを MCP に出し、
+> 残りは CLI 直叩き」だった。実装は段階的に tool が増えて 24 個になっており、上表はその実態に
+> 合わせた記述（2026-08-25 の仕様点検で資料と実装のズレを修正）。当初方針の判断ログは
+> `docs/local/plan_docsweep-wings_2026-06-29.md`。
 
 ---
 
@@ -31,9 +44,10 @@ AI に話しかけた典型発話と、その時 AI が選ぶべき経路・コ�
 | 「この plan show して」「逆参照は」 | CLI | `docsweep show <path> --json` |
 | 「これ俺が担当ね」 | CLI | `docsweep claim <path>` |
 | 「pending 一覧」「保留は」 | CLI | `docsweep pending --json` |
-| 「triage 出して」「残作業」 | MCP | `triage()` ※既存 MCP tool（朝の入口 3 ではないが古くから提供） |
+| 「triage 出して」「残作業」 | MCP | `triage()` |
 
-> MCP 3 tool 以外を MCP に追加する判断基準は `docs/local/plan_docsweep-wings_2026-06-29.md` 末尾「MCP 昇格候補リスト」を参照。
+> 上表は「その発話でどちらを選ぶと速いか」の推奨であって、MCP に無いから CLI という意味ではない
+> （`triage` / `apply` / `index` などは両方から使える）。
 
 ---
 

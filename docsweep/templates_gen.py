@@ -84,6 +84,31 @@ def _okf_frontmatter(
     return "\n".join(lines)
 
 
+_INITIAL_STATE = {"plan": "planned", "bugfix": "in-progress", "pending": "pending"}
+
+
+def okf_frontmatter(
+    doc_type: str,
+    *,
+    due: str | None = None,
+    offset_days: dict[str, int] | None = None,
+    today: date | None = None,
+) -> str:
+    """``docsweep new`` 以外の生成経路（capture 等）へ同じ frontmatter を配る公開口。
+
+    種別ごとの初期 state と due の決め方（plan/pending は offset、bugfix は付けない）を
+    1 箇所に閉じ込め、md の生まれ方で OKF 準拠が変わらないようにする。
+    """
+    state = _INITIAL_STATE.get(doc_type)
+    if state is None:
+        raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
+    base = today or date.today()
+    resolved = _resolve_initial_due(doc_type, due=due, offset_days=offset_days, today=base)
+    return _okf_frontmatter(
+        doc_type=doc_type, state=state, due=resolved, today=base.isoformat()
+    )
+
+
 def _plan_body(title: str, *, due: str | None = None) -> str:
     return (
         _okf_frontmatter(doc_type="plan", state="planned", due=due)
@@ -95,7 +120,7 @@ def _plan_body(title: str, *, due: str | None = None) -> str:
 
 
 def _bugfix_body(title: str, *, due: str | None = None) -> str:
-    # bugfix は新規時に `due:` を入れない（[様子見] 遷移時に AI / 人が後付け追記する想定）。
+    # bugfix は新規時に `due:` を入れない（[様子見] へ移した時に services/status.py が付ける）。
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
     _ = due
     return (
@@ -144,7 +169,7 @@ def _resolve_initial_due(
     if due is not None:
         return due
     if doc_type == "bugfix":
-        # 新規 bugfix には初期 due を付けない（[様子見] 遷移時に追記する設計）。
+        # 新規 bugfix には初期 due を付けない（[様子見] 遷移時に services/status.py が付ける）。
         return None
     offsets = offset_days or {}
     n = offsets.get(doc_type)

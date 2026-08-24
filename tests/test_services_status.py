@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -211,3 +212,80 @@ def test_update_status_loose_when_type_unknown(tmp_path: Path):
     # type=None は緩く通る（ユーザー定義 type のエスケープハッチ）
     res = update_status(f, "in-progress", project_root=proj, config=cfg, file_type=None)
     assert res.new_label == "[実行中]"
+
+
+# ---------------------------------------------------------------------------
+# bugfix を [様子見] へ寝かせるときの due 付与（2026-08-25 の仕様点検で配線）
+# ---------------------------------------------------------------------------
+
+
+def _bugfix_with_frontmatter(proj: Path, *, due: str | None = None) -> Path:
+    lines = [
+        "---",
+        "type: bugfix",
+        "status: draft",
+        "docsweep_state: in-progress",
+        "tags: []",
+        "owner: ",
+        "review_status: draft",
+        "related: []",
+        "last_reviewed: 2026-08-25",
+    ]
+    if due:
+        lines.append(f"due: {due}")
+    lines += ["---", "", "# [実行中] 落ちる", "", "## 症状", "", "x", ""]
+    f = proj / "bugfix_x_2026-08-25.md"
+    f.write_text("\n".join(lines), encoding="utf-8")
+    return f
+
+
+def test_bugfix_watching_sets_due_from_offset(tmp_path: Path):
+    """期限なしで眠り続けないよう、[様子見] へ移す時に due を入れる。"""
+    proj = _setup_project(tmp_path)
+    f = _bugfix_with_frontmatter(proj)
+    res = update_status(
+        f, "watching", project_root=proj, config=_cfg(tmp_path), file_type="bugfix",
+    )
+    expected = (date.today() + timedelta(days=7)).isoformat()
+    assert res.due_set == expected
+    assert f"due: {expected}" in f.read_text(encoding="utf-8")
+
+
+def test_bugfix_watching_keeps_existing_due(tmp_path: Path):
+    """人が決めた期限は上書きしない。"""
+    proj = _setup_project(tmp_path)
+    f = _bugfix_with_frontmatter(proj, due="2026-12-31")
+    res = update_status(
+        f, "watching", project_root=proj, config=_cfg(tmp_path), file_type="bugfix",
+    )
+    assert res.due_set is None
+    assert "due: 2026-12-31" in f.read_text(encoding="utf-8")
+
+
+def test_plan_watching_does_not_get_due(tmp_path: Path):
+    """due 補完は bugfix の [様子見] 限定。plan には効かせない。"""
+    proj = _setup_project(tmp_path)
+    f = proj / "plan_a.md"
+    f.write_text(
+        "---\ntype: plan\ndocsweep_state: in-progress\n---\n\n# [実行中] a\n",
+        encoding="utf-8",
+    )
+    res = update_status(
+        f, "watching", project_root=proj, config=_cfg(tmp_path), file_type="plan",
+    )
+    assert res.due_set is None
+    assert "due:" not in f.read_text(encoding="utf-8")
+
+
+def test_bugfix_without_frontmatter_stays_frontmatterless(tmp_path: Path):
+    """frontmatter を持たない legacy ファイルに frontmatter を新設しない。"""
+    proj = _setup_project(tmp_path)
+    f = proj / "bugfix_legacy_2026-08-25.md"
+    f.write_text("# [実行中] 旧式\n\n## 症状\n\nx\n", encoding="utf-8")
+    res = update_status(
+        f, "watching", project_root=proj, config=_cfg(tmp_path), file_type="bugfix",
+    )
+    assert res.due_set is None
+    body = f.read_text(encoding="utf-8")
+    assert body.startswith("# [様子見] 旧式")
+    assert "due:" not in body

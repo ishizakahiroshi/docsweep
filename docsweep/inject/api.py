@@ -203,7 +203,9 @@ def generate_due_block(lang: str = "ja") -> str:
             "`plan=7` / `pending=14`).",
             f"To skip computing it by hand, `{docsweep_command('new', '<type>', '<topic>')}` assigns it automatically",
             f"(set it explicitly with `{docsweep_command('new', '<type>', '<topic>', '--due', 'YYYY-MM-DD')}`).",
-            "Do not add `due:` to a brand-new `bugfix_*.md` (it is added when the file transitions to watching).",
+            "Do not add `due:` to a brand-new `bugfix_*.md`. docsweep adds it from "
+            "`due.default_offset_days.bugfix_watching` when the file moves to watching, "
+            "and never overwrites an existing `due:`.",
             "For project-specific due dates, edit `due.default_offset_days` in `.docsweep.yaml`",
             "(only the keys you write override the shared defaults = partial override).",
         ])
@@ -215,7 +217,8 @@ def generate_due_block(lang: str = "ja") -> str:
         "それも無ければ内蔵 DEFAULT: `plan=7` / `pending=14`）から「今日 + N 日」で計算する。",
         f"手で計算したくなければ `{docsweep_command('new', '<type>', '<topic>')}` を使えば自動で付く",
         f"（明示したい時は `{docsweep_command('new', '<type>', '<topic>', '--due', 'YYYY-MM-DD')}`）。",
-        "`bugfix_*.md` は新規時には `due:` を付けない（`[様子見]` 遷移時に追記する設計）。",
+        "`bugfix_*.md` は新規時には `due:` を付けない（`[様子見]` へ移した時に docsweep が "
+        "`due.default_offset_days.bugfix_watching` から付ける。既存の `due:` は上書きしない）。",
         "プロジェクト固有の期日が必要なら `.docsweep.yaml` の `due.default_offset_days` を編集する",
         "（プロジェクトで書いたキーだけが全体既定を上書きする＝部分上書き可）。",
     ])
