@@ -77,7 +77,7 @@ def test_initialize_start_finish_and_check(tmp_path: Path):
         metadata=_metadata(),
     )
     body = doc.path.read_text(encoding="utf-8")
-    assert "| C | 内容 | 種別 | AI実行 |" in body
+    assert "| C | 種別 | 内容 | 備考/注意点 | AI実行 |" in body
     assert started["execution_id"] in body
 
     finished = finish_execution(

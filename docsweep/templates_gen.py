@@ -114,7 +114,7 @@ def _plan_body(title: str, *, due: str | None = None) -> str:
         _okf_frontmatter(doc_type="plan", state="planned", due=due)
         + f"# [計画] {title}\n\n"
         "## context配分\n\n"
-        "| C | 内容 | 種別 |\n|---|---|---|\n| C1 | <TODO> | planned |\n\n"
+        "| C | 種別 | 内容 | 備考/注意点 |\n|---|---|---|---|\n| C1 | planned | <TODO> | — |\n\n"
         "## 概要\n\n<TODO: 何をしようとしているか>\n"
     )
 
@@ -127,6 +127,12 @@ def _bugfix_body(title: str, *, due: str | None = None) -> str:
         _okf_frontmatter(doc_type="bugfix", state="in-progress", due=None)
         # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
         + f"# [実行中] {title}\n\n"
+        # 2026-08-27 改修: bugfix にも context配分 表を持たせる（列順は plan と同じ）。
+        # 事後記録でも「切り分け → 修正 → 検証」を C で分けたい場面があり、表が無いと
+        # provenance の C 単位記録（start --context C1）が使えないため。
+        # ただし H1 ラベルは表から自動導出しない（bugfix のラベルは手で付ける）。
+        "## context配分\n\n"
+        "| C | 種別 | 内容 | 備考/注意点 |\n|---|---|---|---|\n| C1 | planned | <TODO> | — |\n\n"
         "## 症状\n\n<TODO>\n\n## 根本原因\n\n<TODO>\n\n## 修正内容\n\n<TODO>\n\n"
         "## 変更ファイル\n\n<TODO>\n\n## 検証\n\n<TODO>\n\n## 備忘\n\n<TODO>\n"
     )

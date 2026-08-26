@@ -151,3 +151,36 @@ def test_filename_collision_suffix(tmp_path: Path):
     d2 = new_doc("plan", "topic", project_dir=proj, offset_days={"plan": 7})
     assert d1.path != d2.path
     assert re.search(r"plan_topic_2\.md$", d2.path.name)
+
+
+CONTEXT_HEADER = "| C | 種別 | 内容 | 備考/注意点 |"
+
+
+def test_plan_context_table_column_order(tmp_path: Path):
+    """context配分 表は C → 種別 → 内容 → 備考/注意点 の順で生成する（2026-08-27 統一）。
+
+    状態を左端寄りに置いて、表を縦に眺めたときに残作業が読めるようにするための順。
+    provenance は列名で `AI実行` を解決するので、この並び替えは記録側に影響しない。
+    """
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    doc = new_doc("plan", "column-order", project_dir=proj, offset_days={"plan": 7})
+    body = doc.path.read_text(encoding="utf-8")
+    assert CONTEXT_HEADER in body
+    assert "|---|---|---|---|" in body
+    assert "| C1 | planned | <TODO> | — |" in body
+
+
+def test_bugfix_has_context_table_too(tmp_path: Path):
+    """bugfix にも同じ列順の context配分 表を持たせる（2026-08-27 変更）。
+
+    表が無いと `provenance start --context C1` が使えないため。ラベル（[実行中] 等）は
+    表から自動導出しない点は従来どおり。
+    """
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    doc = new_doc("bugfix", "column-order", project_dir=proj, offset_days={"plan": 7})
+    body = doc.path.read_text(encoding="utf-8")
+    assert CONTEXT_HEADER in body
+    # 表は H1 直下（症状より前）に置く
+    assert body.index("## context配分") < body.index("## 症状")
