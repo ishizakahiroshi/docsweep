@@ -53,7 +53,7 @@ GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "7"
+GUIDANCE_VERSION = "8"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -366,6 +366,28 @@ def generate_provenance_block(lang: str = "ja") -> str:
     ])
 
 
+def generate_delegation_block(lang: str = "ja") -> str:
+    """委譲 plan の C 詳細書式を案内する最小ブロックを生成する。"""
+    new_cmd = docsweep_command("new", "plan", "<topic>", "--delegate")
+    if lang == "en":
+        return "\n".join([
+            "### Delegated implementation plans",
+            "",
+            "A plan that declares `docsweep_delegation: external` must include a `## C details` section.",
+            f"Create a new delegated plan with `{new_cmd}`.",
+            "Each C should have one purpose, 1–4 changed files, 3–6 observable completion criteria,",
+            "and a standalone static check or test.",
+        ])
+    return "\n".join([
+        "### 実装を別 AI へ委譲する plan",
+        "",
+        "frontmatter に `docsweep_delegation: external` を宣言した plan は `## C 詳細` を必須とする。",
+        f"新規作成は `{new_cmd}` を使う。",
+        "各 C は、目的 1 つ / 変更対象 1〜4 ファイル / 完了条件 3〜6 項目 /",
+        "その C 単独で静的チェックまたはテストを実行できる、という粒度にする。",
+    ])
+
+
 def generate_guidance_block(
     lang: str = "ja",
     *,
@@ -415,6 +437,8 @@ def generate_guidance_block(
             "",
             generate_provenance_block(lang),
             "",
+            generate_delegation_block(lang),
+            "",
             generate_due_block(lang),
         ])
     return "\n".join([
@@ -448,6 +472,8 @@ def generate_guidance_block(
         ),
         "",
         generate_provenance_block(lang),
+        "",
+        generate_delegation_block(lang),
         "",
         generate_due_block(lang),
     ])

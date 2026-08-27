@@ -626,6 +626,21 @@ def test_inject_label_block_mentions_due(tmp_path, manifest):
     assert "[様子見]" in text and "bugfix" in text
 
 
+def test_inject_label_block_mentions_delegated_plan_guidance(tmp_path, manifest):
+    """プロジェクト inject に委譲 plan の雛形導線と粒度基準が入る。"""
+    from docsweep.inject import GUIDANCE_VERSION, inject
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    inject(proj, preset="claude-jp")
+    text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+
+    assert "docsweep_delegation: external" in text
+    assert "--delegate" in text
+    assert "1〜4 ファイル" in text
+    assert GUIDANCE_VERSION == "8"
+
+
 def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypatch):
     """グローバル inject の guidance.md に due ルールが同梱される（既定=グローバル運用）。"""
     from docsweep import inject as I
@@ -639,6 +654,22 @@ def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypat
     body = gpath.read_text(encoding="utf-8")
     assert "対応期日" in body
     assert "default_offset_days" in body
+
+
+def test_inject_global_guidance_includes_delegated_plan_rules(tmp_path, manifest, monkeypatch):
+    from docsweep import inject as I
+
+    gpath = tmp_path / "g.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    target = tmp_path / "claude" / "CLAUDE.md"
+    target.parent.mkdir(parents=True)
+
+    I.inject_global(agent="claude", target=target)
+    body = gpath.read_text(encoding="utf-8")
+
+    assert "docsweep_delegation: external" in body
+    assert "--delegate" in body
+    assert "1〜4 ファイル" in body
 
 
 def test_inject_english_lang_generates_english_blocks(tmp_path, manifest):

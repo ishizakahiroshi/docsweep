@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from docsweep.templates_gen import _resolve_initial_due, new_doc
+from docsweep.templates_gen import _resolve_initial_due, new_doc, new_split_plans
 
 
 def _today_plus(n: int) -> str:
@@ -184,3 +184,51 @@ def test_bugfix_has_context_table_too(tmp_path: Path):
     assert CONTEXT_HEADER in body
     # 表は H1 直下（症状より前）に置く
     assert body.index("## context配分") < body.index("## 症状")
+
+
+DELEGATION_HEADINGS = (
+    "#### 目的",
+    "#### 調査で確認した現在の実装",
+    "#### 作業内容",
+    "#### 変更予定ファイル",
+    "#### 維持する仕様",
+    "#### スコープ外",
+    "#### 検証方法",
+    "#### 完了条件",
+)
+
+
+def test_delegate_plan_includes_delegation_frontmatter_and_detail_skeleton(tmp_path: Path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    doc = new_doc("plan", "delegate", project_dir=proj, offset_days={}, delegate=True)
+    body = doc.path.read_text(encoding="utf-8")
+
+    assert "docsweep_delegation: external" in body
+    assert "## C 詳細" in body
+    assert "### C1 <TODO: 短い目的>" in body
+    assert all(heading in body for heading in DELEGATION_HEADINGS)
+    assert body.index("## 概要") < body.index("## C 詳細")
+
+
+def test_delegate_split_adds_detail_to_parent_and_children(tmp_path: Path):
+    project = tmp_path / "project"
+
+    created = new_split_plans(
+        "split-delegate",
+        n=2,
+        project_dir=project,
+        offset_days={},
+        delegate=True,
+    )
+
+    assert len(created) == 3
+    parent = created[0].path
+    assert parent.read_text(encoding="utf-8").count("docsweep_delegation: external") == 1
+    for child in created[1:]:
+        body = child.path.read_text(encoding="utf-8")
+        assert "docsweep_delegation: external" in body
+        assert "## C 詳細" in body
+        assert "### C1 <TODO: 短い目的>" in body
+        assert "docsweep_parent: docs/local/plan_split-delegate.md" in body

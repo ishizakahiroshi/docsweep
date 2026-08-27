@@ -309,7 +309,29 @@ def _patch_frontmatter(path: Path, fields: dict[str, str | list[str]]) -> None:
     update_line(path, transform=transform)
 
 
-def _append_context_execution(text: str, contexts: list[str], execution_id: str) -> str:
+def _execution_model_cell(role: str, metadata: AIMetadata) -> str:
+    def display(value: str | None) -> str:
+        text = str(value or "").strip()
+        return text or "unknown"
+
+    return (
+        f"{display(role)}: {display(metadata.provider)} / "
+        f"{display(metadata.model_id)} / {display(metadata.reasoning_profile)}"
+    )
+
+
+# 実行モデル列が導入される前に記録された実行には、md 側にモデル情報が無い。
+# 同じ helper で作ることで、埋め草もセルの書式（role: provider / model / reasoning）を保つ。
+_UNKNOWN_EXECUTION_MODEL = _execution_model_cell("unknown", AIMetadata())
+
+
+def _append_context_execution(
+    text: str,
+    contexts: list[str],
+    execution_id: str,
+    *,
+    execution_model: str | None = None,
+) -> str:
     if contexts == ["not-applicable"]:
         return text
     lines = text.splitlines(keepends=True)
@@ -330,40 +352,85 @@ def _append_context_execution(text: str, contexts: list[str], execution_id: str)
     def cells(line: str) -> list[str]:
         return [part.strip() for part in line.strip().strip("|").split("|")]
 
-    header_cells = cells(lines[header])
+    table_rows: dict[int, list[str]] = {
+        header: cells(lines[header]),
+        header + 1: cells(lines[header + 1]),
+    }
+    for index in range(header + 2, end):
+        if lines[index].lstrip().startswith("|"):
+            table_rows[index] = cells(lines[index])
+
+    header_cells = table_rows[header]
+    original_width = len(header_cells)
+    for row in table_rows.values():
+        while len(row) < original_width:
+            row.append("")
+
     ai_col = next((i for i, value in enumerate(header_cells) if value == "AI実行"), None)
-    newline = "\r\n" if lines[header].endswith("\r\n") else "\n"
     if ai_col is None:
-        ai_col = len(header_cells)
-        header_cells.append("AI実行")
-        separator = cells(lines[header + 1])
-        separator.append("---")
-        lines[header] = "| " + " | ".join(header_cells) + " |" + newline
-        lines[header + 1] = "|" + "|".join(separator) + "|" + newline
+        model_col = next((i for i, value in enumerate(header_cells) if value == "実行モデル"), None)
+        ai_col = model_col if model_col is not None else len(header_cells)
+        for row in table_rows.values():
+            row.insert(ai_col, "")
+        table_rows[header][ai_col] = "AI実行"
+        table_rows[header + 1][ai_col] = "---"
+        if model_col is not None:
+            model_col += 1
+
+    model_col = next((i for i, value in enumerate(header_cells) if value == "実行モデル"), None)
+    if execution_model is not None and model_col is None:
+        model_col = ai_col + 1
+        for row in table_rows.values():
+            row.insert(model_col, "")
+        table_rows[header][model_col] = "実行モデル"
+        table_rows[header + 1][model_col] = "---"
+    elif execution_model is not None and model_col != ai_col + 1:
+        # A hand-edited table may already contain the model column elsewhere.
+        # Move it next to AI実行 so the two provenance columns stay paired.
+        assert model_col is not None
+        if model_col < ai_col:
+            ai_col -= 1
+        for row in table_rows.values():
+            value = row.pop(model_col)
+            row.insert(ai_col + 1, value)
+        model_col = ai_col + 1
 
     found: set[str] = set()
-    for index in range(header + 2, end):
-        if not lines[index].lstrip().startswith("|"):
+    for index, row in table_rows.items():
+        if index in (header, header + 1):
             continue
-        row = cells(lines[index])
         if not row:
             continue
         while len(row) <= ai_col:
             row.append("")
         context = row[0]
         if context not in contexts:
-            if len(row) == ai_col + 1 and row[ai_col] == "":
-                lines[index] = "| " + " | ".join(row) + " |" + newline
             continue
         found.add(context)
         refs = [part.strip() for part in row[ai_col].split(";") if part.strip()]
-        if execution_id not in refs:
+        is_new_execution = execution_id not in refs
+        if is_new_execution:
             refs.append(execution_id)
         row[ai_col] = "; ".join(refs)
-        lines[index] = "| " + " | ".join(row) + " |" + newline
+        if execution_model is not None and model_col is not None:
+            model_refs = [part.strip() for part in row[model_col].split(";") if part.strip()]
+            if is_new_execution:
+                # AI実行 列に既存 ID があってモデル情報が無い行（列の導入前に記録された行）では、
+                # 埋めずに追記すると 1 件目のモデルが 2 件目の ID のものとして誤読される。
+                # 位置で対応づけて読めるよう、欠けている分を先に埋めてから追記する。
+                while len(model_refs) < len(refs) - 1:
+                    model_refs.append(_UNKNOWN_EXECUTION_MODEL)
+                model_refs.append(execution_model)
+            row[model_col] = "; ".join(model_refs)
     missing = sorted(set(contexts) - found)
     if missing:
         raise ProvenanceError(f"context配分に対象Cがありません: {', '.join(missing)}")
+    newline = "\r\n" if lines[header].endswith("\r\n") else "\n"
+    for index, row in table_rows.items():
+        if index == header + 1:
+            lines[index] = "|" + "|".join(row) + "|" + newline
+        else:
+            lines[index] = "| " + " | ".join(row) + " |" + newline
     return "".join(lines)
 
 
@@ -539,10 +606,16 @@ def start_execution(
     refs = _frontmatter_refs(data)
     if execution_id not in refs:
         refs.append(execution_id)
+    execution_model = _execution_model_cell(role, metadata)
     # Validate the context table before taking an ID into the ledger. This avoids
     # leaving an orphan execution when the requested C does not exist.
     original_text = path.open("r", encoding="utf-8", newline="").read()
-    _append_context_execution(original_text, normalized, execution_id)
+    _append_context_execution(
+        original_text,
+        normalized,
+        execution_id,
+        execution_model=execution_model,
+    )
     with _ledger_lock(config.provenance_ledger):
         previous_rows = _append_row(config.provenance_ledger, row)
 
@@ -552,7 +625,12 @@ def start_execution(
                 "ai_execution_refs",
                 _format_value("ai_execution_refs", refs),
             )
-            return _append_context_execution(updated, normalized, execution_id)
+            return _append_context_execution(
+                updated,
+                normalized,
+                execution_id,
+                execution_model=execution_model,
+            )
 
         try:
             update_line(path, transform=transform)

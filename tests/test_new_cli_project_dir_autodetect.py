@@ -58,3 +58,42 @@ def test_new_with_explicit_project_dir_still_wins(tmp_path: Path, monkeypatch):
     assert len(generated) == 1
     # フォールバック（project_dir 直下）に落ちていないこと。
     assert not list(other.glob("bugfix_explicit-topic_*.md"))
+
+
+def test_delegate_is_ignored_for_bugfix_with_one_warning(tmp_path: Path, monkeypatch, capsys):
+    _isolate_global_config(tmp_path, monkeypatch)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".git").mkdir()
+
+    rc = main([
+        "new", "bugfix", "delegate-warning", "--delegate", "--no-due",
+        "--project-dir", str(project),
+    ])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.err.count("warning: --delegate") == 1
+    generated = next((project / "docs" / "local").glob("bugfix_delegate-warning_*.md"))
+    body = generated.read_text(encoding="utf-8")
+    assert "docsweep_delegation: external" not in body
+    assert "## C 詳細" not in body
+
+
+def test_delegate_cli_generates_delegated_plan(tmp_path: Path, monkeypatch, capsys):
+    _isolate_global_config(tmp_path, monkeypatch)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".git").mkdir()
+
+    rc = main([
+        "new", "plan", "delegate-cli", "--delegate", "--no-due",
+        "--project-dir", str(project),
+    ])
+
+    assert rc == 0
+    capsys.readouterr()
+    generated = project / "docs" / "local" / "plan_delegate-cli.md"
+    body = generated.read_text(encoding="utf-8")
+    assert "docsweep_delegation: external" in body
+    assert "## C 詳細" in body

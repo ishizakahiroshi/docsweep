@@ -37,6 +37,198 @@ ALLOWED_REVIEW_STATUSES = {"draft", "review", "published"}
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
+_DELEGATION_H4_HEADINGS = (
+    "目的",
+    "調査で確認した現在の実装",
+    "作業内容",
+    "変更予定ファイル",
+    "維持する仕様",
+    "スコープ外",
+    "検証方法",
+    "完了条件",
+)
+_DELEGATION_REQUIRED_HEADINGS = {"目的", "作業内容", "検証方法", "完了条件"}
+_AMBIGUOUS_COMPLETION_WORDS = (
+    "正しく動く",
+    "適切に処理",
+    "きちんと",
+    "問題なく",
+    "うまく",
+)
+_CLASSIFICATION_WORDS = (
+    "完了条件",
+    "検証",
+    "受入",
+    "変更予定ファイル",
+    "変更ファイル",
+    "completion criteria",
+    "changed files",
+)
+# closeout-check に分類させたい正規の節は例外。分類語を含むこと自体が目的なので警告しない。
+# 対象は plan 全体をまとめる 1 節のみ（C 単位の H4 8 項目は level 4 なのでそもそも走査外）。
+_CLASSIFICATION_EXEMPT_TITLES = frozenset({"全体の検証手順"})
+_MARKDOWN_HEADING_RE = re.compile(r"^(#{2,6})[ \t]+(.+?)[ \t]*$")
+_CONTEXT_C_ROW_RE = re.compile(r"^\s*\|\s*(C[1-9][0-9]*)\s*\|")
+_C_HEADING_RE = re.compile(r"^C([1-9][0-9]*)\b")
+_TODO_PLACEHOLDER_RE = re.compile(r"^<\s*TODO(?:\s*:[^>]*)?>$|^TODO(?:\s*:[^>]*)?$", re.IGNORECASE)
+
+
+def _markdown_headings(text: str) -> list[tuple[int, int, str]]:
+    """Return ``(line index, level, title)`` outside fenced code blocks."""
+    headings: list[tuple[int, int, str]] = []
+    in_fence = False
+    fence_char = ""
+    for index, raw_line in enumerate(text.splitlines()):
+        line = raw_line.rstrip("\r")
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            marker = stripped[:3]
+            if not in_fence:
+                in_fence = True
+                fence_char = marker
+            elif marker == fence_char:
+                in_fence = False
+                fence_char = ""
+            continue
+        if in_fence:
+            continue
+        match = _MARKDOWN_HEADING_RE.match(line)
+        if match:
+            headings.append((index, len(match.group(1)), match.group(2).strip()))
+    return headings
+
+
+def _section_body(lines: list[str], headings: list[tuple[int, int, str]], index: int) -> str:
+    """Return the text after one heading and before the next Markdown heading."""
+    start = headings[index][0] + 1
+    end = headings[index + 1][0] if index + 1 < len(headings) else len(lines)
+    return "\n".join(lines[start:end])
+
+
+def _heading_body(
+    lines: list[str], headings: list[tuple[int, int, str]], target: tuple[int, int, str]
+) -> str:
+    for index, heading in enumerate(headings):
+        if heading == target:
+            return _section_body(lines, headings, index)
+    return ""
+
+
+def _context_c_ids(text: str) -> list[str]:
+    lines = text.splitlines()
+    headings = _markdown_headings(text)
+    for index, (_line, level, title) in enumerate(headings):
+        if level == 2 and title == "context配分":
+            body = _section_body(lines, headings, index)
+            return [match.group(1) for line in body.splitlines() if (match := _CONTEXT_C_ROW_RE.match(line))]
+    return []
+
+
+def _is_unfilled_body(body: str) -> bool:
+    meaningful: list[str] = []
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        line = re.sub(r"^(?:[-*+・]\s*)", "", line)
+        line = re.sub(r"^\d+[.)]\s*", "", line)
+        if not line or line in {"—", "–"} or _TODO_PLACEHOLDER_RE.fullmatch(line):
+            continue
+        meaningful.append(line)
+    return not meaningful
+
+
+def _check_delegated_plan(path: Path, text: str, data: dict, warnings: list[str] | None) -> list[str]:
+    """Validate the opt-in C detail format without importing docsweep itself."""
+    if data.get("docsweep_delegation") != "external" or data.get("type") != "plan":
+        return []
+
+    errors: list[str] = []
+    lines = text.splitlines()
+    headings = _markdown_headings(text)
+
+    detail_index = next(
+        (index for index, (_line, level, title) in enumerate(headings)
+         if level == 2 and title == "C 詳細"),
+        None,
+    )
+    if detail_index is None:
+        errors.append(f"{path}: docsweep_delegation: external には ## C 詳細 が必要です")
+
+    detail_end = len(lines)
+    if detail_index is not None:
+        for index in range(detail_index + 1, len(headings)):
+            if headings[index][1] <= 2:
+                detail_end = headings[index][0]
+                break
+
+    c_entries = [
+        heading for heading in headings
+        if heading[1] == 3
+        and detail_index is not None
+        and headings[detail_index][0] < heading[0] < detail_end
+        and _C_HEADING_RE.match(heading[2])
+    ]
+    context_ids = _context_c_ids(text)
+    detail_ids = [
+        f"C{_C_HEADING_RE.match(title).group(1)}"
+        for _line, _level, title in c_entries
+    ]
+    context_set = set(context_ids)
+    detail_set = set(detail_ids)
+
+    if not context_ids:
+        errors.append(f"{path}: ## context配分 に C 行が必要です")
+    if len(context_ids) != len(context_set):
+        errors.append(f"{path}: ## context配分 の C 行が重複しています")
+    if len(detail_ids) != len(detail_set):
+        errors.append(f"{path}: ## C 詳細 の ### C<N> 見出しが重複しています")
+    for context_id in sorted(context_set - detail_set, key=lambda value: int(value[1:])):
+        errors.append(f"{path}: context配分 の {context_id} に対応する ### C{context_id[1:]} がありません")
+    for detail_id in sorted(detail_set - context_set, key=lambda value: int(value[1:])):
+        errors.append(f"{path}: ### C{detail_id[1:]} に対応する context配分 の {detail_id} 行がありません")
+
+    for c_index, c_entry in enumerate(c_entries):
+        c_id = _C_HEADING_RE.match(c_entry[2]).group(1)
+        c_start = c_entry[0]
+        c_end = c_entries[c_index + 1][0] if c_index + 1 < len(c_entries) else detail_end
+        c_headings = [
+            heading for heading in headings
+            if c_start < heading[0] < c_end and heading[1] == 4
+        ]
+        found = {title: 0 for title in _DELEGATION_H4_HEADINGS}
+        for _line, _level, title in c_headings:
+            if title in found:
+                found[title] += 1
+        for title in _DELEGATION_H4_HEADINGS:
+            if not found[title]:
+                errors.append(f"{path}: ### C{c_id} に #### {title} がありません")
+            elif found[title] > 1:
+                errors.append(f"{path}: ### C{c_id} の #### {title} が重複しています")
+
+        for heading in c_headings:
+            title = heading[2]
+            if title not in _DELEGATION_REQUIRED_HEADINGS:
+                continue
+            body = _heading_body(lines, headings, heading)
+            if _is_unfilled_body(body):
+                errors.append(f"{path}: ### C{c_id} の #### {title} が未記入です")
+            if title == "完了条件" and warnings is not None:
+                for word in _AMBIGUOUS_COMPLETION_WORDS:
+                    if word in body:
+                        warnings.append(f"{path}: ### C{c_id} の完了条件に曖昧表現があります: {word}")
+
+    if warnings is not None:
+        for _line, level, title in headings:
+            if level not in (2, 3):
+                continue
+            if title in _CLASSIFICATION_EXEMPT_TITLES:
+                continue
+            lowered = title.casefold()
+            for word in _CLASSIFICATION_WORDS:
+                if word.casefold() in lowered:
+                    warnings.append(f"{path}: H{level} 見出しに分類語があります: {title}")
+                    break
+    return errors
+
 
 def _staged_md_files() -> list[Path]:
     """``git diff --cached --name-only --diff-filter=AM`` で対象 md を取得。"""
@@ -96,7 +288,7 @@ def _parse_yaml_minimal(text: str) -> dict | None:
     return out
 
 
-def _check_one(path: Path) -> list[str]:
+def _check_one(path: Path, warnings: list[str] | None = None) -> list[str]:
     """1 ファイルを検査してエラー文字列のリストを返す（空なら OK）。"""
     errors: list[str] = []
     try:
@@ -157,6 +349,7 @@ def _check_one(path: Path) -> list[str]:
                 errors.append(
                     f"{path}: related に存在しない md があります: {ref_s!r}"
                 )
+    errors.extend(_check_delegated_plan(path, text, data, warnings))
     return errors
 
 
@@ -264,19 +457,27 @@ def main(argv: list[str] | None = None) -> int:
     else:
         targets = _staged_md_files()
     all_errors: list[str] = []
-    all_warnings: list[str] = []
+    # 警告は出所ごとに分ける。混ぜると「secret_policy=warn」の見出しの下に
+    # 書式警告が並び、利用者が原因を取り違える（設定を疑って調べ始める）。
+    secret_warnings: list[str] = []
+    format_warnings: list[str] = []
     if not args:
         privacy_errors, privacy_warnings = _check_staged_privacy()
         all_errors.extend(privacy_errors)
-        all_warnings.extend(privacy_warnings)
-    if all_warnings:
-        sys.stderr.write("docsweep-check: warning（secret_policy=warn）\n")
-        for warning in all_warnings:
-            sys.stderr.write(f"  - {warning}\n")
-    if not targets and not all_errors:
+        secret_warnings.extend(privacy_warnings)
+    if not targets and not all_errors and not secret_warnings:
         return 0
     for p in targets:
-        all_errors.extend(_check_one(p))
+        all_errors.extend(_check_one(p, format_warnings))
+    for header, warnings in (
+        ("docsweep-check: warning（secret_policy=warn）", secret_warnings),
+        ("docsweep-check: warning（委譲 plan の書式）", format_warnings),
+    ):
+        if not warnings:
+            continue
+        sys.stderr.write(f"{header}\n")
+        for warning in warnings:
+            sys.stderr.write(f"  - {warning}\n")
     if not all_errors:
         return 0
     sys.stderr.write("docsweep-check: frontmatter 不整合を検出しました\n")

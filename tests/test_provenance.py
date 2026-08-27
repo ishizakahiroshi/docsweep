@@ -10,6 +10,7 @@ import pytest
 from docsweep.config import load_config
 from docsweep.provenance import (
     AIMetadata,
+    _context_execution_refs,
     check_document,
     finish_execution,
     initialize_document,
@@ -77,8 +78,10 @@ def test_initialize_start_finish_and_check(tmp_path: Path):
         metadata=_metadata(),
     )
     body = doc.path.read_text(encoding="utf-8")
-    assert "| C | 種別 | 内容 | 備考/注意点 | AI実行 |" in body
+    assert "| C | 種別 | 内容 | 備考/注意点 | AI実行 | 実行モデル |" in body
     assert started["execution_id"] in body
+    assert "implementation: openai / unknown / unknown" in body
+    assert _context_execution_refs(body) == {started["execution_id"]}
 
     finished = finish_execution(
         started["execution_id"],
@@ -96,6 +99,142 @@ def test_initialize_start_finish_and_check(tmp_path: Path):
     assert [row["role"] for row in rows] == ["authoring", "implementation"]
     assert rows[1]["result"] == "completed"
     assert rows[1]["evidence_refs"] == "pytest"
+
+
+def test_context_execution_model_columns_follow_execution_order(tmp_path: Path):
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "model-order", project_dir=project, config=config, offset_days={})
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+
+    implementation = start_execution(
+        doc.path,
+        project_dir=project,
+        config=config,
+        contexts=["C1"],
+        role="implementation",
+        metadata=_metadata(),
+    )
+    review_metadata = AIMetadata.resolve(
+        agent="claude",
+        runtime="claude-code",
+        provider="anthropic",
+        model_id="opus-5",
+        model_display="Opus 5",
+        reasoning_profile="high",
+        model_source="runtime",
+        actor_key="ishizaka",
+    )
+    review = start_execution(
+        doc.path,
+        project_dir=project,
+        config=config,
+        contexts=["C1"],
+        role="review",
+        metadata=review_metadata,
+    )
+
+    body = doc.path.read_text(encoding="utf-8")
+    row = next(line for line in body.splitlines() if line.startswith("| C1 |"))
+    cells = [part.strip() for part in row.strip().strip("|").split("|")]
+
+    assert cells[4] == f"{implementation['execution_id']}; {review['execution_id']}"
+    assert cells[5] == "implementation: openai / unknown / unknown; review: anthropic / opus-5 / high"
+    assert _context_execution_refs(body) == {
+        implementation["execution_id"],
+        review["execution_id"],
+    }
+
+
+def test_context_execution_model_uses_unknown_for_empty_values(tmp_path: Path):
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "model-unknown", project_dir=project, config=config, offset_days={})
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+
+    started = start_execution(
+        doc.path,
+        project_dir=project,
+        config=config,
+        contexts=["C1"],
+        role="implementation",
+        metadata=AIMetadata(
+            provider="",
+            model_id="",
+            reasoning_profile="",
+        ),
+    )
+
+    body = doc.path.read_text(encoding="utf-8")
+    assert "implementation: unknown / unknown / unknown" in body
+    assert _context_execution_refs(body) == {started["execution_id"]}
+
+
+def test_context_execution_model_is_added_after_existing_ai_column(tmp_path: Path):
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "existing-ai-column", project_dir=project, config=config, offset_days={})
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+    body = doc.path.read_text(encoding="utf-8")
+    body = body.replace(
+        "| C | 種別 | 内容 | 備考/注意点 |\n"
+        "|---|---|---|---|\n"
+        "| C1 | planned | <TODO> | — |",
+        "| C | 種別 | 内容 | 備考/注意点 | AI実行 |\n"
+        "|---|---|---|---|---|\n"
+        "| C1 | planned | <TODO> | — | |",
+    )
+    doc.path.write_text(body, encoding="utf-8")
+
+    start_execution(
+        doc.path,
+        project_dir=project,
+        config=config,
+        contexts=["C1"],
+        role="implementation",
+        metadata=_metadata(),
+    )
+
+    updated = doc.path.read_text(encoding="utf-8")
+    assert "| C | 種別 | 内容 | 備考/注意点 | AI実行 | 実行モデル |" in updated
+
+
+def test_context_execution_model_pads_executions_recorded_before_the_column(tmp_path: Path):
+    """列の導入前に記録された実行の分を埋め、位置で対応づけて読めるようにする。
+
+    埋めないと 1 件目のモデル情報が 2 件目の実行 ID のものとして誤読される（欠落より悪い）。
+    """
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "legacy-ai-column", project_dir=project, config=config, offset_days={})
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+    body = doc.path.read_text(encoding="utf-8")
+    legacy_id = "AIX-20260101T000000000-deadbeef"
+    body = body.replace(
+        "| C | 種別 | 内容 | 備考/注意点 |\n"
+        "|---|---|---|---|\n"
+        "| C1 | planned | <TODO> | — |",
+        "| C | 種別 | 内容 | 備考/注意点 | AI実行 |\n"
+        "|---|---|---|---|---|\n"
+        f"| C1 | planned | <TODO> | — | {legacy_id} |",
+    )
+    doc.path.write_text(body, encoding="utf-8")
+
+    started = start_execution(
+        doc.path,
+        project_dir=project,
+        config=config,
+        contexts=["C1"],
+        role="implementation",
+        metadata=_metadata(),
+    )
+
+    updated = doc.path.read_text(encoding="utf-8")
+    row = next(line for line in updated.splitlines() if line.startswith("| C1 |"))
+    cells = [part.strip() for part in row.strip().strip("|").split("|")]
+    ai_refs = [part.strip() for part in cells[4].split(";") if part.strip()]
+    model_refs = [part.strip() for part in cells[5].split(";") if part.strip()]
+
+    assert ai_refs == [legacy_id, started["execution_id"]]
+    assert len(model_refs) == len(ai_refs)
+    assert model_refs[0] == "unknown: unknown / unknown / unknown"
+    assert model_refs[1].startswith("implementation: ")
 
 
 _SESSION_ID = "11111111-2222-4333-8444-555555555555"

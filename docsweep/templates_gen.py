@@ -51,7 +51,12 @@ def _placement_dir(
 
 
 def _okf_frontmatter(
-    *, doc_type: str, state: str, due: str | None, today: str | None = None
+    *,
+    doc_type: str,
+    state: str,
+    due: str | None,
+    today: str | None = None,
+    delegation: str | None = None,
 ) -> str:
     """OKF（plan_okf-adoption_2026-06-29.md）準拠の frontmatter ブロックを返す。
 
@@ -76,6 +81,8 @@ def _okf_frontmatter(
         "related: []",
         f"last_reviewed: {today}",
     ]
+    if delegation:
+        lines.append(f"docsweep_delegation: {delegation}")
     if due:
         lines.append(f"due: {due}")
     lines.append("---")
@@ -109,20 +116,40 @@ def okf_frontmatter(
     )
 
 
-def _plan_body(title: str, *, due: str | None = None) -> str:
+def _plan_body(title: str, *, due: str | None = None, delegate: bool = False) -> str:
+    delegation = "external" if delegate else None
+    detail = ""
+    if delegate:
+        detail = (
+            "## C 詳細\n\n"
+            "### C1 <TODO: 短い目的>\n\n"
+            "#### 目的\n\n<TODO>\n\n"
+            "#### 調査で確認した現在の実装\n\n<TODO>\n\n"
+            "#### 作業内容\n\n<TODO>\n\n"
+            "#### 変更予定ファイル\n\n<TODO>\n\n"
+            "#### 維持する仕様\n\n<TODO>\n\n"
+            "#### スコープ外\n\n<TODO>\n\n"
+            "#### 検証方法\n\n<TODO>\n\n"
+            "#### 完了条件\n\n<TODO>\n"
+        )
     return (
-        _okf_frontmatter(doc_type="plan", state="planned", due=due)
+        _okf_frontmatter(
+            doc_type="plan", state="planned", due=due, delegation=delegation
+        )
         + f"# [計画] {title}\n\n"
         "## context配分\n\n"
         "| C | 種別 | 内容 | 備考/注意点 |\n|---|---|---|---|\n| C1 | planned | <TODO> | — |\n\n"
         "## 概要\n\n<TODO: 何をしようとしているか>\n"
+        + ("\n" + detail if detail else "")
     )
 
 
-def _bugfix_body(title: str, *, due: str | None = None) -> str:
+def _bugfix_body(
+    title: str, *, due: str | None = None, delegate: bool = False
+) -> str:
     # bugfix は新規時に `due:` を入れない（[様子見] へ移した時に services/status.py が付ける）。
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
-    _ = due
+    _ = (due, delegate)
     return (
         _okf_frontmatter(doc_type="bugfix", state="in-progress", due=None)
         # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
@@ -138,7 +165,10 @@ def _bugfix_body(title: str, *, due: str | None = None) -> str:
     )
 
 
-def _pending_body(title: str, *, due: str | None = None) -> str:
+def _pending_body(
+    title: str, *, due: str | None = None, delegate: bool = False
+) -> str:
+    _ = delegate
     return (
         _okf_frontmatter(doc_type="pending", state="pending", due=due)
         + f"# [保留] {title}\n\n"
@@ -196,6 +226,7 @@ def new_doc(
     config: Config | None = None,
     work_dir: str | None = None,
     allow_sensitive: bool = False,
+    delegate: bool = False,
 ) -> NewDoc:
     """テンプレ MD を新規生成して :class:`NewDoc` を返す。
 
@@ -211,7 +242,7 @@ def new_doc(
         raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
     out_dir = _placement_dir(project_dir, config=config, work_dir=work_dir)
     resolved_due = _resolve_initial_due(doc_type, due=due, offset_days=offset_days)
-    body = _BUILDERS[doc_type](title or topic, due=resolved_due)
+    body = _BUILDERS[doc_type](title or topic, due=resolved_due, delegate=delegate)
     if config is not None:
         ensure_write_allowed(
             config=config,
@@ -293,6 +324,7 @@ def new_split_plans(
     config: Config | None = None,
     work_dir: str | None = None,
     allow_sensitive: bool = False,
+    delegate: bool = False,
 ) -> list[NewDoc]:
     """親 plan + 子 N 本を生成し related と方向付き親参照を付ける（UX W3 / P26）。"""
     if n < 1 or n > 20:
@@ -305,6 +337,7 @@ def new_split_plans(
             project_dir=project_dir, title=parent_title,
             due=due, offset_days=offset_days,
             config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
+            delegate=delegate,
         )
         created.append(parent)
         children: list[NewDoc] = []
@@ -317,6 +350,7 @@ def new_split_plans(
                 title=f"{parent_title} C{i}",
                 due=due, offset_days=offset_days,
                 config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
+                delegate=delegate,
             )
             created.append(child)
             children.append(child)

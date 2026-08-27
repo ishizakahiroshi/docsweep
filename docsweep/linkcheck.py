@@ -1,6 +1,7 @@
 """C5: linkcheck — plan の「変更予定ファイル」セクションと実装実態の整合チェック。
 
-plan_*.md の ``## 変更予定ファイル`` セクションを正規表現抽出し、各ファイルについて:
+plan_*.md の ``## 変更予定ファイル`` または C 詳細内の
+``#### 変更予定ファイル`` セクションを正規表現抽出し、各ファイルについて:
 - 実在確認（ファイル / ディレクトリパスとして存在するか）
 - plan 作成日以降の変更量（git log の touch 回数）
 - commit message での plan 名言及
@@ -22,6 +23,10 @@ from .models import FileRecord
 # plan の「変更予定ファイル」セクションを切り出すマーカー。
 _SECTION_RE = re.compile(
     r"^##\s*変更予定ファイル\s*$.*?(?=^##\s|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+_DETAIL_SECTION_RE = re.compile(
+    r"^####\s*変更予定ファイル\s*$.*?(?=^#{1,4}\s|\Z)",
     re.MULTILINE | re.DOTALL,
 )
 
@@ -61,10 +66,45 @@ class LinkCheckResult:
 
 
 def _extract_section(text: str) -> str | None:
-    m = _SECTION_RE.search(text)
-    if not m:
+    sections = _extract_sections(text)
+    if not sections:
         return None
-    return m.group(0)
+    return "\n".join(sections)
+
+
+def _extract_sections(text: str) -> list[str]:
+    """変更予定ファイル節を H2/H4 の両方から順序付きで集める。
+
+    H2 は従来の plan 書式、H4 は委譲 plan の C 詳細書式に対応する。
+    同じ範囲が複数のパターンに一致した場合でも、節そのものは一度だけ返す。
+    """
+    matches = []
+    legacy = _SECTION_RE.search(text)
+    if legacy:
+        matches.append(legacy)
+    matches.extend(_DETAIL_SECTION_RE.finditer(text))
+    matches.sort(key=lambda match: match.start())
+    sections: list[str] = []
+    seen_spans: set[tuple[int, int]] = set()
+    for match in matches:
+        span = match.span()
+        if span in seen_spans:
+            continue
+        seen_spans.add(span)
+        sections.append(match.group(0))
+    return sections
+
+
+def _extract_declared_files(text: str) -> list[str]:
+    """宣言節ごとに候補を抽出し、記法の違いを越えて union する。"""
+    files: list[str] = []
+    seen: set[str] = set()
+    for section in _extract_sections(text):
+        for path in _extract_files_from_section(section):
+            if path not in seen:
+                seen.add(path)
+                files.append(path)
+    return files
 
 
 def _extract_files_from_section(section: str) -> list[str]:
@@ -156,7 +196,7 @@ def _check_one(record: FileRecord) -> LinkCheckResult:
             plan_path=str(plan_path), plan_name=plan_name, progress_hint="no_section",
         )
 
-    raw_files = _extract_files_from_section(section)
+    raw_files = _extract_declared_files(text)
     repo = _resolve_repo(record)
     since = _plan_created_iso(record)
 

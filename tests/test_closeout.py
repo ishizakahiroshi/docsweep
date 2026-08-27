@@ -241,6 +241,49 @@ def test_closeout_is_read_only_and_cli_json_has_exit_contract(tmp_path: Path, ca
     assert parent.stat().st_mtime_ns == before_mtime
 
 
+def test_closeout_keeps_delegated_h4_evidence_classification(tmp_path: Path):
+    project = tmp_path / "repo"
+    _write(project / "docsweep" / "linkcheck.py", "# fixture\n")
+    parent = _write(
+        project / "docs" / "local" / "plan_delegated.md",
+        "---\n"
+        "type: plan\n"
+        "status: draft\n"
+        "docsweep_state: planned\n"
+        "docsweep_delegation: external\n"
+        "related: []\n"
+        "---\n"
+        "# [計画] delegated\n\n"
+        "## context配分\n\n"
+        "| C | 種別 | 内容 | 備考/注意点 |\n"
+        "|---|---|---|---|\n"
+        "| C1 | planned | 実装 | — |\n\n"
+        "## 概要\n\n概要。\n\n"
+        "## C 詳細\n\n"
+        "### C1 実装\n\n"
+        "#### 目的\n\n目的を一つに定める。\n\n"
+        "#### 調査で確認した現在の実装\n\n現在の実装を確認した。\n\n"
+        "#### 作業内容\n\n対象を変更する。\n\n"
+        "#### 変更予定ファイル\n\n- `docsweep/linkcheck.py`\n\n"
+        "#### 維持する仕様\n\n既存の仕様を維持する。\n\n"
+        "#### スコープ外\n\n関連しない変更は扱わない。\n\n"
+        "#### 検証方法\n\n- pytest tests/test_linkcheck.py -q 成功\n\n"
+        "#### 完了条件\n\n- C1 の完了結果を確認する。\n"
+    )
+
+    result = check_closeout(parent, project_dir=project, config=_cfg(project))
+
+    assert result.parent["details"]["sections"]["changed_files"] == ["変更予定ファイル"]
+    assert result.parent["details"]["linkcheck"]["declared_files"] == [
+        {
+            "path": "docsweep/linkcheck.py",
+            "resolved_path": (project / "docsweep" / "linkcheck.py").as_posix(),
+            "exists": True,
+            "inside_project": True,
+        }
+    ]
+
+
 def test_closeout_cli_manual_and_blocker_exit_codes(tmp_path: Path, capsys):
     project = tmp_path / "repo"
     manual = _write(

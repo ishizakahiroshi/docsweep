@@ -399,6 +399,10 @@ def cmd_new(args: argparse.Namespace) -> int:
     except Exception:
         pass
     offsets: dict[str, int] = {} if getattr(args, "no_due", False) else cfg.due_default_offset_days
+    delegate = bool(getattr(args, "delegate", False))
+    if delegate and args.type != "plan":
+        print("warning: --delegate は plan のみ対応のため無視します", file=sys.stderr)
+        delegate = False
     metadata = AIMetadata.resolve(
         actor_default=cfg.provenance_actor_key,
         agent=getattr(args, "ai_agent", None),
@@ -446,6 +450,7 @@ def cmd_new(args: argparse.Namespace) -> int:
                 offset_days=offsets,
                 config=cfg,
                 allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
+                delegate=delegate,
             )
         except (OSError, ValueError) as exc:
             print(f"保存を中止しました: {exc}", file=sys.stderr)
@@ -483,6 +488,7 @@ def cmd_new(args: argparse.Namespace) -> int:
             offset_days=offsets,
             config=cfg,
             allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
+            delegate=delegate,
         )
     except (OSError, ValueError) as exc:
         print(f"保存を中止しました: {exc}", file=sys.stderr)

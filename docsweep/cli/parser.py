@@ -294,6 +294,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--split", type=int, default=0, metavar="N",
         help="親 plan + 子 N 本を一括生成し related 双方向と docsweep_parent を付ける（UX W3 / P26）",
     )
+    p_new.add_argument(
+        "--delegate", action="store_true",
+        help="実装を別 AI へ委譲する plan として生成（docsweep_delegation: external と C 詳細節の雛形を付ける）",
+    )
     for flag, dest, help_text in (
         ("--ai-agent", "ai_agent", "作成AI（codex/claude/grok等）"),
         ("--ai-runtime", "ai_runtime", "実行環境（many-ai-cli/claude-code等）"),
