@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from docsweep.config import DEFAULT_TYPES, load_config
+from docsweep.config import DEFAULT_TYPES, TemplateSection, load_config
 from docsweep.engine import auto_sweep
 from docsweep.scan import scan
 
@@ -82,3 +82,50 @@ def test_static_manual_and_reference_docs_are_not_work_records(tmp_path: Path):
     )
 
     assert scan(config) == []
+
+
+def test_template_sections_merge_global_and_project_by_heading(tmp_path: Path):
+    global_cfg = tmp_path / "global.yaml"
+    global_cfg.write_text(
+        "template_sections:\n"
+        "  plan:\n"
+        "    - heading: Shared\n"
+        "      body: global body\n"
+        "    - heading: Global only\n"
+        "      body: keep me\n",
+        encoding="utf-8",
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".docsweep.yaml").write_text(
+        "template_sections:\n"
+        "  plan:\n"
+        "    - heading: Shared\n"
+        "      body: project body\n"
+        "    - heading: Project only\n"
+        "      body: append me\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(project_dir=project, global_path=global_cfg)
+
+    assert config.template_sections["plan"] == (
+        TemplateSection(heading="Shared", body="project body"),
+        TemplateSection(heading="Global only", body="keep me"),
+        TemplateSection(heading="Project only", body="append me"),
+    )
+
+
+def test_template_sections_reject_reserved_heading(tmp_path: Path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".docsweep.yaml").write_text(
+        "template_sections:\n"
+        "  plan:\n"
+        "    - heading: 概要\n"
+        "      body: duplicate\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="既定見出し"):
+        load_config(project_dir=project, global_path=tmp_path / "missing.yaml")

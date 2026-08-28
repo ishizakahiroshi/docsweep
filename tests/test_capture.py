@@ -100,6 +100,26 @@ def test_heuristic_bugfix_filename_has_date():
     assert re.search(r"\d{4}-\d{2}-\d{2}", fname)
 
 
+def test_capture_applies_project_template_sections(tmp_path: Path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".docsweep.yaml").write_text(
+        "template_sections:\n"
+        "  plan:\n"
+        "    - heading: 顧客への説明\n"
+        "      body: '<TODO: 伝達範囲>'\n",
+        encoding="utf-8",
+    )
+    config = load_config(project_dir=project, global_path=tmp_path / "missing.yaml")
+
+    draft = extract_drafts(
+        "TODO: API キャッシュを実装する",
+        config=config,
+    )[0]
+
+    assert draft.body.endswith("## 顧客への説明\n\n<TODO: 伝達範囲>\n")
+
+
 # ===================================================================
 # LLM provider 抽象
 # ===================================================================

@@ -12,11 +12,17 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from .config import Config, resolve_work_dir
+from .config import (
+    DEFAULT_TEMPLATE_SECTION_HEADINGS,
+    Config,
+    TemplateSection,
+    resolve_work_dir,
+)
 from .okf import bundled_okf_profile
 from .work_queue import ensure_write_allowed
 
@@ -94,6 +100,34 @@ def _okf_frontmatter(
 _INITIAL_STATE = {"plan": "planned", "bugfix": "in-progress", "pending": "pending"}
 
 
+def _append_template_sections(
+    body: str,
+    *,
+    doc_type: str,
+    template_sections: Mapping[str, tuple[TemplateSection, ...]] | None,
+) -> str:
+    """設定された追加節を本文末尾へ追加する。未設定なら本文をそのまま返す。"""
+    sections = (template_sections or {}).get(doc_type, ())
+    if not sections:
+        return body
+
+    reserved = DEFAULT_TEMPLATE_SECTION_HEADINGS.get(doc_type, frozenset())
+    seen: set[str] = set()
+    rendered: list[str] = []
+    for section in sections:
+        if section.heading in reserved:
+            raise ValueError(
+                f"template_sections.{doc_type} の heading '{section.heading}' は既定見出しと重複しています"
+            )
+        if section.heading in seen:
+            raise ValueError(
+                f"template_sections.{doc_type} の heading '{section.heading}' が重複しています"
+            )
+        seen.add(section.heading)
+        rendered.append(f"## {section.heading}\n\n{section.body.strip()}")
+    return body.rstrip("\n") + "\n\n" + "\n\n".join(rendered) + "\n"
+
+
 def okf_frontmatter(
     doc_type: str,
     *,
@@ -116,7 +150,13 @@ def okf_frontmatter(
     )
 
 
-def _plan_body(title: str, *, due: str | None = None, delegate: bool = False) -> str:
+def _plan_body(
+    title: str,
+    *,
+    due: str | None = None,
+    delegate: bool = False,
+    template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
+) -> str:
     delegation = "external" if delegate else None
     detail = ""
     if delegate:
@@ -132,7 +172,7 @@ def _plan_body(title: str, *, due: str | None = None, delegate: bool = False) ->
             "#### 検証方法\n\n<TODO>\n\n"
             "#### 完了条件\n\n<TODO>\n"
         )
-    return (
+    body = (
         _okf_frontmatter(
             doc_type="plan", state="planned", due=due, delegation=delegation
         )
@@ -142,15 +182,22 @@ def _plan_body(title: str, *, due: str | None = None, delegate: bool = False) ->
         "## 概要\n\n<TODO: 何をしようとしているか>\n"
         + ("\n" + detail if detail else "")
     )
+    return _append_template_sections(
+        body, doc_type="plan", template_sections=template_sections
+    )
 
 
 def _bugfix_body(
-    title: str, *, due: str | None = None, delegate: bool = False
+    title: str,
+    *,
+    due: str | None = None,
+    delegate: bool = False,
+    template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
 ) -> str:
     # bugfix は新規時に `due:` を入れない（[様子見] へ移した時に services/status.py が付ける）。
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
     _ = (due, delegate)
-    return (
+    body = (
         _okf_frontmatter(doc_type="bugfix", state="in-progress", due=None)
         # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
         + f"# [実行中] {title}\n\n"
@@ -163,16 +210,26 @@ def _bugfix_body(
         "## 症状\n\n<TODO>\n\n## 根本原因\n\n<TODO>\n\n## 修正内容\n\n<TODO>\n\n"
         "## 変更ファイル\n\n<TODO>\n\n## 検証\n\n<TODO>\n\n## 備忘\n\n<TODO>\n"
     )
+    return _append_template_sections(
+        body, doc_type="bugfix", template_sections=template_sections
+    )
 
 
 def _pending_body(
-    title: str, *, due: str | None = None, delegate: bool = False
+    title: str,
+    *,
+    due: str | None = None,
+    delegate: bool = False,
+    template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
 ) -> str:
     _ = delegate
-    return (
+    body = (
         _okf_frontmatter(doc_type="pending", state="pending", due=due)
         + f"# [保留] {title}\n\n"
         "## 概要\n\n<TODO: 何を止めたか>\n\n## 保留理由\n\n<TODO>\n\n## 着手条件\n\n- <TODO>\n"
+    )
+    return _append_template_sections(
+        body, doc_type="pending", template_sections=template_sections
     )
 
 
@@ -242,7 +299,12 @@ def new_doc(
         raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
     out_dir = _placement_dir(project_dir, config=config, work_dir=work_dir)
     resolved_due = _resolve_initial_due(doc_type, due=due, offset_days=offset_days)
-    body = _BUILDERS[doc_type](title or topic, due=resolved_due, delegate=delegate)
+    body = _BUILDERS[doc_type](
+        title or topic,
+        due=resolved_due,
+        delegate=delegate,
+        template_sections=config.template_sections if config is not None else None,
+    )
     if config is not None:
         ensure_write_allowed(
             config=config,

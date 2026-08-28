@@ -53,7 +53,7 @@ GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "8"
+GUIDANCE_VERSION = "9"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -388,6 +388,52 @@ def generate_delegation_block(lang: str = "ja") -> str:
     ])
 
 
+def generate_template_sections_block(lang: str = "ja") -> str:
+    """プロジェクト固有の本文節を設定・記入する導線を生成する。"""
+    new_cmd = docsweep_command("new", "<type>", "<topic>")
+    if lang == "en":
+        return "\n".join([
+            "### Project-specific template sections",
+            "",
+            "Declare required project-specific information in `.docsweep.yaml` under `template_sections`, grouped by generated type.",
+            "The same key is also accepted in `~/.docsweep/config.yaml` for shared defaults across projects.",
+            "A project entry with the same heading replaces the global entry; a new heading is appended.",
+            "An empty list clears inherited sections for that type.",
+            "",
+            "```yaml",
+            "template_sections:",
+            "  plan:",
+            "    - heading: Customer communication",
+            "      body: |",
+            "        <TODO: what was communicated>",
+            "```",
+            f"Create the document with `{new_cmd}` so the configured sections are generated automatically.",
+            "Before implementation, review every generated `##` project-specific section and replace its TODO text with the required facts.",
+            "Keep the built-in sections, especially `## context配分`, and do not reuse a built-in heading.",
+            "Each heading must be a non-empty single line without Markdown heading markers, and each body must be non-empty.",
+        ])
+    return "\n".join([
+        "### プロジェクト固有の本文節",
+        "",
+        "プロジェクト固有の必須情報は、`.docsweep.yaml` の `template_sections` に生成種別ごとに宣言する。",
+        "同じキーは `~/.docsweep/config.yaml` にも書け、全プロジェクト共通の既定として使える。",
+        "プロジェクト側で同じ見出しを書いた場合はグローバル側を置き換え、新しい見出しは末尾へ追加する。",
+        "空のリストを指定した種別は、継承した追加節をすべて解除する。",
+        "",
+        "```yaml",
+        "template_sections:",
+        "  plan:",
+        "    - heading: 顧客への説明範囲",
+        "      body: |",
+        "        <TODO: 何を伝えたか>",
+        "```",
+        f"`{new_cmd}` で文書を作ると、設定した追加節が自動で生成される。",
+        "実装に入る前に、生成された `##` のプロジェクト固有節をすべて確認し、TODO を必要な事実で埋める。",
+        "既定の節、とくに `## context配分` は残し、既定と同じ見出しは指定しない。",
+        "見出しは空でない1行の文字列（Markdown の見出し記号なし）、本文は空でない文字列にする。",
+    ])
+
+
 def generate_guidance_block(
     lang: str = "ja",
     *,
@@ -439,6 +485,8 @@ def generate_guidance_block(
             "",
             generate_delegation_block(lang),
             "",
+            generate_template_sections_block(lang),
+            "",
             generate_due_block(lang),
         ])
     return "\n".join([
@@ -474,6 +522,8 @@ def generate_guidance_block(
         generate_provenance_block(lang),
         "",
         generate_delegation_block(lang),
+        "",
+        generate_template_sections_block(lang),
         "",
         generate_due_block(lang),
     ])

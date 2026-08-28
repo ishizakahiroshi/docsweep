@@ -8,11 +8,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..config import DEFAULT_DUE_OFFSET_DAYS
-from ..templates_gen import okf_frontmatter
+from ..config import DEFAULT_DUE_OFFSET_DAYS, TemplateSection
+from ..templates_gen import _append_template_sections, okf_frontmatter
 from .models import Draft, DraftKind
 
 
@@ -24,6 +25,7 @@ class LLMRequest:
     project_hint: str | None = None
     max_drafts: int = 5
     offset_days: dict[str, int] | None = None
+    template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None
 
 
 class LLMClient(Protocol):
@@ -64,6 +66,7 @@ class MockLLM:
                 source_hint="llm:mock",
                 project=request.project_hint,
                 offset_days=request.offset_days,
+                template_sections=request.template_sections,
             ))
             if len(drafts) >= request.max_drafts:
                 break
@@ -108,6 +111,7 @@ def _make_draft(
     source_hint: str,
     project: str | None,
     offset_days: dict[str, int] | None = None,
+    template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
 ) -> Draft:
     from .models import Draft as _Draft
 
@@ -126,7 +130,9 @@ def _make_draft(
         kind,
         offset_days=DEFAULT_DUE_OFFSET_DAYS if offset_days is None else offset_days,
     )
-    body = front + _render_body_seed(kind, title, body_seed)
+    body = front + _render_body_seed(
+        kind, title, body_seed, template_sections=template_sections
+    )
     return _Draft(
         id=f"draft-{idx:03d}",
         kind=kind,
@@ -138,7 +144,13 @@ def _make_draft(
     )
 
 
-def _render_body_seed(kind: str, title: str, seed: str) -> str:
+def _render_body_seed(
+    kind: str,
+    title: str,
+    seed: str,
+    *,
+    template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
+) -> str:
     """kind に応じた必須セクションを持つテンプレ本文を組む。"""
     if kind == DraftKind.PLAN.value:
         label = "[計画]"
@@ -161,4 +173,7 @@ def _render_body_seed(kind: str, title: str, seed: str) -> str:
             "## 保留理由\n\n<TODO>\n\n"
             "## 着手条件\n\n<TODO>\n"
         )
-    return f"# {label} {title}\n\n{sections}"
+    body = f"# {label} {title}\n\n{sections}"
+    return _append_template_sections(
+        body, doc_type=kind, template_sections=template_sections
+    )

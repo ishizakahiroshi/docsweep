@@ -52,6 +52,27 @@ plan, bugfix, or pending file under the configured `work_dir`, linked from the a
 2. `work_dir` 未設定時の既定は `docs/local/`（`docs/` の有無で暗黙に切り替えない）
 3. 会話履歴の草案保存（`capture` / `capture_save`）も同じ queue を使う
 
+### プロジェクト固有の本文節
+
+プロジェクト固有の必須情報を毎回の作業文書へ含めたい場合は、`.docsweep.yaml` の
+`template_sections` に生成種別ごとの追加節を宣言します。`~/.docsweep/config.yaml` にも
+同じ形式で書けます。グローバル設定が共通の基底になり、プロジェクト側で同じ見出しを
+書くと置き換え、新しい見出しは末尾へ追加します。空のリストは、その種別の継承した追加節を解除します。
+
+```yaml
+template_sections:
+  plan:
+    - heading: 顧客への説明範囲
+      body: |
+        <TODO: 何を伝えたか>
+```
+
+`python -m docsweep new <type> <topic>` で作成すると、設定した追加節が本文末尾へ自動で
+追加されます。`capture` で抽出した草案にも同じ追加節が付きます。AI は実装に入る前に
+生成されたプロジェクト固有の `##` 節をすべて確認し、TODO を必要な事実で埋めます。
+`## context配分` を含む既定の節は残し、既定と同じ見出しは指定しません。見出しは Markdown
+見出し記号を含まない空でない1行、本文は空でない文字列にします。
+
 ---
 
 ## H1 ステータスラベル（必須）

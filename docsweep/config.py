@@ -7,6 +7,7 @@ states / types は単一正本で、ここから検出・archive 可否・概要
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PureWindowsPath
 
@@ -40,6 +41,14 @@ class TypeDef:
     archive_dir: str | None = None  # type 別 archive 先（None なら全体設定を使う）
 
 
+@dataclass(frozen=True)
+class TemplateSection:
+    """生成する作業 MD へ追加するプロジェクト固有の本文節。"""
+
+    heading: str
+    body: str
+
+
 DEFAULT_TYPES: tuple[TypeDef, ...] = (
     TypeDef("plan", "plan_*.md", ("概要",), "概要", 90),
     TypeDef("bugfix", "bugfix_*.md", ("症状", "根本原因", "修正内容", "変更ファイル", "検証", "備忘"), "症状", 30),
@@ -57,6 +66,13 @@ DEFAULT_TYPES: tuple[TypeDef, ...] = (
     TypeDef("review-sheet", "review_*.html", (), "", 180),
     TypeDef("incident", "incident_*.html", (), "", 60),
 )
+
+
+DEFAULT_TEMPLATE_SECTION_HEADINGS: dict[str, frozenset[str]] = {
+    "plan": frozenset({"context配分", "概要"}),
+    "bugfix": frozenset({"context配分", "症状", "根本原因", "修正内容", "変更ファイル", "検証", "備忘"}),
+    "pending": frozenset({"概要", "保留理由", "着手条件"}),
+}
 
 
 DEFAULT_DUE_OFFSET_DAYS: dict[str, int] = {
@@ -100,6 +116,11 @@ class Config:
     ignore: list[str] = field(default_factory=list)
     use_gitignore: bool = True
     types: list[TypeDef] = field(default_factory=lambda: list(DEFAULT_TYPES))
+    # `template_sections` は type ごとの追加本文節。global を基底に project が重なる。
+    template_sections: dict[str, tuple[TemplateSection, ...]] = field(default_factory=dict)
+    template_sections_base: dict[str, tuple[TemplateSection, ...]] | None = field(
+        default=None, repr=False
+    )
     state_model: StateModel = field(default_factory=StateModel)
     project_markers: list[str] = field(default_factory=lambda: list(DEFAULT_PROJECT_MARKERS))
     lang: str = "ja"
@@ -258,11 +279,27 @@ def config_for_project(config: Config, project_dir: Path) -> Config:
     """横断処理で選ばれた project の queue 設定を Config に反映する。"""
     work_dir, work_policy, secret_policy = project_work_settings(project_dir, config)
     project_cfg = _load_yaml(Path(project_dir) / PROJECT_CONFIG_NAME)
+    project_template_sections = _parse_template_sections(
+        project_cfg.get("template_sections"),
+        source=Path(project_dir) / PROJECT_CONFIG_NAME,
+    )
+    same_project = (
+        config.project_dir is not None
+        and Path(config.project_dir).resolve() == Path(project_dir).resolve()
+    )
+    template_base = (
+        config.template_sections
+        if same_project or config.template_sections_base is None
+        else config.template_sections_base
+    )
     return replace(
         config,
         work_dir=work_dir,
         work_policy=work_policy,
         secret_policy=secret_policy,
+        template_sections=_merge_template_sections(
+            template_base, project_template_sections
+        ),
         project_dir=Path(project_dir).resolve(),
         work_dir_explicit=(config.work_dir_explicit or "work_dir" in project_cfg),
         work_policy_explicit=(config.work_policy_explicit or "work_policy" in project_cfg),
@@ -296,6 +333,113 @@ def _parse_types(raw: list | None) -> list[TypeDef] | None:
             )
         )
     return out
+
+
+def _parse_template_sections(
+    raw: object, *, source: Path | None = None
+) -> dict[str, tuple[TemplateSection, ...]]:
+    """``template_sections`` の設定を検証済みの内部表現へ変換する。"""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ValueError(_template_sections_error(source, "マップ形式で指定してください"))
+
+    parsed: dict[str, tuple[TemplateSection, ...]] = {}
+    for raw_type, raw_sections in raw.items():
+        if not isinstance(raw_type, str) or raw_type not in DEFAULT_TEMPLATE_SECTION_HEADINGS:
+            allowed = ", ".join(sorted(DEFAULT_TEMPLATE_SECTION_HEADINGS))
+            raise ValueError(
+                _template_sections_error(
+                    source, f"type は {allowed} のいずれかで指定してください: {raw_type!r}"
+                )
+            )
+        if raw_sections is None:
+            parsed[raw_type] = ()
+            continue
+        if not isinstance(raw_sections, list):
+            raise ValueError(
+                _template_sections_error(
+                    source, f"{raw_type} は section のリストで指定してください"
+                )
+            )
+
+        sections: list[TemplateSection] = []
+        seen: set[str] = set()
+        reserved = DEFAULT_TEMPLATE_SECTION_HEADINGS[raw_type]
+        for index, raw_section in enumerate(raw_sections, start=1):
+            if not isinstance(raw_section, Mapping):
+                raise ValueError(
+                    _template_sections_error(
+                        source, f"{raw_type}[{index}] は heading / body のマップで指定してください"
+                    )
+                )
+            heading = raw_section.get("heading")
+            body = raw_section.get("body")
+            if not isinstance(heading, str) or not heading.strip():
+                raise ValueError(
+                    _template_sections_error(
+                        source, f"{raw_type}[{index}].heading は空でない文字列が必要です"
+                    )
+                )
+            if not isinstance(body, str) or not body.strip():
+                raise ValueError(
+                    _template_sections_error(
+                        source, f"{raw_type}[{index}].body は空でない文字列が必要です"
+                    )
+                )
+            heading = heading.strip()
+            if "\n" in heading or "\r" in heading or heading.startswith("#"):
+                raise ValueError(
+                    _template_sections_error(
+                        source,
+                        f"{raw_type}[{index}].heading は Markdown 記号を含まない1行の見出しにしてください",
+                    )
+                )
+            if heading in reserved:
+                raise ValueError(
+                    _template_sections_error(
+                        source, f"{raw_type}[{index}].heading は既定見出し '{heading}' と重複しています"
+                    )
+                )
+            if heading in seen:
+                raise ValueError(
+                    _template_sections_error(
+                        source, f"{raw_type} の heading '{heading}' が重複しています"
+                    )
+                )
+            seen.add(heading)
+            sections.append(TemplateSection(heading=heading, body=body.strip()))
+        parsed[raw_type] = tuple(sections)
+    return parsed
+
+
+def _template_sections_error(source: Path | None, message: str) -> str:
+    prefix = f"{source}: " if source is not None else "template_sections: "
+    return prefix + message
+
+
+def _merge_template_sections(
+    base: Mapping[str, tuple[TemplateSection, ...]],
+    override: Mapping[str, tuple[TemplateSection, ...]],
+) -> dict[str, tuple[TemplateSection, ...]]:
+    """global を基底に project を重ね、同じ見出しは project で置換する。"""
+    merged: dict[str, list[TemplateSection]] = {
+        doc_type: list(sections) for doc_type, sections in base.items()
+    }
+    for doc_type, sections in override.items():
+        if not sections:
+            merged[doc_type] = []
+            continue
+        current = merged.setdefault(doc_type, [])
+        positions = {section.heading: index for index, section in enumerate(current)}
+        for section in sections:
+            position = positions.get(section.heading)
+            if position is None:
+                positions[section.heading] = len(current)
+                current.append(section)
+            else:
+                current[position] = section
+    return {doc_type: tuple(sections) for doc_type, sections in merged.items()}
 
 
 def _merge(base: dict, override: dict) -> dict:
@@ -381,6 +525,15 @@ def load_config(
     )
 
     types = _parse_types(merged.get("types")) or list(DEFAULT_TYPES)
+    global_template_sections = _parse_template_sections(
+        g.get("template_sections"), source=global_path
+    )
+    project_template_sections = _parse_template_sections(
+        project_cfg.get("template_sections"), source=project_config_path
+    )
+    template_sections = _merge_template_sections(
+        global_template_sections, project_template_sections
+    )
     state_model = build_state_model(merged.get("states"))
 
     # ``due:`` ブロックは shallow merge ではなくキー単位の deep merge で重ねる。
@@ -539,6 +692,8 @@ def load_config(
         ignore=list(merged.get("ignore") or []),
         use_gitignore=bool(merged.get("use_gitignore", True)),
         types=types,
+        template_sections=template_sections,
+        template_sections_base=global_template_sections,
         state_model=state_model,
         project_markers=list(merged.get("project_markers") or DEFAULT_PROJECT_MARKERS),
         lang=merged.get("lang") or "ja",

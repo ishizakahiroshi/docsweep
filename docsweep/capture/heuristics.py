@@ -7,7 +7,9 @@ LLM 経路の前段として、決定事項マーカー（「決定」「TODO」
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 
+from ..config import TemplateSection
 from .llm import _make_draft
 from .models import Draft, DraftKind
 
@@ -52,6 +54,7 @@ def extract_drafts_heuristic(
     project: str | None = None,
     max_drafts: int = 5,
     offset_days: dict[str, int] | None = None,
+    template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
 ) -> list[Draft]:
     """LLM 不要のヒューリスティック抽出。"""
     drafts: list[Draft] = []
@@ -68,6 +71,7 @@ def extract_drafts_heuristic(
             source_hint="heuristic",
             project=project,
             offset_days=offset_days,
+            template_sections=template_sections,
         ))
         if len(drafts) >= max_drafts:
             break

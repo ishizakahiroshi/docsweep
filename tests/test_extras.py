@@ -638,7 +638,7 @@ def test_inject_label_block_mentions_delegated_plan_guidance(tmp_path, manifest)
     assert "docsweep_delegation: external" in text
     assert "--delegate" in text
     assert "1〜4 ファイル" in text
-    assert GUIDANCE_VERSION == "8"
+    assert GUIDANCE_VERSION == "9"
 
 
 def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypatch):
@@ -670,6 +670,20 @@ def test_inject_global_guidance_includes_delegated_plan_rules(tmp_path, manifest
     assert "docsweep_delegation: external" in body
     assert "--delegate" in body
     assert "1〜4 ファイル" in body
+
+
+def test_inject_guidance_includes_template_section_rules(tmp_path, manifest):
+    from docsweep.inject import inject
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    inject(proj, preset="claude-jp")
+    body = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+
+    assert "プロジェクト固有の本文節" in body
+    assert "template_sections" in body
+    assert "顧客への説明範囲" in body
+    assert "TODO を必要な事実で埋める" in body
 
 
 def test_inject_english_lang_generates_english_blocks(tmp_path, manifest):

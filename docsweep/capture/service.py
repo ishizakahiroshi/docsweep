@@ -115,6 +115,7 @@ def extract_drafts(
         request = LLMRequest(
             conversation=text, project_hint=project, max_drafts=max_drafts,
             offset_days=effective_config.due_default_offset_days,
+            template_sections=effective_config.template_sections,
         )
         return client.extract(request)
 
@@ -123,6 +124,7 @@ def extract_drafts(
         project=project,
         max_drafts=max_drafts,
         offset_days=effective_config.due_default_offset_days,
+        template_sections=effective_config.template_sections,
     )
 
 

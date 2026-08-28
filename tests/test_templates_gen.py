@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from docsweep.config import Config, TemplateSection
 from docsweep.templates_gen import _resolve_initial_due, new_doc, new_split_plans
 
 
@@ -232,3 +233,42 @@ def test_delegate_split_adds_detail_to_parent_and_children(tmp_path: Path):
         assert "## C 詳細" in body
         assert "### C1 <TODO: 短い目的>" in body
         assert "docsweep_parent: docs/local/plan_split-delegate.md" in body
+
+
+def test_unconfigured_generation_is_byte_for_byte_unchanged(tmp_path: Path):
+    for doc_type in ("plan", "bugfix", "pending"):
+        plain_project = tmp_path / f"plain-{doc_type}"
+        configured_project = tmp_path / f"configured-{doc_type}"
+        plain_project.mkdir()
+        configured_project.mkdir()
+
+        plain = new_doc(doc_type, "same-output", project_dir=plain_project, offset_days={})
+        configured = new_doc(
+            doc_type,
+            "same-output",
+            project_dir=configured_project,
+            config=Config(),
+            offset_days={},
+        )
+
+        assert plain.path.read_bytes() == configured.path.read_bytes()
+
+
+def test_configured_sections_are_appended_only_to_matching_type(tmp_path: Path):
+    project = tmp_path / "project"
+    project.mkdir()
+    config = Config(
+        template_sections={
+            "plan": (
+                TemplateSection(heading="顧客への説明", body="<TODO: 伝達範囲>"),
+            ),
+        }
+    )
+
+    plan = new_doc("plan", "with-section", project_dir=project, config=config, offset_days={})
+    bugfix = new_doc("bugfix", "without-section", project_dir=project, config=config, offset_days={})
+
+    plan_body = plan.path.read_text(encoding="utf-8")
+    bugfix_body = bugfix.path.read_text(encoding="utf-8")
+    assert plan_body.endswith("## 顧客への説明\n\n<TODO: 伝達範囲>\n")
+    assert "## 顧客への説明" not in bugfix_body
