@@ -5,7 +5,10 @@ maintained in `CLAUDE.md`.
 
 - Project overview & dev guide: `./CLAUDE.md`
 - Naming / status convention (human-facing spec): `./docs/conventions.md`
-- Design source of truth (private, may be absent in a fresh clone): `./docs/local/`
+- Design source of truth (all tracked): state vocabulary in `docsweep/states.py`
+  (`DEFAULT_STATES` / the `states:` config), `./docs/conventions.md`,
+  `./templates/CLAUDE.md`, `./docs/okf-mapping.md`, `./README.md`
+- Author's working log (private, absent in a fresh clone; never required to read): `./docs/local/`
 - Local/private additions (if present, not committed): `./CLAUDE.local.md` / `./AGENTS.local.md`
 
 ⚠️ **Do not confuse this with `templates/AGENTS.md` and `templates/CLAUDE.md`.**

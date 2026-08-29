@@ -17,8 +17,14 @@
 
 - GitHub リポジトリ名: `docsweep`
 - 配布: PyPI（`pip install docsweep`、extras: `web` / `review` / `mcp` / `watch` / `resurrect` / `all`）、Win / Mac / Linux 対応。単体バイナリ（PyInstaller）は現時点で未提供
-- 設計の正本: [docs/local/plan_v0.1.0-product-requirements.md](docs/local/plan_v0.1.0-product-requirements.md)
-  および [docs/local/plan_state-tag-orthogonalization.md](docs/local/plan_state-tag-orthogonalization.md)
+- 設計の正本（すべて追跡下。fresh clone で辿れる）:
+  - 状態モデルの語彙・archive 可否・自動移送可否 → `docsweep/states.py` の `DEFAULT_STATES` と
+    `states:` 設定（実装が唯一の正本。ドキュメントはここから導出する）
+  - 命名・H1 ステータスラベル・ライフサイクルの人間向け解説 → [docs/conventions.md](docs/conventions.md)
+  - 採用者へ配る運用ルールの正本テンプレ → [templates/CLAUDE.md](templates/CLAUDE.md)
+  - OKF v0.2 との対応と Bundle の構造 → [docs/okf-mapping.md](docs/okf-mapping.md) /
+    [docs/okf-export-format.md](docs/okf-export-format.md)
+  - 一直線の状態モデル図と CLI の使い方 → [README.md](README.md)
 
 > 個人/グローバルな AI ルール（言語・確認フォーマット・スクリーンショット規約・
 > ターン終端の出力ルール等）は **このリポジトリには置かない**。各利用者が使う AI ツールの
