@@ -21,7 +21,7 @@ def _print_records_table(records, lang: str) -> None:
         label = r.state_label or "[?]"
         flags = f" !{','.join(r.flags)}" if r.flags else ""
         summary_value = None if getattr(r, "sensitive", False) else r.summary
-        summary = f" — {summary_value}" if summary_value else (" — [sensitive]" if getattr(r, "sensitive", False) else "")
+        summary = f" - {summary_value}" if summary_value else (" - [sensitive]" if getattr(r, "sensitive", False) else "")
         print(f"{label:<8} {r.age_days:>4}d  {r.project}/{Path(r.path).name}{flags}{summary}")
 
 
@@ -41,8 +41,8 @@ def cmd_day(args: argparse.Namespace) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
     if phase == "open":
-        print(f"day open · {payload.get('generated_at')}")
-        print(f"  overdue: {payload.get('overdue_count')} · open: {payload.get('open_count')}")
+        print(f"day open | {payload.get('generated_at')}")
+        print(f"  overdue: {payload.get('overdue_count')} | open: {payload.get('open_count')}")
         tp = payload.get("today_pick")
         if tp:
             print(f"  today_pick: {tp.get('state_label')} {tp.get('title') or tp.get('rel')}")
@@ -53,7 +53,7 @@ def cmd_day(args: argparse.Namespace) -> int:
         if yd:
             print(f"  yesterday_done: {len(yd)} 件")
     else:
-        print(f"day close · {payload.get('generated_at')}")
+        print(f"day close | {payload.get('generated_at')}")
         print(f"  touched_today: {len(payload.get('touched_today') or [])}")
         print(f"  incomplete_due: {len(payload.get('incomplete_due') or [])}")
         for it in (payload.get("suggest_defer") or [])[:5]:
@@ -201,7 +201,7 @@ def _render_brief_human(result, lang: str = "ja") -> str:
             if score is not None:
                 lines.append(f"    score: {score}")
         else:
-            lines.append("  (今日着手すべきものは無し — 全件終端済 or pending のみ)")
+            lines.append("  (今日着手すべきものは無し - 全件終端済 or pending のみ)")
 
         if proj.co_running:
             lines.append("")
@@ -451,7 +451,7 @@ def cmd_pending(args: argparse.Namespace) -> int:
         if not idx.pending:
             print("保留（pending）はありません。")
         for d in idx.pending:
-            summary = f" — {d['summary']}" if d.get("summary") else ""
+            summary = f" - {d['summary']}" if d.get("summary") else ""
             print(f"[保留] {d['age_days']:>4}d  {d['project']}/{Path(d['path']).name}{summary}")
     return 0
 
@@ -484,7 +484,7 @@ def cmd_project(args: argparse.Namespace) -> int:
         else:
             for r in rows:
                 mark = "ON " if r["enabled"] else "OFF"
-                print(f"[{mark}] {r['name']:<24} open≈{r['open_approx']:<4} {r['root']}")
+                print(f"[{mark}] {r['name']:<24} open~{r['open_approx']:<4} {r['root']}")
         return 0
     if sub == "enable":
         s = enable_project(args.root)

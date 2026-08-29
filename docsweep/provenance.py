@@ -143,6 +143,14 @@ class AIMetadata:
             values["model_display"] = "unknown"
         return cls(**values, session_logs=resolve_session_logs(explicit=session_log))
 
+    def is_unresolved(self) -> bool:
+        """AI 情報が 1 つも取れず、既定値のまま記録されようとしているか。
+
+        呼び出し側で ``metadata.agent == "unknown"`` のように文字列を直書きさせない。
+        既定値の綴りが変わったときに、判定だけ古いまま残るのを避ける。
+        """
+        return self.agent == "unknown" and self.model_source == "unavailable"
+
     @classmethod
     def unknown(cls, *, actor_key: str | None = None) -> AIMetadata:
         # Backfill path: the caller is filling in a document written earlier, so
@@ -463,6 +471,83 @@ def _context_execution_refs(text: str) -> set[str]:
     return refs
 
 
+_CORRECTION_NOTE = "ai-metadata-corrected"
+
+
+def _update_authoring_metadata(
+    path: Path, *, config: Config, data: dict, metadata: AIMetadata
+) -> dict:
+    """既存 work の authoring 行と frontmatter の AI metadata **だけ** を実値へ直す。
+
+    ``docsweep new`` が provenance 有効のまま ``--ai-*`` 無しで走ると、作成 AI が
+    全項目 ``unknown`` で残る。あとから frontmatter だけ直すと ``check_document`` が
+    ``valid=false`` になり、台帳 CSV を手で編集して辻褄を合わせることになる。
+    手編集が常態化すると台帳自体が信用できなくなるので、両方を 1 手で直す口を用意する。
+
+    ``execution_id`` / ``work_id`` / ``started_at`` / ``role`` / ``work_path`` は
+    変えない。台帳は append-only の思想なので、訂正したことは ``notes`` 列へ残す
+    （列は増やさない）。
+    """
+    work_id = str(data["work_id"])
+    with _ledger_lock(config.provenance_ledger):
+        rows = _read_ledger(config.provenance_ledger)
+        targets = [
+            row for row in rows
+            if row.get("work_id") == work_id and row.get("role") == "authoring"
+        ]
+        if not targets:
+            raise ProvenanceError(
+                f"work_id {work_id} の authoring 行が台帳にありません（--update できません）"
+            )
+        previous = [dict(row) for row in rows]
+        changed_ledger = False
+        for row in targets:
+            updates = {
+                "actor_key": metadata.actor_key,
+                "agent": metadata.agent,
+                "runtime": metadata.runtime,
+                "provider": metadata.provider,
+                "model_id": metadata.model_id,
+                "model_display": metadata.model_display,
+                "reasoning_profile": metadata.reasoning_profile,
+                "model_source": metadata.model_source,
+            }
+            if all(row.get(key) == value for key, value in updates.items()):
+                continue
+            row.update(updates)
+            notes = (row.get("notes") or "").strip()
+            if _CORRECTION_NOTE not in notes:
+                row["notes"] = f"{notes};{_CORRECTION_NOTE}".strip(";")
+            changed_ledger = True
+        if changed_ledger:
+            _write_ledger(config.provenance_ledger, rows)
+        fields: dict[str, str | list[str]] = {
+            "ai_provenance_version": PROVENANCE_VERSION,
+            "ai_author_agent": metadata.agent,
+            "ai_author_runtime": metadata.runtime,
+            "ai_author_provider": metadata.provider,
+            "ai_author_model_id": metadata.model_id,
+            "ai_author_model_display": metadata.model_display,
+            "ai_author_reasoning": metadata.reasoning_profile,
+            "ai_author_model_source": metadata.model_source,
+        }
+        try:
+            _patch_frontmatter(path, fields)
+        except Exception:
+            if changed_ledger:
+                _write_ledger(config.provenance_ledger, previous)
+            raise
+    return {
+        "status": "updated",
+        "changed": True,
+        "path": str(path.resolve()),
+        "work_id": work_id,
+        "execution_refs": _frontmatter_refs(data),
+        "updated_executions": [row["execution_id"] for row in targets],
+        "ledger": str(config.provenance_ledger),
+    }
+
+
 def initialize_document(
     path: Path,
     *,
@@ -470,6 +555,7 @@ def initialize_document(
     config: Config,
     metadata: AIMetadata,
     backfill: bool = False,
+    update: bool = False,
 ) -> dict:
     delegated = _delegated(config)
     if delegated is not None:
@@ -479,6 +565,8 @@ def initialize_document(
     work_path = _relative_work_path(path, project_dir)
     data = read_frontmatter(path) or {}
     if data.get("work_id") and all(data.get(field) is not None for field in AUTHOR_FIELDS):
+        if update:
+            return _update_authoring_metadata(path, config=config, data=data, metadata=metadata)
         return {
             "status": "existing",
             "changed": False,
@@ -545,6 +633,34 @@ def initialize_document(
     }
 
 
+def _merged_session_logs(config: Config, metadata: AIMetadata, data: dict) -> list[str]:
+    """既存の ``ai_session_logs`` へ、今のセッションの transcript を重複なく足す。
+
+    足すものが無ければ空リストを返し、フィールドには触らない（``unknown`` のような
+    偽の値を置かない。パスは実在するかどうかが意味を持つ値なので）。
+    """
+    current = _session_log_lines(config, metadata)
+    if not current:
+        return []
+    existing: list[str] = []
+    raw = data.get(SESSION_LOG_FIELD)
+    if isinstance(raw, str):
+        existing = [raw.strip()] if raw.strip() else []
+    elif isinstance(raw, (list, tuple)):
+        existing = [str(item).strip() for item in raw if str(item).strip()]
+    merged = list(existing)
+    seen = {os.path.normcase(value) for value in existing}
+    added = False
+    for value in current:
+        key = os.path.normcase(value)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(value)
+        added = True
+    return merged if added else []
+
+
 def start_execution(
     path: Path,
     *,
@@ -606,6 +722,10 @@ def start_execution(
     refs = _frontmatter_refs(data)
     if execution_id not in refs:
         refs.append(execution_id)
+    # plan は複数セッションにまたがる。作成時の 1 本だけでは C2 以降の実行を追えないので、
+    # 実行を開始したセッションの transcript も足す。``initialize_document`` は work_id を
+    # 持つ md をスキップするため、追記はここでしかできない。
+    session_logs = _merged_session_logs(config, metadata, data)
     execution_model = _execution_model_cell(role, metadata)
     # Validate the context table before taking an ID into the ledger. This avoids
     # leaving an orphan execution when the requested C does not exist.
@@ -625,6 +745,12 @@ def start_execution(
                 "ai_execution_refs",
                 _format_value("ai_execution_refs", refs),
             )
+            if session_logs:
+                updated = _replace_or_insert(
+                    updated,
+                    SESSION_LOG_FIELD,
+                    _format_value(SESSION_LOG_FIELD, session_logs),
+                )
             return _append_context_execution(
                 updated,
                 normalized,

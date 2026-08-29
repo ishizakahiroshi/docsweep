@@ -102,7 +102,7 @@ def archive_done(
                 result.skipped.append(
                     ArchiveSkipEntry(
                         path=rec.path,
-                        reason=f"label is {rec.state_label or '[?]'} — not archivable",
+                        reason=f"label is {rec.state_label or '[?]'} - not archivable",
                     )
                 )
             continue

@@ -147,10 +147,11 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         from ...aggregate_index import write_index
 
         write_index(cfg)
+    routes = getattr(moved, "routes", [])
     if getattr(args, "json", False):
         payload = [m.to_dict() for m in moved]
-        if moved.failed:
-            payload = {"moved": payload, "failed": moved.failed}
+        if moved.failed or routes:
+            payload = {"moved": payload, "failed": moved.failed, "archive_routes": routes}
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         verb = "移送予定" if args.dry_run else "移送"
@@ -158,6 +159,9 @@ def cmd_sweep(args: argparse.Namespace) -> int:
             print("自動移送対象なし（done/discarded のラベル確定ファイルが無い）")
         for m in moved:
             print(f"{verb}: {m.src} -> {m.dst}")
+        for route in routes:
+            if route.get("warning"):
+                print(f"warning: {route['project']}: {route['warning']}", file=sys.stderr)
         for failure in moved.failed:
             print(f"失敗: {failure.get('path') or '(scan)'}: {failure.get('error')}", file=sys.stderr)
         _print_moves_summary(moved, cfg, action="移送", dry_run=args.dry_run)
@@ -367,6 +371,7 @@ def cmd_auto_triage(args: argparse.Namespace) -> int:
 
 def cmd_new(args: argparse.Namespace) -> int:
     from ...provenance import AIMetadata, initialize_document
+    from ...provenance_hint import warn_if_unresolved
     from ...similar_guard import find_similar_open
     from ...templates_gen import new_doc, new_split_plans
     from ...work_queue import find_project_dir
@@ -415,6 +420,7 @@ def cmd_new(args: argparse.Namespace) -> int:
         actor_key=getattr(args, "actor_key", None),
         session_log=getattr(args, "ai_session_log", None),
     )
+    warn_if_unresolved(metadata, config=cfg, command="new")
 
     def register_provenance(path: Path) -> dict | None:
         if not cfg.provenance_enabled and cfg.provenance_manager != "repo":
@@ -451,6 +457,11 @@ def cmd_new(args: argparse.Namespace) -> int:
                 config=cfg,
                 allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
                 delegate=delegate,
+                child_titles=[
+                    part.strip()
+                    for part in (getattr(args, "titles", None) or "").split(",")
+                    if part.strip()
+                ] or None,
             )
         except (OSError, ValueError) as exc:
             print(f"保存を中止しました: {exc}", file=sys.stderr)

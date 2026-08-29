@@ -41,7 +41,11 @@
 #   provider: mock
 #   model: null
 
-# archive の移送先（プロジェクト直下からの相対）。既定 archive/
+# archive の移送先（プロジェクト直下からの相対）。
+# 明示しない場合は work queue に連動する。work_policy: private（既定）なら
+# <work_dir>/archive（既定 docs/local/archive）、work_policy: shared なら archive/。
+# private queue の文書を Git 追跡され得る場所へ黙って出さないための既定。
+# repo 直下 archive/ を従来どおり使いたい場合は下行を有効にして明示する。
 # archive_dir: archive
 
 # 独自除外グロブ（.gitignore とは別に効く）。archive 自身は常に除外される。

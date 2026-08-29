@@ -275,6 +275,8 @@ python -m docsweep review
 python -m docsweep new plan my-topic
 python -m docsweep new bugfix crash-on-start
 python -m docsweep new plan my-topic --split 3  # add docsweep_parent to each child
+# Children are named plan_my-topic_c1.md ... ; --titles puts the role into the filename
+python -m docsweep new plan auth --split 3 --titles backend,frontend,migration
 
 # Export as an OKF-compatible zip (proof that your md files won't rot if you leave docsweep)
 python -m docsweep export --okf                          # ./docsweep-okf-<date>.zip
@@ -324,7 +326,12 @@ The Japanese label set (`[保留]` → `[計画]` → `[実行中]` → `[様子
 - **`[Watching]`** = fixed but resting. **Never auto-archived** (protected as the queue awaiting
   regression confirmation).
 - Only **`[Done]` / `[Discarded]`** are archive targets. `[Discarded]` means quarantined into
-  `archive/`, not deleted (recoverable).
+  the archive, not deleted (recoverable).
+- Unless `archive_dir` is set, the destination **follows the work queue**: `<work_dir>/archive`
+  (default `docs/local/archive`) for `work_policy: private` (the default), and the repository
+  root `archive/` for `shared`. This keeps private work documents out of a Git-tracked location
+  by default. `python -m docsweep sweep --dry-run --json` reports the destination and why it was
+  chosen under `archive_routes`.
 - The label vocabulary, archivability, and auto-archive eligibility come from the `states:`
   config — **the single source of truth** — from which detection, the Web display, and the
   injection templates are all derived.
@@ -478,6 +485,27 @@ python -m docsweep summary --project docsweep
 The same narrowing works over MCP via arguments, e.g. `triage(project="many-ai-cli")` /
 `summary(project="docsweep")` / `sweep(project="many-ai-cli", dry_run=True)`. Argument names
 and behavior are kept fully identical between CLI and MCP.
+
+### Listing and excluding projects (`docsweep project`)
+
+When 20-30 repositories sit under your `roots:`, the board and `scan` fill up with projects
+you do not care about. `docsweep project` lists them and toggles the exclusion.
+
+```bash
+# List projects with ON / OFF and open counts
+python -m docsweep project list
+
+# Exclude a project from the board and scan
+python -m docsweep project disable /path/to/repo
+
+# Bring it back
+python -m docsweep project enable /path/to/repo
+```
+
+Exclusions are stored in `~/.docsweep/excluded.json` as absolute project roots. **No file is
+moved**: the project disappears from listings only, nothing is archived or deleted. The Web UI
+exposes the same toggle per project row, and MCP exposes it as `list_projects` /
+`set_project_enabled`.
 
 See [docs/conventions.md](docs/conventions.md) and
 [templates/AGENT_GUIDE.md](templates/AGENT_GUIDE.md) for details.

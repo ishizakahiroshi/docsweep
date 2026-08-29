@@ -136,7 +136,7 @@ def test_bulk_status_done_triggers_archive(client):
     assert len(body["archive"]["moved"]) == 2
     # 元ファイルは消えて archive 配下へ
     assert not (proj / "plan_a.md").exists()
-    assert (proj / "archive" / "plan_a.md").exists()
+    assert (proj / "docs" / "local" / "archive" / "plan_a.md").exists()
 
 
 def test_bulk_status_partial_validation_failure(client):

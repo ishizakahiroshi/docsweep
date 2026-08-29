@@ -47,7 +47,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if getattr(args, "read_only", False):
         print("  [read-only] 書き込み API は 403 です")
     print("=" * 60)
-    print("（Ctrl+C または画面右上の ⏻ で停止）")
+    print("（Ctrl+C または画面右上の電源ボタンで停止）")
     if not args.no_browser:
         import threading
         import webbrowser

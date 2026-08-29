@@ -319,7 +319,12 @@ bugfix:           [実行中] → [様子見] → [完了]
 ```
 
 - **`[様子見]`** = 直したが寝かせ中。**自動移送されません**（再発確認の待機列として守る）。
-- **`[完了]` / `[廃止]`** だけが archive 対象。`[廃止]` は削除ではなく `archive/` へ隔離（復元可能）。
+- **`[完了]` / `[廃止]`** だけが archive 対象。`[廃止]` は削除ではなく archive へ隔離（復元可能）。
+- 移送先は `archive_dir` を明示しなければ **work queue に連動**します。`work_policy: private`
+  （既定）なら `<work_dir>/archive`（既定 `docs/local/archive`）、`shared` なら repo 直下
+  `archive/`。private な作業文書を git 追跡され得る場所へ黙って出さないための既定です。
+  移送先と選択根拠は `python -m docsweep sweep --dry-run --json` の `archive_routes` で
+  確認できます。
 - ラベル語彙・archive 可否・自動移送可否は `states:` 設定が **唯一の正本**で、検出・Web 表示・
   注入テンプレを全部そこから導出します。
 
@@ -400,6 +405,11 @@ Git ignore されていても設定済み queue を確認できます。秘密�
 記録するのはパスだけで中身は読みません。`work_policy: private` のqueueに限り、かつ実在する
 ときだけ書きます。
 
+plan は複数セッションにまたがるため、`provenance start` でC実行を開始したときにも
+そのセッションのパスを**追記**します（同じパスは重複しません）。作成時の1本だけでは
+C2以降を誰がどの会話で実装したのか追えないためです。解決できないセッションでは
+キー自体を書きません（`unknown` のような偽の値を置きません）。
+
 対応は Claude Code / Codex / Grok / Copilot / Cursor Agent です。Claude Code はセッションIDを
 環境変数に出すため確実に一致します。それ以外は「作業ディレクトリが一致し、直近まで書かれ続けて
 いるセッションが1つだけ」のときに限って記録し、**2つ以上に絞れなければ何も書きません**
@@ -433,6 +443,15 @@ python -m docsweep provenance start --path docs/local/plan_auth-refactor.md \
   --provider openai --model-id unknown --model-source unavailable --json
 python -m docsweep provenance finish --execution <AIX-ID> --result completed --json
 python -m docsweep provenance check --path docs/local/plan_auth-refactor.md --json
+```
+
+provenance が有効なのに `--ai-*` / `--agent` を渡さなかった場合は、作成AIが `unknown` で
+記録される前にstderrへ1行警告します（作成自体は成功します）。あとから実値へ直すときは
+`provenance init --update` を使います。台帳のauthoring行とfrontmatterの `ai_author_*` を
+まとめて更新し、`execution_id` / `work_id` / `started_at` は変えません。
+
+```bash
+python -m docsweep provenance init --update --path docs/local/plan_auth-refactor.md   --agent claude --runtime claude-code --provider anthropic   --model-id claude-opus-5 --model-display "Claude Opus 5" --model-source runtime --json
 ```
 
 独自台帳を正典にするリポは `.docsweep.yaml` で `manager: repo` と `delegate_skill` を宣言します。
@@ -515,6 +534,26 @@ python -m docsweep summary --project docsweep
 
 MCP 経由でも同じく引数で絞れます。例: `triage(project="many-ai-cli")` / `summary(project="docsweep")` /
 `sweep(project="many-ai-cli", dry_run=True)`。CLI と MCP で引数名・挙動を完全に揃えています。
+
+### プロジェクトを一覧・除外する（`docsweep project`）
+
+`roots:` の下に 20〜30 個のリポジトリが並ぶと、看板にも `scan` にも関係ないプロジェクトが
+混ざります。`docsweep project` で一覧の確認と除外の切り替えができます。
+
+```bash
+# 一覧（ON / OFF と未処理件数）
+python -m docsweep project list
+
+# 除外リストへ入れて board / scan から外す
+python -m docsweep project disable D:/dev/github/public/foo
+
+# 除外を解除
+python -m docsweep project enable D:/dev/github/public/foo
+```
+
+除外は `~/.docsweep/excluded.json` に root の絶対パスとして記録され、**ファイルは一切動かしません**
+（表示から外れるだけで archive も削除もしません）。Web UI ではプロジェクト行のトグルから、
+MCP では `list_projects` / `set_project_enabled` から同じ操作ができます。
 
 詳細は [docs/conventions.md](docs/conventions.md) と
 [templates/AGENT_GUIDE.md](templates/AGENT_GUIDE.md) を参照してください。

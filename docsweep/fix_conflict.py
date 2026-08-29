@@ -248,7 +248,7 @@ def fix_conflicts(
     if unmatched:
         print(
             f"warning: --path の指定 {len(unmatched)} 件は conflict 一覧に一致しませんでした"
-            "（パス誤り、またはそのファイルに frontmatter ↔ H1 の食い違いが無い）:",
+            "（パス誤り、またはそのファイルに frontmatter <-> H1 の食い違いが無い）:",
             file=sys.stderr,
         )
         for orig in unmatched:

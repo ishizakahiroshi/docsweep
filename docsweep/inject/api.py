@@ -117,8 +117,7 @@ def write_guidance_file(lang: str = "ja", *, dry_run: bool = False) -> Path:
         )
     content = header + "\n\n" + generate_guidance_block(lang) + "\n"
     if not dry_run:
-        GUIDANCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        GUIDANCE_PATH.write_text(content, encoding="utf-8")
+        write_atomic(GUIDANCE_PATH, content, encoding="utf-8")
     return GUIDANCE_PATH
 
 
@@ -707,7 +706,7 @@ def inject(
                 secret_policy=effective.secret_policy,
             )
             if not dry_run:
-                yaml_path.write_text(content, encoding="utf-8")
+                write_atomic(yaml_path, content, encoding="utf-8")
             result.yaml_path = yaml_path.as_posix()
         else:
             result.skipped.append(".docsweep.yaml (既存・温存)")
@@ -760,8 +759,7 @@ def _ensure_global_config_scaffold(lang: str = "ja", *, dry_run: bool = False) -
     )
     body = header + work_scaffold + _due_scaffold(scope="global", lang=lang)
     if not dry_run:
-        GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        GLOBAL_CONFIG_PATH.write_text(body, encoding="utf-8")
+        write_atomic(GLOBAL_CONFIG_PATH, body, encoding="utf-8")
     return True
 
 

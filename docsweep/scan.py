@@ -886,7 +886,7 @@ def sync_index(
         detail = ", ".join(f"{pid}（{n} 件）" for pid, n in sorted(cleaned))
         print(
             f"warning: 実体を失った索引行を削除しました: {detail}"
-            " — project_id と実ファイルから再導出した project が食い違う旧採番の残骸です。"
+            " - project_id と実ファイルから再導出した project が食い違う旧採番の残骸です。"
             "空になった project 行ごと消すなら"
             " `docsweep index-sync --prune-projects`",
             file=sys.stderr,

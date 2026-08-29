@@ -54,7 +54,7 @@ def cmd_review_week(args: argparse.Namespace) -> int:
     else:
         print("review-week")
         print(f"  watching: {payload['watching_count']}")
-        print(f"  planned≥90d: {payload['old_planned_count']}")
+        print(f"  planned>=90d: {payload['old_planned_count']}")
         print(f"  conflict: {payload['conflict_count']}")
         print(f"  auto-triage suggestions: {payload['suggestion_count']}")
         for h in payload["hints"]:

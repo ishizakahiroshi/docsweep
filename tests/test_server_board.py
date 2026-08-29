@@ -181,7 +181,7 @@ def test_cards_status_done_triggers_archive(client):
     assert "archive" in body
     # 実ファイルが archive へ移送される
     assert not f.exists()
-    assert (proj / "archive" / "plan_active.md").exists()
+    assert (proj / "docs" / "local" / "archive" / "plan_active.md").exists()
 
 
 def test_cards_status_validation_rejects_bad_combo(client):
@@ -291,7 +291,7 @@ def test_cards_archive_moves_done_file(client):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["moved"], body
-    assert (proj / "archive" / "plan_done.md").exists()
+    assert (proj / "docs" / "local" / "archive" / "plan_done.md").exists()
 
 
 def test_cards_archive_skips_watching(client):

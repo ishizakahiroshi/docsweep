@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .archive import _now_iso, append_move_log, archive_file
 from .atomic import ConflictError, write_atomic
-from .config import Config, archive_dir_for_project
+from .config import Config, archive_dir_for_project, archive_route_for_project
 from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from .models import Action, Flag, FileRecord, MoveLogEntry
 from .scan import ScannedDoc, _build_doc, detect_project_root, scan
@@ -113,9 +113,13 @@ class MoveBatchResult(list[MoveLogEntry]):
         moved: list[MoveLogEntry] | None = None,
         *,
         failed: list[dict] | None = None,
+        routes: list[dict] | None = None,
     ) -> None:
         super().__init__(moved or [])
         self.failed = list(failed or [])
+        # 移送先とその選択根拠。dry-run だけで destination contract を判断できるように、
+        # 「どこへ」だけでなく「なぜそこか」を返す。
+        self.routes = list(routes or [])
 
 
 def run_scan(config: Config) -> ScanResult:
@@ -267,6 +271,7 @@ def auto_sweep(
     failed: list[dict] = [
         {"path": None, "error": error} for error in result.errors
     ]
+    routes = _archive_routes(result, config, project=project)
     for doc in result.auto_movable():
         rec = doc.record
         if project and rec.project != project:
@@ -285,7 +290,7 @@ def auto_sweep(
             ts="(dry-run)" if dry_run else "", op="archive", project=rec.project,
             status=rec.state, src=rec.path, dst=dst.as_posix(),
         ))
-    return MoveBatchResult(moved, failed=failed)
+    return MoveBatchResult(moved, failed=failed, routes=routes)
 
 
 def archive_doc(
@@ -347,6 +352,40 @@ def promote_state(
             status=to_state, src=rec.path, dst=dst.as_posix(),
         ))
     return MoveBatchResult(moved, failed=failed)
+
+
+def _archive_routes(
+    result: ScanResult, config: Config, *, project: str | None = None
+) -> list[dict]:
+    """スキャンに出た project ごとの archive 先と選択根拠を返す。
+
+    移送候補が 0 件でも返す。「今のこの project はどこへ archive するのか」を
+    dry-run だけで確かめられるようにするため。
+    """
+    seen: dict[str, dict] = {}
+    for doc in result.docs:
+        rec = doc.record
+        if project and rec.project != project:
+            continue
+        if rec.project in seen:
+            continue
+        route = archive_route_for_project(Path(rec.project_root), config)
+        entry = {
+            "project": rec.project,
+            "project_root": rec.project_root,
+            "archive_dir": route.archive_dir,
+            "source": route.source,
+        }
+        if route.legacy_root:
+            entry["legacy_root"] = route.legacy_root
+            entry["warning"] = (
+                f"repo 直下の {route.legacy_root}/ に既存の archive があります。"
+                f"今後は {route.archive_dir}/ へ移送します。"
+                f"従来どおり {route.legacy_root}/ を使うなら .docsweep.yaml に "
+                f"archive_dir: {route.legacy_root} を明示してください"
+            )
+        seen[rec.project] = entry
+    return list(seen.values())
 
 
 def _archive_dir_for(doc: ScannedDoc, config: Config) -> str:

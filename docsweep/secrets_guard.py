@@ -21,7 +21,9 @@ _HIGH_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # `sk-<20桁以上>` の旧形式に加えて `sk-proj-...` / `sk-svcacct-...` 等の現行形式も拾う。
     # 旧パターンは `sk-` の直後に英数 20 文字以上を要求するため、間に `-` が入る現行キーを
     # 取りこぼしていた（`sk-proj-` は `proj` の 4 文字で切れる）。
-    ("openai_sk", re.compile(r"sk-(?:[a-z]+-)?[A-Za-z0-9_\-]{20,}")),
+    # 先頭の境界表明が無いと `task-management-and-scheduling-system` のような通常の
+    # ハイフン語が `ta|sk-...` として一致し、秘密を含まない本文を block してしまう。
+    ("openai_sk", re.compile(r"(?<![A-Za-z0-9_\-])sk-(?:[a-z]+-)?[A-Za-z0-9_\-]{20,}")),
     ("slack_token", re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
     ("google_api_key", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
     ("stripe_secret", re.compile(r"[rs]k_live_[0-9A-Za-z]{16,}")),

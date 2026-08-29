@@ -204,7 +204,9 @@ def test_archive_lands_in_project_root(tmp_path: Path):
     (proj / ".git").mkdir(parents=True)
     _write(proj / "docs" / "local" / "plan_done.md", "# [完了] x\n\n## 概要\n\nd\n")
     auto_sweep(_cfg(root), dry_run=False)
-    assert (proj / "archive" / "plan_done.md").exists()
+    # 設定なし project の既定は private queue 連動（docs/local/archive）。
+    assert (proj / "docs" / "local" / "archive" / "plan_done.md").exists()
+    assert not (proj / "archive").exists()
 
 
 def test_watching_not_auto_moved(workspace: Path):
@@ -228,7 +230,7 @@ def test_auto_sweep_moves_to_archive(workspace: Path):
     cfg = _cfg(workspace)
     auto_sweep(cfg, dry_run=False)
     assert not (workspace / "proj_a" / "docs" / "local" / "plan_done.md").exists()
-    assert (workspace / "proj_a" / "archive" / "plan_done.md").exists()
+    assert (workspace / "proj_a" / "docs" / "local" / "archive" / "plan_done.md").exists()
     # 移動ログが残る
     assert (workspace / ".docsweep" / "moves.jsonl").exists()
 
@@ -247,7 +249,7 @@ def test_auto_sweep_respects_project_docsweep_yaml(workspace: Path):
     auto_sweep(cfg, dry_run=False)
     assert not (workspace / "proj_a" / "docs" / "local" / "plan_done.md").exists()
     assert (workspace / "proj_a" / "docs" / "local" / "archive" / "plan_done.md").exists()
-    # 設定を持たない従来プロジェクトの挙動（既定 archive/）は
+    # 設定を持たない project の既定（docs/local/archive）は
     # test_auto_sweep_moves_to_archive が担保する
 
 
@@ -267,7 +269,7 @@ def test_auto_sweep_dry_run_previews_project_archive_dir(workspace: Path):
 def test_collision_dedupe(workspace: Path):
     cfg = _cfg(workspace)
     # 先に archive に同名を置く
-    dest = workspace / "proj_a" / "archive"
+    dest = workspace / "proj_a" / "docs" / "local" / "archive"
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "plan_done.md").write_text("既存\n", encoding="utf-8")
     auto_sweep(cfg, dry_run=False)
@@ -281,7 +283,7 @@ def test_apply_discard_archives(workspace: Path):
     watch = next(d for d in result.docs if Path(d.record.path).name == "plan_watch.md")
     entry = apply_action(watch, "discard", cfg, dry_run=False)
     assert entry.op == "discard"
-    assert (workspace / "proj_a" / "archive" / "plan_watch.md").exists()
+    assert (workspace / "proj_a" / "docs" / "local" / "archive" / "plan_watch.md").exists()
 
 
 def test_apply_promote_watching_to_done(workspace: Path):
@@ -291,7 +293,7 @@ def test_apply_promote_watching_to_done(workspace: Path):
     assert "promote" in watch.record.allowed_actions
     entry = apply_action(watch, "promote", cfg, dry_run=False)
     assert entry.status == "done"
-    assert (workspace / "proj_a" / "archive" / "plan_watch.md").exists()
+    assert (workspace / "proj_a" / "docs" / "local" / "archive" / "plan_watch.md").exists()
 
 
 def test_apply_rejects_disallowed_action(workspace: Path):

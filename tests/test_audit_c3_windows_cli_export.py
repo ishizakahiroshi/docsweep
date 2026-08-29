@@ -222,3 +222,102 @@ def test_linkcheck_human_output_is_cp932_safe(monkeypatch, capsys, tmp_path: Pat
     output = capsys.readouterr().out
     assert "NG missing.py" in output
     assert "✓" not in output and "✗" not in output
+
+
+# --- cp932 コンソールへの人間向け出力（C3 手動 gate で見つかった追加分） -------
+#
+# C3 の決定的回帰は linkcheck / inject だけを名指ししていたため、同じ型が
+# `scan` と `doctor` に残っていた。2026-08-29 の ja-JP Windows 実機確認で
+# `PYTHONIOENCODING=cp932` かつ stdout リダイレクトにすると両方が
+# UnicodeEncodeError の raw traceback で落ちることを実測した。
+#
+# 原因は 2 層ある。
+#   1. 装飾 glyph（`—` `·` `≥` `≈` `⏻` `↔`）を人間向け出力へ直接書いていた
+#   2. 文書側のデータ（要約に含まれる `–` 等）はそもそも ASCII 化できない
+# 1 は各 print を ASCII へ、2 は描画境界だけを緩める形で塞いだ。
+
+
+def _cp932_stream():
+    import io
+
+    return io.TextIOWrapper(io.BytesIO(), encoding="cp932", newline="")
+
+
+def test_human_output_streams_are_softened_for_a_cp932_console(monkeypatch):
+    """人間向け出力では、コンソールが表現できない文字で落ちない。"""
+    from docsweep.cli import _soften_console_encoding
+
+    out = _cp932_stream()
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", _cp932_stream())
+
+    _soften_console_encoding(False)
+    # 文書側のデータに現れる en dash。ASCII 化はできないが落ちてもいけない。
+    print("plan_x.md - \u2013 \u2014 \u00b7 \U0001F600")
+    out.flush()
+    rendered = out.buffer.getvalue().decode("cp932")
+    assert "plan_x.md" in rendered
+    # \u843d\u3061\u306a\u3044\u4ee3\u308f\u308a\u306b\u3001\u5931\u308f\u308c\u305f\u6587\u5b57\u304c\u30d0\u30c3\u30af\u30b9\u30e9\u30c3\u30b7\u30e5\u8868\u8a18\u3067\u898b\u3048\u308b\u5f62\u306b\u6b8b\u308b\u3002
+    assert "\\u2013" in rendered
+    assert "\\U0001f600" in rendered
+
+
+def test_json_output_stream_is_left_exact(monkeypatch):
+    """``--json`` は stdout のバイト列が契約なので緩めない。"""
+    from docsweep.cli import _soften_console_encoding
+
+    out = _cp932_stream()
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", _cp932_stream())
+
+    _soften_console_encoding(True)
+    with pytest.raises(UnicodeEncodeError):
+        print("\u2013")
+        out.flush()
+
+
+def test_json_unicode_error_is_short_exit_two_not_a_traceback(monkeypatch, capsys, tmp_path: Path):
+    """表現できない ``--json`` payload は raw traceback ではなく exit 2。"""
+    from docsweep.cli import _DISPATCH, main as cli_main
+
+    def _boom(args):
+        raise UnicodeEncodeError("cp932", "\u2013", 0, 1, "illegal multibyte sequence")
+
+    monkeypatch.setitem(_DISPATCH, "doctor", _boom)
+    assert cli_main(["doctor", "--json"]) == 2
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert "cp932" in err
+
+
+@pytest.mark.parametrize("command", ["scan", "doctor", "pending", "cookbook"])
+def test_cli_human_output_survives_a_cp932_redirect(command: str, tmp_path: Path):
+    """実プロセスで cp932 リダイレクトを再現し、traceback で終わらないこと。
+
+    ``_soften_console_encoding`` は起動時に stdout の encoding を見るため、
+    monkeypatch ではなく実際の子プロセスで確認する。
+    """
+    work = tmp_path / "proj" / "docs" / "local"
+    work.mkdir(parents=True)
+    (tmp_path / "proj" / ".git").mkdir()
+    # 要約に cp932 で表現できない文字を持つ文書。
+    (work / "plan_dash.md").write_text(
+        "# [計画] en dash \u2013 と em dash \u2014 を含む見出し\n\n本文。\n",
+        encoding="utf-8",
+    )
+
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "cp932"
+    env["DOCSWEEP_INDEX_DB"] = str(tmp_path / "index.db")
+    argv = [sys.executable, "-m", "docsweep", command]
+    if command in ("scan", "pending"):
+        argv += ["--root", str(tmp_path / "proj")]
+    proc = subprocess.run(
+        argv,
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        timeout=120,
+    )
+    assert b"Traceback" not in proc.stderr, proc.stderr.decode("cp932", "replace")
+    assert b"UnicodeEncodeError" not in proc.stderr

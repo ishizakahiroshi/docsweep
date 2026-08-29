@@ -9,6 +9,7 @@ import pytest
 
 from docsweep.config import load_config
 from docsweep.provenance import (
+    SESSION_LOG_FIELD,
     AIMetadata,
     _context_execution_refs,
     check_document,
@@ -392,3 +393,238 @@ def test_project_relative_route_is_kept_when_work_dir_is_symlink(tmp_path: Path)
     with config.provenance_ledger.open("r", encoding="utf-8", newline="") as fh:
         row = next(csv.DictReader(fh))
     assert row["work_path"] == "docs/local/plan_linked.md"
+
+
+# --- provenance が有効なのに AI 情報が既定値のまま（plan_provenance-new-guard） ----
+
+
+def _unresolved() -> AIMetadata:
+    """``--ai-*`` も環境変数も無いときに resolve が返す形。"""
+    return AIMetadata.resolve(actor_default="ishizaka")
+
+
+def test_unresolved_metadata_is_detected_without_hardcoding_unknown() -> None:
+    assert _unresolved().is_unresolved() is True
+    assert _metadata().is_unresolved() is False
+
+
+def test_guard_warns_only_when_provenance_is_enabled(tmp_path: Path, capsys) -> None:
+    from docsweep.provenance_hint import warn_if_unresolved
+
+    _project, config = _config(tmp_path)
+    assert warn_if_unresolved(_unresolved(), config=config, command="new") is True
+    err = capsys.readouterr().err
+    assert "unknown" in err
+    assert "--ai-agent" in err
+    assert "DOCSWEEP_AI_AGENT" in err
+
+    # 実値が取れているときは黙る。
+    assert warn_if_unresolved(_metadata(), config=config, command="new") is False
+    assert capsys.readouterr().err == ""
+
+
+def test_guard_is_silent_when_provenance_is_disabled(tmp_path: Path, capsys) -> None:
+    from docsweep.provenance_hint import warn_if_unresolved
+
+    global_path = tmp_path / "plain.yaml"
+    global_path.write_text("roots: []\n", encoding="utf-8")
+    project = tmp_path / "repo2"
+    (project / ".git").mkdir(parents=True)
+    config = load_config(project_dir=project, global_path=global_path)
+
+    assert warn_if_unresolved(_unresolved(), config=config, command="new") is False
+    assert capsys.readouterr().err == ""
+
+
+def _ledger_rows(config) -> list[dict]:
+    with Path(config.provenance_ledger).open(encoding="utf-8-sig", newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def test_init_update_repairs_ledger_and_frontmatter_together(tmp_path: Path) -> None:
+    """``unknown`` で作った work を、台帳と frontmatter の両方まとめて実値へ直す。"""
+    project, config = _config(tmp_path)
+    path = new_doc("plan", "unknown-author", project_dir=project, config=config, offset_days={}).path
+    initialize_document(path, project_dir=project, config=config, metadata=_unresolved())
+
+    before = [r for r in _ledger_rows(config) if r["role"] == "authoring"][0]
+    assert before["agent"] == "unknown"
+
+    result = initialize_document(
+        path,
+        project_dir=project,
+        config=config,
+        metadata=_metadata(),
+        update=True,
+    )
+
+    assert result["status"] == "updated"
+    assert result["changed"] is True
+
+    after = [r for r in _ledger_rows(config) if r["role"] == "authoring"][0]
+    assert after["agent"] == "codex"
+    assert after["provider"] == "openai"
+    assert after["model_display"] == "GPT-5"
+    # 変えてはいけない列。
+    assert after["execution_id"] == before["execution_id"]
+    assert after["work_id"] == before["work_id"]
+    assert after["started_at"] == before["started_at"]
+    assert after["role"] == before["role"]
+    assert after["work_path"] == before["work_path"]
+    # 訂正したことが読み取れる。
+    assert "ai-metadata-corrected" in after["notes"]
+
+    data = read_frontmatter(path)
+    assert data["ai_author_agent"] == "codex"
+    assert data["ai_author_model_display"] == "GPT-5"
+    assert check_document(path, project_dir=project, config=config)["valid"] is True
+
+
+def test_init_without_update_still_reports_existing(tmp_path: Path) -> None:
+    project, config = _config(tmp_path)
+    path = new_doc("plan", "left-alone", project_dir=project, config=config, offset_days={}).path
+    initialize_document(path, project_dir=project, config=config, metadata=_unresolved())
+
+    result = initialize_document(
+        path, project_dir=project, config=config, metadata=_metadata()
+    )
+
+    assert result["status"] == "existing"
+    assert result["changed"] is False
+    assert read_frontmatter(path)["ai_author_agent"] == "unknown"
+
+
+def test_init_update_without_an_authoring_row_is_an_explicit_error(tmp_path: Path) -> None:
+    from docsweep.provenance import ProvenanceError
+
+    project, config = _config(tmp_path)
+    path = new_doc("plan", "no-authoring-row", project_dir=project, config=config, offset_days={}).path
+    initialize_document(path, project_dir=project, config=config, metadata=_unresolved())
+    # 台帳だけ失う（別マシンから持ってきた md 等）。
+    Path(config.provenance_ledger).unlink()
+
+    with pytest.raises(ProvenanceError):
+        initialize_document(
+            path, project_dir=project, config=config, metadata=_metadata(), update=True
+        )
+
+
+# --- ai_session_logs の追記（plan_agent-session-log-in-work-md C3） --------------
+
+
+def _with_session_log(tmp_path: Path, monkeypatch) -> str:
+    """存在する transcript を 1 本用意し、env から解決できる状態にする。"""
+    log = tmp_path / "transcript.jsonl"
+    log.write_text('{"type":"session_meta"}\n', encoding="utf-8")
+    monkeypatch.setenv("DOCSWEEP_AI_SESSION_LOG", str(log))
+    return str(log)
+
+
+def test_start_appends_the_session_log_of_a_later_session(tmp_path: Path, monkeypatch) -> None:
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "session-log-append", project_dir=project, config=config, offset_days={})
+
+    first = _with_session_log(tmp_path, monkeypatch)
+    initialize_document(
+        doc.path,
+        project_dir=project,
+        config=config,
+        metadata=AIMetadata.resolve(agent="claude", model_source="runtime"),
+    )
+    assert read_frontmatter(doc.path)[SESSION_LOG_FIELD] == [first]
+
+    # 別セッションが同じ md で C 実行を開始する。
+    second = str(tmp_path / "second.jsonl")
+    Path(second).write_text('{"type":"session_meta"}\n', encoding="utf-8")
+    monkeypatch.setenv("DOCSWEEP_AI_SESSION_LOG", second)
+    start_execution(
+        doc.path,
+        project_dir=project,
+        config=config,
+        contexts=["C1"],
+        role="implementation",
+        metadata=AIMetadata.resolve(agent="codex", model_source="runtime"),
+    )
+
+    assert read_frontmatter(doc.path)[SESSION_LOG_FIELD] == [first, second]
+
+
+def test_start_twice_in_one_session_does_not_duplicate(tmp_path: Path, monkeypatch) -> None:
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "session-log-dedupe", project_dir=project, config=config, offset_days={})
+    log = _with_session_log(tmp_path, monkeypatch)
+    initialize_document(
+        doc.path,
+        project_dir=project,
+        config=config,
+        metadata=AIMetadata.resolve(agent="claude", model_source="runtime"),
+    )
+
+    for _ in range(2):
+        start_execution(
+            doc.path,
+            project_dir=project,
+            config=config,
+            contexts=["C1"],
+            role="implementation",
+            metadata=AIMetadata.resolve(agent="claude", model_source="runtime"),
+        )
+
+    assert read_frontmatter(doc.path)[SESSION_LOG_FIELD] == [log]
+
+
+def test_start_writes_no_session_log_in_a_shared_queue(tmp_path: Path, monkeypatch) -> None:
+    """絶対パスは OS ユーザー名を含むので、private queue 以外へは書かない。"""
+    global_path = tmp_path / "shared.yaml"
+    global_path.write_text(
+        "provenance:\n  enabled: true\n  manager: docsweep\n"
+        "  ledger: provenance/ai-executions.csv\n  actor_key: ishizaka\n"
+        "work_dir: docs/shared\n"
+        "work_policy: shared\n",
+        encoding="utf-8",
+    )
+    project = tmp_path / "shared-repo"
+    (project / ".git").mkdir(parents=True)
+    config = load_config(project_dir=project, global_path=global_path)
+    doc = new_doc("plan", "shared-queue", project_dir=project, config=config, offset_days={})
+    _with_session_log(tmp_path, monkeypatch)
+
+    initialize_document(
+        doc.path,
+        project_dir=project,
+        config=config,
+        metadata=AIMetadata.resolve(agent="claude", model_source="runtime"),
+    )
+    start_execution(
+        doc.path,
+        project_dir=project,
+        config=config,
+        contexts=["C1"],
+        role="implementation",
+        metadata=AIMetadata.resolve(agent="claude", model_source="runtime"),
+    )
+
+    assert SESSION_LOG_FIELD not in (read_frontmatter(doc.path) or {})
+
+
+def test_start_without_a_resolvable_log_leaves_the_field_alone(tmp_path: Path, monkeypatch) -> None:
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "no-session-log", project_dir=project, config=config, offset_days={})
+    monkeypatch.delenv("DOCSWEEP_AI_SESSION_LOG", raising=False)
+
+    initialize_document(
+        doc.path,
+        project_dir=project,
+        config=config,
+        metadata=AIMetadata.resolve(agent="claude", model_source="runtime"),
+    )
+    start_execution(
+        doc.path,
+        project_dir=project,
+        config=config,
+        contexts=["C1"],
+        role="implementation",
+        metadata=AIMetadata.resolve(agent="claude", model_source="runtime"),
+    )
+
+    assert SESSION_LOG_FIELD not in (read_frontmatter(doc.path) or {})

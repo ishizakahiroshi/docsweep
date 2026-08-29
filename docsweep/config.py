@@ -207,30 +207,68 @@ def project_archive_dir(project_dir: Path) -> str | None:
     return str(v) if v else None
 
 
-def archive_dir_for_project(project_dir: Path, config: Config) -> str:
-    """archive 先を決める。
+@dataclass(frozen=True)
+class ArchiveRoute:
+    """archive 先と、それがどう決まったか。
 
-    明示された ``archive_dir`` は最優先で互換維持する。private work queue を明示した
-    新規設定では未指定の archive を queue 内へ連動させ、private 文書が公開側の
-    ``archive/`` へ抜ける経路を作らない。従来 config（work 設定なし）は ``archive/`` を維持する。
+    ``sweep --dry-run --json`` が移送先だけでなく **選択根拠** を返せるようにするための型。
+    根拠が見えないと、意図しない移送先を dry-run の段階で判断できない。
+    """
+
+    archive_dir: str
+    source: str
+    """``explicit_project`` / ``explicit_global`` / ``private_queue`` / ``shared_root``。"""
+
+    legacy_root: str | None = None
+    """既存の repo 直下 archive があり、今後そこへは移送しない場合にその相対パス。"""
+
+
+def archive_route_for_project(project_dir: Path, config: Config) -> ArchiveRoute:
+    """archive 先とその選択根拠を決める。
+
+    優先順位は次のとおり。
+
+    1. project の ``archive_dir`` 明示
+    2. global の ``archive_dir`` 明示
+    3. ``work_policy: private``（既定）のとき ``<work_dir>/archive``
+    4. ``work_policy: shared`` のとき互換の repo 直下 ``archive``
+
+    3 は 2026-08-29 に条件を広げた。以前は ``work_dir`` / ``work_policy`` のいずれかを
+    **明示していた場合だけ** queue 内へ連動させ、設定を書いていない project は repo 直下
+    ``archive/`` を使っていた。しかし既定値は ``work_dir=docs/local`` /
+    ``work_policy=private`` / ``archive_dir=archive`` なので、**設定を書いていない project は
+    private な作業文書を git 追跡され得る場所へ既定で移送していた**。「private queue の文書を
+    Git 追跡され得る場所へ無警告で移さない」という不変条件を、既定のまま満たしていない。
+
+    既に repo 直下 ``archive/`` を運用している project は移送先が変わるため、
+    ``legacy_root`` にその場所を入れて呼び出し側から警告できるようにする（黙って変えない）。
     """
     project_path = Path(project_dir)
     project_cfg = _load_yaml(project_path / PROJECT_CONFIG_NAME)
     explicit = project_cfg.get("archive_dir")
     if explicit:
-        return str(explicit)
+        return ArchiveRoute(str(explicit), "explicit_project")
     if config.archive_dir_explicit:
-        return config.archive_dir
+        return ArchiveRoute(config.archive_dir, "explicit_global")
     work_dir, work_policy, _secret_policy = project_work_settings(project_path, config)
-    if work_policy == "private" and (
-        config.work_dir_explicit
-        or config.work_policy_explicit
-        or "work_dir" in project_cfg
-        or "work_policy" in project_cfg
-    ):
-        archive_root = work_dir.rstrip("/").rstrip("\\")
-        return f"{archive_root}/archive"
-    return config.archive_dir
+    if work_policy != "private":
+        return ArchiveRoute(config.archive_dir, "shared_root")
+    archive_root = work_dir.rstrip("/").rstrip("\\")
+    resolved = f"{archive_root}/archive"
+    legacy = config.archive_dir
+    legacy_path = project_path / legacy
+    has_legacy = False
+    if resolved != legacy:
+        try:
+            has_legacy = legacy_path.is_dir() and any(legacy_path.iterdir())
+        except OSError:
+            has_legacy = False
+    return ArchiveRoute(resolved, "private_queue", legacy if has_legacy else None)
+
+
+def archive_dir_for_project(project_dir: Path, config: Config) -> str:
+    """archive 先を決める（互換 API）。根拠も要るなら :func:`archive_route_for_project`。"""
+    return archive_route_for_project(project_dir, config).archive_dir
 
 
 def resolve_work_dir(project_dir: Path, work_dir: str | None = None) -> Path:

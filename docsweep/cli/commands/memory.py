@@ -23,7 +23,7 @@ def cmd_memory(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
         return 0
-    print(f"memory scan: {len(res.files)} files (stale≥{res.stale_over_days}d: "
+    print(f"memory scan: {len(res.files)} files (stale>={res.stale_over_days}d: "
           f"{sum(1 for f in res.files if f.age_days >= res.stale_over_days)})")
     for f in res.files[:30]:
         mark = "STALE" if f.age_days >= res.stale_over_days else "ok"

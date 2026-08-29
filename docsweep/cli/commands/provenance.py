@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from ...config import load_config
+from ...provenance_hint import warn_if_unresolved
 from ...provenance import (
     AIMetadata,
     ProvenanceError,
@@ -80,14 +81,19 @@ def cmd_provenance(args: argparse.Namespace) -> int:
         project_dir, cfg = _context(args)
         action = args.provenance_action
         if action == "init":
+            metadata = _metadata(args, cfg)
+            if not getattr(args, "update", False):
+                warn_if_unresolved(metadata, config=cfg, command="provenance init")
             result = initialize_document(
                 _path(args.path, project_dir),
                 project_dir=project_dir,
                 config=cfg,
-                metadata=_metadata(args, cfg),
+                metadata=metadata,
+                update=bool(getattr(args, "update", False)),
             )
         elif action == "start":
             contexts = [part for part in re.split(r"[;,]", args.context) if part.strip()]
+            warn_if_unresolved(_metadata(args, cfg), config=cfg, command="provenance start")
             result = start_execution(
                 _path(args.path, project_dir),
                 project_dir=project_dir,

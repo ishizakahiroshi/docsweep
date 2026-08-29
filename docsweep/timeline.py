@@ -159,7 +159,7 @@ def render_timeline(result: TimelineResult, *, fmt: str = "markdown") -> str:
     for e in result.entries:
         label = e.state_label or "[?]"
         display_title = "[sensitive]" if e.sensitive else e.title
-        title = f" — {display_title}" if display_title else ""
+        title = f" - {display_title}" if display_title else ""
         if fmt == "markdown":
             lines.append(
                 f"- {e.date} ({e.source}) {label} **{e.type or '?'}** "

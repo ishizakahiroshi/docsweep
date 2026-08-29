@@ -28,7 +28,34 @@ class CloseoutInputError(ValueError):
 _HEADING_RE = re.compile(r"^(?P<marks>#{2,6})[ \t]+(?P<title>.+?)[ \t]*$", re.MULTILINE)
 _CHECKBOX_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?\[(?P<mark>[ xX])\]\s*(?P<body>.*)$")
 _TODO_RE = re.compile(r"(?:<\s*TODO[^>]*>|\bTODO\b|\bTBD\b|未記入|未定)", re.IGNORECASE)
-_FAILED_RE = re.compile(r"(?:失敗|failed|failure|エラー|error)", re.IGNORECASE)
+# 失敗語そのもの。``continue-on-error`` のような識別子の一部を拾わないよう、
+# 前後をハイフン・語構成文字で挟まれた出現は除く。
+_FAILED_RE = re.compile(
+    r"(?:失敗|エラー|(?<![-\w])(?:failed|failure|failures|error|errors)(?![-\w]))",
+    re.IGNORECASE,
+)
+# 失敗語に件数が結び付いた形。``0 failed`` / ``failed: 0`` / ``失敗 3 件`` を数値ごと拾う。
+# ここで 0 と正の数を分けるのが分類の要で、``failed`` の出現有無だけでは決めない。
+_FAILURE_COUNT_RE = re.compile(
+    r"(?:"
+    r"(?P<pre>\d+)\s*(?:件)?\s*(?:の)?\s*"
+    r"(?:失敗|エラー|(?<![-\w])(?:failed|failures?|errors?)(?![-\w]))"
+    r"|"
+    r"(?:失敗|エラー|(?<![-\w])(?:failed|failures?|errors?)(?![-\w]))"
+    r"\s*(?:数)?\s*[:=]?\s*(?P<post>\d+)\s*(?:件)?"
+    r")",
+    re.IGNORECASE,
+)
+# 件数を書かずに「無い」と言う形。``0 件`` 単独や ``未検出`` のような曖昧語は含めない
+# （それらは成功の証跡ではなく manual review へ回す）。
+_ZERO_FAILURE_RE = re.compile(
+    r"(?:"
+    r"(?:失敗|エラー)\s*(?:は)?\s*(?:なし|無し|ありません|無い)"
+    r"|no\s+(?:failed|failures?|errors?)(?![-\w])"
+    r"|(?<![-\w])(?:failed|failures?|errors?)(?![-\w])\s*[:=]?\s*none"
+    r")",
+    re.IGNORECASE,
+)
 _NOT_RUN_RE = re.compile(r"(?:未実施|未検証|not[ _-]?run|not[ _-]?tested|未確認)", re.IGNORECASE)
 _AUTO_RE = re.compile(
     r"(?:自動(?:確認|検証|テスト)?|automated?|\bpytest\b|\bruff\b|\bmypy\b|\bunittest\b|\bCI\b|静的(?:検査|確認))",
@@ -362,16 +389,60 @@ def _line_items(body: str) -> list[str]:
     return [line.strip() for line in body.splitlines() if line.strip()]
 
 
-def _verification_entry(path: Path, section: str, line: str) -> dict[str, str]:
-    lower = line.lower()
+def _failure_counts(line: str) -> list[int]:
+    """行の中で失敗語に結び付いている件数を全て返す。"""
+    counts: list[int] = []
+    for m in _FAILURE_COUNT_RE.finditer(line):
+        raw = m.group("pre") or m.group("post")
+        if raw is None:
+            continue
+        try:
+            counts.append(int(raw))
+        except ValueError:
+            continue
+    return counts
+
+
+def _classify_verification(section: str, line: str) -> str:
+    """検証行を ``not_run`` / ``failed`` / ``passed`` / ``claimed`` へ分類する。
+
+    判定の優先順位は次のとおり。``failed`` を最初に見る旧実装は ``pytest: 0 failed``
+    や ``エラーなし`` という **成功の証跡** を失敗と読み、closeout を止めていた。
+
+    1. 明示的な未実施（``未検証`` / ``not tested``）
+    2. 正の失敗件数（``1 failed`` / ``errors: 2``）
+    3. 件数ゼロの失敗 summary（``0 failed`` / ``エラーなし``）— 検証 section の
+       機械結果としてだけ ``passed`` へ昇格する
+    4. 件数の無い失敗語（``failed`` / ``エラー`` 単独）
+    5. 明示的な成功
+    6. それ以外は ``claimed``
+
+    ``未検出`` / ``空集合`` / ``0件`` / ``vulnerability 0`` のような曖昧な散文は
+    どれにも当たらず ``claimed`` に落ちる。自動 pass へ昇格させない境界は動かさない。
+    """
+    if _NOT_RUN_RE.search(line):
+        return "not_run"
+
+    counts = _failure_counts(line)
+    if any(c > 0 for c in counts):
+        return "failed"
+
+    zero_failure = bool(counts) or bool(_ZERO_FAILURE_RE.search(line))
+    if zero_failure:
+        # ゼロ失敗 summary は「機械が出した検証結果」のときだけ成功と見なす。
+        if _section_kind(section) == "verification" and _AUTO_RE.search(line):
+            return "passed"
+        return "claimed" if not _SUCCESS_RE.search(line) else "passed"
+
     if _FAILED_RE.search(line):
-        status = "failed"
-    elif _NOT_RUN_RE.search(line):
-        status = "not_run"
-    elif _SUCCESS_RE.search(line):
-        status = "passed"
-    else:
-        status = "claimed"
+        return "failed"
+    if _SUCCESS_RE.search(line):
+        return "passed"
+    return "claimed"
+
+
+def _verification_entry(path: Path, section: str, line: str) -> dict[str, str]:
+    status = _classify_verification(section, line)
     if _MANUAL_RE.search(line):
         kind = "manual"
     elif _AUTO_RE.search(line):

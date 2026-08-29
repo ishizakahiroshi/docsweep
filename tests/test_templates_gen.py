@@ -272,3 +272,61 @@ def test_configured_sections_are_appended_only_to_matching_type(tmp_path: Path):
     bugfix_body = bugfix.path.read_text(encoding="utf-8")
     assert plan_body.endswith("## 顧客への説明\n\n<TODO: 伝達範囲>\n")
     assert "## 顧客への説明" not in bugfix_body
+
+
+# --- --split の子ファイル名が親子命名規約と一致すること -------------------------
+#
+# 生成器は長く `plan_<親topic>-c1.md`（ハイフン）を作っていたが、規約と既存の親子 plan 群、
+# そして `docsweep/closeout.py` の子判定フォールバック `^<親stem>_c\d+(?:_|$)` は
+# いずれもアンダースコアを期待している。生成直後に手でリネームする運用が常態化していた。
+
+
+def test_split_children_use_the_underscore_child_convention(tmp_path: Path) -> None:
+    created = new_split_plans("release-v0.5.0", n=3, project_dir=tmp_path, offset_days={})
+
+    names = [doc.path.name for doc in created]
+    assert names == [
+        "plan_release-v0.5.0.md",
+        "plan_release-v0.5.0_c1.md",
+        "plan_release-v0.5.0_c2.md",
+        "plan_release-v0.5.0_c3.md",
+    ]
+
+
+def test_split_children_match_the_closeout_legacy_child_pattern(tmp_path: Path) -> None:
+    """生成物が、同じリポジトリ内の子判定フォールバックに実際に一致すること。"""
+    import re
+
+    from docsweep.closeout import _LEGACY_CHILD_RE_TEMPLATE
+
+    created = new_split_plans("alpha", n=2, project_dir=tmp_path, offset_days={})
+    parent_stem = created[0].path.stem
+    pattern = re.compile(_LEGACY_CHILD_RE_TEMPLATE.format(parent=re.escape(parent_stem)))
+
+    for child in created[1:]:
+        assert pattern.match(child.path.stem), child.path.name
+
+
+def test_split_titles_put_the_role_into_the_filename(tmp_path: Path) -> None:
+    created = new_split_plans(
+        "auth-refactor",
+        n=3,
+        project_dir=tmp_path,
+        offset_days={},
+        child_titles=["backend", "frontend", "DB migration"],
+    )
+
+    assert [doc.path.name for doc in created[1:]] == [
+        "plan_auth-refactor_c1_backend.md",
+        "plan_auth-refactor_c2_frontend.md",
+        "plan_auth-refactor_c3_db-migration.md",
+    ]
+    # H1 にも担当名が入る。
+    assert "C1: backend" in created[1].path.read_text(encoding="utf-8")
+
+
+def test_split_titles_count_must_match(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="同じ件数"):
+        new_split_plans(
+            "mismatch", n=3, project_dir=tmp_path, offset_days={}, child_titles=["a", "b"]
+        )

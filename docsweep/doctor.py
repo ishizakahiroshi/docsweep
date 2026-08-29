@@ -270,7 +270,7 @@ def run_doctor(
             id="index",
             status="fail",
             label="index.db",
-            detail=f"非常に古い ({age_h:.1f}h) · last_scanned={last or '—'} · {db}",
+            detail=f"非常に古い ({age_h:.1f}h) | last_scanned={last or '-'} | {db}",
             fix="python -m docsweep index-sync",
         ))
     elif age_h >= warn_index_hours:
@@ -278,7 +278,7 @@ def run_doctor(
             id="index",
             status="warn",
             label="index.db",
-            detail=f"古い ({age_h:.1f}h) · last_scanned={last or '—'} · {db}",
+            detail=f"古い ({age_h:.1f}h) | last_scanned={last or '-'} | {db}",
             fix="python -m docsweep index-sync",
         ))
     else:
@@ -286,7 +286,7 @@ def run_doctor(
             id="index",
             status="ok",
             label="index.db",
-            detail=f"鮮度 OK ({age_h:.1f}h) · last_scanned={last or '—'} · {db}",
+            detail=f"鮮度 OK ({age_h:.1f}h) | last_scanned={last or '-'} | {db}",
         ))
 
     # 4. inject
@@ -304,7 +304,7 @@ def run_doctor(
             id="inject",
             status="ok",
             label="inject",
-            detail=" · ".join(detail_parts),
+            detail=" | ".join(detail_parts),
         ))
     else:
         items.append(CheckItem(
@@ -363,7 +363,7 @@ def run_doctor(
         label="MCP 登録",
         detail=(
             "AI ツール側に docsweep MCP を登録しているか確認してください。"
-            f" 参考: python -m docsweep mcp · claude config 付近={claude_cfg}"
+            f" 参考: python -m docsweep mcp | claude config 付近={claude_cfg}"
         ),
         fix="python -m docsweep mcp --help",
     ))
@@ -375,8 +375,8 @@ def run_doctor(
 def format_human(report: DoctorReport) -> str:
     """人間向けの表テキスト。"""
     lines = [
-        f"docsweep doctor · {_status_emoji(report.ok)} "
-        f"{'OK' if report.ok else 'NEEDS ATTENTION'} · {report.generated_at}",
+        f"docsweep doctor | {_status_emoji(report.ok)} "
+        f"{'OK' if report.ok else 'NEEDS ATTENTION'} | {report.generated_at}",
         "",
         f"{'STATUS':<6}  {'CHECK':<14}  DETAIL",
         "-" * 72,

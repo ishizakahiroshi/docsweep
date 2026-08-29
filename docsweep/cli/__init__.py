@@ -82,6 +82,31 @@ _DISPATCH = {
     'ics': cmd_ics,
 }
 
+def _soften_console_encoding(json_mode: bool) -> None:
+    """人間向け出力で、コンソールが表現できない文字を traceback にしない。
+
+    ja-JP Windows の cp932 コンソールへリダイレクトすると、``—`` や ``–`` のような
+    文字を含む **文書側のデータ** が ``UnicodeEncodeError`` になり、CLI が raw
+    traceback で落ちる。装飾 glyph は ASCII 化して持ち込まない方針だが、要約に
+    何が入るかは docsweep 側では決められない。
+
+    そこで人間向け出力の描画境界だけを緩め、表現できない文字はバックスラッシュ
+    表記へ落として見える形にする。ファイル上のデータは変えない。``--json`` は stdout の
+    バイト列そのものが契約なので触らない（表現できなければ明示エラーで落とす）。
+    """
+    if json_mode:
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        encoding = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+        if reconfigure is None or encoding in ("utf8", "utf8sig"):
+            continue
+        try:
+            reconfigure(errors="backslashreplace")
+        except (OSError, ValueError):
+            continue
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] not in _SUBCOMMANDS and raw[0] not in ("--version", "-h", "--help"):
@@ -102,7 +127,19 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 1
-    code = handler(args)
+    _soften_console_encoding(bool(getattr(args, "json", False)))
+    try:
+        code = handler(args)
+    except UnicodeEncodeError as exc:
+        # ここへ来るのは --json だけ（人間向けは上で緩めてある）。出力先の
+        # コードページが payload を表現できないという環境エラーなので、
+        # raw traceback ではなく短い指示を出して exit 2 で返す。
+        print(
+            f"docsweep: 出力先のエンコーディング {exc.encoding} では"
+            "この内容を表現できません（PYTHONIOENCODING=utf-8 を指定してください）",
+            file=sys.stderr,
+        )
+        return 2
     try:
         from ..hints import suggest_after_command
 

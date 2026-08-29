@@ -208,6 +208,58 @@ due: 2026-06-29
 
 いずれも `> ステータス:` 行は持たず、状態は H1 ラベルに集約します。
 
+### archive の移送先
+
+明示しなければ **work queue に連動** します。
+
+| 設定 | 移送先 |
+|---|---|
+| `.docsweep.yaml` に `archive_dir` | その値（最優先） |
+| グローバル config に `archive_dir` | その値 |
+| どちらも無く `work_policy: private`（既定） | `<work_dir>/archive`（既定 `docs/local/archive`） |
+| どちらも無く `work_policy: shared` | `archive/`（repo 直下） |
+
+既定が private queue 側なのは、`work_dir` の既定が `docs/local`、`work_policy` の既定が
+`private` だからです。ここで repo 直下 `archive/` を既定にすると、**private な作業文書を
+git 追跡され得る場所へ黙って移送する**ことになります。
+
+既に repo 直下 `archive/` を運用しているプロジェクトでは、`sweep` が移送先の変更を
+警告します。従来どおりにしたい場合は `.docsweep.yaml` へ `archive_dir: archive` を明示します。
+
+移送先とその選択根拠は `docsweep sweep --dry-run --json` の `archive_routes` で確認できます
+（`source` は `explicit_project` / `explicit_global` / `private_queue` / `shared_root`）。
+
+### 親子 plan のファイル名
+
+子 plan は `plan_<親topic>_c<N>[_<short>].md`。区切りは**アンダースコア**です。
+
+```
+plan_auth-refactor.md
+plan_auth-refactor_c1_backend.md
+plan_auth-refactor_c2_frontend.md
+```
+
+`<short>` は任意で、`python -m docsweep new plan <topic> --split 3 --titles backend,frontend,migration`
+のように渡すと入ります。親子の機械判定の正本は frontmatter の `docsweep_parent` ですが、
+それを失った md では `closeout-check` がこの名前から親子を推定します（`^<親stem>_c\d+(?:_|$)`）。
+
+### `ai_session_logs`（provenance が入れる・手で書かない）
+
+その md を書いた AI セッションの生ログ（AI CLI 自身が残す transcript）のフルパスです。
+`docsweep new` の作成時と `docsweep provenance start` の実行開始時に追記されます
+（同じパスは重複しません）。plan は複数セッションにまたがるので、作成時の 1 本だけでは
+C2 以降を誰がどの会話で実装したのか追えないためです。
+
+- 扱うのは**パスだけ**で、中身は読みません。
+- 絶対パスに OS ユーザー名が入るため、`work_policy: private` の queue にしか書きません。
+- **確定できたときだけ書きます。** Claude Code はセッション ID が環境変数に出るので確実。
+  Codex / Grok / Copilot / Cursor Agent は「作業ディレクトリが一致し、直近まで書かれ続けて
+  いるセッションが 1 つだけ」のときに限り、2 つ以上に絞れなければ何も書きません。
+  黙って別セッションのログを指すくらいなら、キーごと書かない方が安全という判断です。
+- opencode は全セッションが単一 SQLite に集約され 1 セッションを特定できないため対象外です。
+- 自動で解決できないときは `--ai-session-log <path>` か環境変数 `DOCSWEEP_AI_SESSION_LOG`
+  で明示します。
+
 ### プロジェクト固有の本文節
 
 生成物へプロジェクト固有の必須情報を加える場合は、設定の `template_sections` に種別ごとの

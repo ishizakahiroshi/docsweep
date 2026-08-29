@@ -65,6 +65,6 @@ def render_cookbook(name: str | None = None) -> str:
     for key in list_scenarios():
         lines.append(f"## {key}")
         for it in SCENARIOS[key]:
-            lines.append(f"  {it['cmd']}  — {it['why']}")
+            lines.append(f"  {it['cmd']}  - {it['why']}")
         lines.append("")
     return "\n".join(lines)

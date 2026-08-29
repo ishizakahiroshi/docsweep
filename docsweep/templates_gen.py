@@ -375,6 +375,27 @@ def _patch_scalar(path: Path, field: str, value: str) -> None:
     path.write_text("---\n" + "\n".join(lines) + "\n---" + body, encoding="utf-8")
 
 
+def _slugify(value: str) -> str:
+    """短い担当名をファイル名で使える形へ落とす。空になったら空文字を返す。"""
+    text = value.strip().lower().replace(" ", "-")
+    text = re.split(r"[\/]", text)[-1]
+    text = re.sub(r"[^0-9a-z぀-ヿ一-鿿-]+", "-", text)
+    return text.strip("-. ")
+
+
+def _child_topic(topic: str, index: int, short: str | None) -> str:
+    """子 plan の topic を親子命名規約 ``<親topic>_c<N>[_<short>]`` で組む。
+
+    区切りは **アンダースコア**。``closeout.py`` の子判定フォールバックが
+    ``^<親stem>_c\d+(?:_|$)`` を見ており、ハイフンだと生成器の出力が同じ
+    リポジトリ内の判定と一致しない（``docsweep_parent`` がある間は表面化しないが、
+    明示の親参照を失った md で親子が切れる）。
+    """
+    base = f"{topic}_c{index}"
+    slug = _slugify(short or "")
+    return f"{base}_{slug}" if slug else base
+
+
 def new_split_plans(
     topic: str,
     *,
@@ -387,10 +408,18 @@ def new_split_plans(
     work_dir: str | None = None,
     allow_sensitive: bool = False,
     delegate: bool = False,
+    child_titles: list[str] | None = None,
 ) -> list[NewDoc]:
-    """親 plan + 子 N 本を生成し related と方向付き親参照を付ける（UX W3 / P26）。"""
+    """親 plan + 子 N 本を生成し related と方向付き親参照を付ける（UX W3 / P26）。
+
+    子のファイル名は ``plan_<親topic>_c<N>.md``。``child_titles`` を渡すと
+    ``plan_<親topic>_c<N>_<short>.md`` になり、ファイル名だけでどの子が何を担当するかが読める。
+    """
     if n < 1 or n > 20:
         raise ValueError("--split は 1〜20")
+    titles = list(child_titles or [])
+    if titles and len(titles) != n:
+        raise ValueError(f"--titles は --split と同じ件数で指定してください（{n} 件に対し {len(titles)} 件）")
     parent_title = title or topic
     created: list[NewDoc] = []
     try:
@@ -405,11 +434,15 @@ def new_split_plans(
         children: list[NewDoc] = []
         child_names: list[str] = []
         for i in range(1, n + 1):
-            child_topic = f"{topic}-c{i}"
+            short = titles[i - 1] if titles else None
+            child_topic = _child_topic(topic, i, short)
+            child_title = f"{parent_title} C{i}"
+            if short:
+                child_title = f"{child_title}: {short}"
             child = new_doc(
                 "plan", child_topic,
                 project_dir=project_dir,
-                title=f"{parent_title} C{i}",
+                title=child_title,
                 due=due, offset_days=offset_days,
                 config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
                 delegate=delegate,

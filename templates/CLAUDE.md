@@ -150,6 +150,11 @@ docsweep 固有の追加規約は次のとおりです:
 - 親 plan を `python -m docsweep new plan <topic> --split N` で分割すると、各 child に
   `docsweep_parent: <repo-relative path>` が付く。`related` は汎用の関連資料用であり、親子の
   機械判定を単独で担わない。
+- **子 plan のファイル名は `plan_<親topic>_c<N>[_<short>].md`**（区切りはアンダースコア）。
+  `<short>` は任意で、`--titles backend,frontend,migration` を渡すと入る。付けると
+  ファイル名だけでどの子が何を担当するか読めるので、C が 3 本以上なら付けることを勧める。
+  `docsweep_parent` を失った md でも `closeout-check` がこの名前から親子を推定できる
+  （フォールバックの判定は `^<親stem>_c\d+(?:_|$)`）。
 
 ### 既存採用者向け移行ガイド
 
@@ -296,6 +301,16 @@ global の `plan-closeout` skill が導入済みなら補助に使ってよい�
     読める（列は名前で解決している）ので、一括変換は必須ではない。
   - `AI実行` と `実行モデル` は provenance が `start` 時に自動追加する列であり、手で書かない。
     `AI実行` は実行 ID、`実行モデル` は `<role>: <provider> / <model_id> / <reasoning_profile>` を保持する。
+  - frontmatter の `ai_session_logs` も provenance が入れる。**手で書かない。**
+    その md を書いた AI セッションの生ログ（AI CLI 自身が残す transcript）のフルパスで、
+    `new` の作成時と `provenance start` の実行開始時に追記される（同じパスは重複しない）。
+    md の記述だけでは追えない判断の経緯へ、後から会話ログで戻るための手がかり。
+    扱うのは**パスだけ**で中身は読まない。絶対パスに OS ユーザー名が入るため、
+    `work_policy: private` の queue にしか書かない。
+    Claude Code はセッション ID が環境変数に出るので確実に一致する。
+    Codex / Grok / Copilot / Cursor Agent は「作業ディレクトリが一致し、直近まで書かれ続けて
+    いるセッションが 1 つだけ」のときに限って記録し、**2 つ以上に絞れなければ何も書かない**。
+    opencode は全セッションが単一 SQLite に集約され 1 セッションを特定できないため対象外。
   - 章番号は `C1` `C2` `C3` の連番（`Step 1/2` 表記は禁止）。
   - 種別は `planned` / `done` の 2 値のみ（OKF lifecycle と同じ語彙）。
   - 備考/注意点は空欄でよい（`—` を置く）。並列可否・子 plan への相対リンク・前提条件など、

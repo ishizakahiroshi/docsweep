@@ -15,7 +15,56 @@
   記録する（2 つ以上に絞れなければ何も書かない）。opencode は全セッションが単一 SQLite に
   集約され 1 セッションを特定できないため対象外。記録するのはパスだけで内容は読まない。
   `work_policy: private` の queue に限る。`new --ai-session-log <path>` と
-  `DOCSWEEP_AI_SESSION_LOG` で明示指定もできる。
+  `DOCSWEEP_AI_SESSION_LOG` で明示指定もできる。`provenance start` でも追記するため、
+  plan が複数セッションにまたがっても C2 以降の実行を追える（同じパスは重複しない）。
+- `provenance init --update` を追加。作成 AI が `unknown` で記録されてしまった work を、
+  台帳の authoring 行と frontmatter の `ai_author_*` をまとめて実値へ直せる。
+  `execution_id` / `work_id` / `started_at` は変えず、訂正したことは台帳の `notes` へ残す。
+- provenance が有効なのに AI metadata を渡さずに `new` / `provenance start` /
+  `provenance init` を実行すると、`unknown` で記録される前に stderr へ 1 行警告する
+  （作成・記録自体は従来どおり成功する）。
+- `new --split N` に `--titles A,B,C` を追加。子 plan のファイル名が
+  `plan_<親topic>_c<N>_<short>.md` になり、どの子が何を担当するかがファイル名から読める。
+
+### Changed
+
+- **設定を書いていないプロジェクトの archive 移送先を、repo 直下 `archive/` から
+  `<work_dir>/archive`（既定 `docs/local/archive`）へ変更。** 既定値は
+  `work_dir=docs/local` / `work_policy=private` なので、従来の既定は private な作業文書を
+  git 追跡され得る場所へ移送していた。`archive_dir` の明示（プロジェクト / グローバル）と
+  `work_policy: shared` の repo 直下互換は変えていない。既に repo 直下 `archive/` を
+  運用しているプロジェクトには `sweep` が移送先変更の警告を出す。従来どおりにするには
+  `.docsweep.yaml` へ `archive_dir: archive` を明示する。**既存ファイルの移動はしない。**
+- `sweep` の JSON に `archive_routes` を追加。移送先だけでなく選択根拠
+  （`explicit_project` / `explicit_global` / `private_queue` / `shared_root`）を返すので、
+  dry-run だけで destination contract を判断できる。移送候補が 0 件でも返す。
+- **`new --split N` の子ファイル名を `plan_<親topic>-c<N>.md` から
+  `plan_<親topic>_c<N>.md` へ変更**（区切りがハイフンからアンダースコアへ）。
+  規約・既存の親子 plan 群・`closeout-check` の子判定フォールバック
+  （`^<親stem>_c\d+(?:_|$)`）はいずれもアンダースコアを期待しており、生成器だけが
+  外れていた。既存ファイルはリネームしない。
+
+### Fixed
+
+- 秘密ガードが `task-management-and-scheduling-system` のような通常のハイフン語を
+  OpenAI API キーと誤検知し、秘密を含まない作業文書の保存を拒否していた問題を修正。
+  `sk-` の前に境界表明が無く、語の途中（`ta|sk-...`）から一致していた。
+- ja-JP Windows の cp932 コンソールへリダイレクトすると `scan` と `doctor` が
+  `UnicodeEncodeError` の raw traceback で落ちていた問題を修正。人間向け出力の装飾記号を
+  ASCII 化し、あわせて描画境界だけを緩めて**文書側のデータ**に含まれる表現不能な文字でも
+  落ちないようにした（`--json` は stdout のバイト列が契約なので緩めず、表現できない場合は
+  短い stderr と exit 2 にする）。ファイル上のデータは変えない。
+- Web UI からの scan-roots 更新で、`~/.docsweep/config.yaml` の `roots:` リストの途中に
+  コメント行があると、その後ろのエントリが置換されずに残っていた問題を修正。外したはずの
+  root が消えず、しかも結果が yaml として妥当なため既存の検証も通っていた。
+- `closeout-check` の検証行分類が、`pytest: 0 failed` や `エラーなし` のような**成功の証跡**を
+  「検証の失敗」と読んで closeout を止めていた問題を修正。判定を
+  未実施 → 正の失敗件数 → ゼロ失敗 summary → 明示成功 → claimed の順に固定し、
+  `continue-on-error` のような識別子の一部を失敗語として拾わないようにした。
+  `未検出` / `空集合` / `0件` のような曖昧な散文は従来どおり manual review へ回す
+  （自動 pass へは緩めていない）。
+- inject の guidance ファイル / `.docsweep.yaml` / グローバル config の書き込みが非 atomic
+  だった問題を修正（途中で落ちると壊れたファイルが残り得た）。
 
 ## [0.4.0] - 2026-08-10
 

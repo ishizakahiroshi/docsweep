@@ -19,9 +19,16 @@ import yaml
 from ..atomic import write_atomic
 from ..config import GLOBAL_CONFIG_PATH
 
-# トップレベル ``roots:`` キーのブロック（ブロック形式の続き行 = インデント行 or リスト行、
-# または同一行 flow 形式）にマッチする。続き行には空行を含めない（次キーとの境界を保つ）。
-_ROOTS_BLOCK_RE = re.compile(r"^roots:[^\n]*\n(?:[ \t]*-[^\n]*\n)*", re.MULTILINE)
+# トップレベル ``roots:`` キーのブロック。続き行はリスト項目だけでなく、その間に挟まった
+# インデント付きコメント行も含める。空行は次キーとの境界として残す。
+#
+# リスト項目だけを続き行とすると、``roots:`` の途中にコメントが 1 行あるだけでブロックが
+# そこで切れ、**その後ろのリスト項目が置換されずに残る**。利用者から見ると Web UI で外した
+# はずの root が消えず、しかも yaml としては妥当なので検証も通る（F-05・2026-07-21 監査）。
+_ROOTS_BLOCK_RE = re.compile(
+    r"^roots:[^\n]*\n(?:[ \t]+(?:-|#)[^\n]*\n)*", re.MULTILINE
+)
+_ROOTS_COMMENT_RE = re.compile(r"^[ \t]+#[^\n]*$", re.MULTILINE)
 
 
 def _render_roots_block(roots: list[Path]) -> str:
@@ -42,8 +49,13 @@ def update_global_roots(roots: list[Path], *, config_path: Path | None = None) -
 
     if path.is_file():
         text = path.read_text(encoding="utf-8")
-        if _ROOTS_BLOCK_RE.search(text):
-            new_text = _ROOTS_BLOCK_RE.sub(block, text, count=1)
+        match = _ROOTS_BLOCK_RE.search(text)
+        if match:
+            # ブロック内に挟まっていたコメントは失わない。元の位置（項目の間）へは
+            # 戻せないので、新しいリストの直後へまとめて置く。
+            kept = _ROOTS_COMMENT_RE.findall(match.group(0))
+            replacement = block + ("".join(f"{c}\n" for c in kept) if kept else "")
+            new_text = text[: match.start()] + replacement + text[match.end() :]
         else:
             sep = "" if (not text or text.endswith("\n")) else "\n"
             new_text = text + sep + block

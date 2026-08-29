@@ -74,7 +74,7 @@ def test_apply_promote_via_api(client):
     r = c.post("/api/apply", data={"token": TOKEN, "path": p, "action": "promote"})
     assert r.status_code == 200
     assert r.json()["status"] == "done"
-    assert (root / "proj_a" / "archive" / "plan_watch.md").exists()
+    assert (root / "proj_a" / "docs" / "local" / "archive" / "plan_watch.md").exists()
 
 
 def test_apply_disallowed_returns_400(client):

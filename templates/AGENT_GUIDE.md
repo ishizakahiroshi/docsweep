@@ -58,6 +58,7 @@ python -m docsweep closeout-check --path <parent-plan> --json
 - `python -m docsweep promote --state watching --to done` — リリース前に様子見をまとめて昇格。
 - `python -m docsweep index` / `python -m docsweep pending` — 横断 INDEX 再生成 / 保留だけ表示。
 - `python -m docsweep summary` — 要点だけに絞った JSON。コンテキストに載せやすい。
+- `python -m docsweep project list` — 監視対象プロジェクトの一覧と ON / OFF。`project disable <root>` / `project enable <root>` で board と scan から外す・戻す（`~/.docsweep/excluded.json` に記録されるだけで、ファイルは動かない）。
 
 ## ラベルと状態（このプロジェクトの正本）
 

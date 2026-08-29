@@ -79,7 +79,7 @@ def test_promote_watching(ws):
     cfg = _cfg(ws)
     moved = promote_state(cfg, from_state="watching", to_state="done")
     assert len(moved) == 1
-    assert (ws / "a" / "archive" / "plan_watch.md").exists()
+    assert (ws / "a" / "docs" / "local" / "archive" / "plan_watch.md").exists()
 
 
 def test_summary_json(ws):

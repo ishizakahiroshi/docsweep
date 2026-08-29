@@ -295,6 +295,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="親 plan + 子 N 本を一括生成し related 双方向と docsweep_parent を付ける（UX W3 / P26）",
     )
     p_new.add_argument(
+        "--titles", metavar="A,B,C",
+        help="--split の各子の短い担当名（カンマ区切り・件数は --split と一致させる）。"
+             "指定するとファイル名が plan_<親topic>_c<N>_<short>.md になり、"
+             "どの子が何を担当するかがファイル名から読める",
+    )
+    p_new.add_argument(
         "--delegate", action="store_true",
         help="実装を別 AI へ委譲する plan として生成（docsweep_delegation: external と C 詳細節の雛形を付ける）",
     )
@@ -339,6 +345,12 @@ def build_parser() -> argparse.ArgumentParser:
     add_provenance_scope(p_prov_init)
     add_ai_metadata(p_prov_init)
     p_prov_init.add_argument("--path", required=True, help="対象work MD")
+    p_prov_init.add_argument(
+        "--update",
+        action="store_true",
+        help="既存 work の authoring 行と frontmatter の AI metadata を実値へ更新する"
+             "（execution_id / work_id / started_at は変えない）",
+    )
 
     p_prov_start = p_prov_sub.add_parser("start", help="C単位のAI executionを開始")
     add_provenance_scope(p_prov_start)

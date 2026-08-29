@@ -69,7 +69,7 @@ def _ruleset_decide(rec: FileRecord, lc_progress: str | None) -> TriageSuggestio
             path=rec.path, project=rec.project, current_state=rec.state,
             proposed_action="discard",
             proposed_to=None,
-            reason=f"陳腐化フラグが立ってから 180 日超 (age={age}d) — 廃止判断を提案",
+            reason=f"陳腐化フラグが立ってから 180 日超 (age={age}d) - 廃止判断を提案",
             confidence=0.6,
         )
 

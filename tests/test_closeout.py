@@ -368,3 +368,112 @@ def test_apply_relabel_done_does_not_implicitly_archive(tmp_path: Path, capsys):
     assert "docsweep_state: done" in plan.read_text(encoding="utf-8")
     assert "# [完了] parent" in plan.read_text(encoding="utf-8")
     assert not (project / "archive" / plan.name).exists()
+
+
+# --- 検証行 classifier の判定契約（bugfix_closeout-evidence-classifier... C1） -----
+#
+# 旧実装は失敗語の出現だけを最初に見ていたため、`pytest: 0 failed` や `エラーなし`
+# という **成功の証跡** が failed になり、closeout-check の blocker になっていた。
+# 逆に `未検出` `空集合` `0件` は claimed のままで、そちらは manual review へ回すのが
+# 正しい。両者は別の問題なので、曖昧な散文を自動 pass へ緩めてはいけない。
+
+_ZERO_FAILURE_SUMMARIES = [
+    "pytest: 0 failed",
+    "pytest -q: failed: 0",
+    "ruff: 0 errors",
+    "mypy: errors: 0",
+    "pytest 失敗0件",
+    "pytest 実行: エラーなし",
+    "pytest: no failures",
+]
+
+_POSITIVE_FAILURES = [
+    "pytest: 1 failed",
+    "mypy: errors: 2",
+    "pytest 失敗 3 件",
+    "pytest が failed",
+    "エラーが出た",
+    "ruff: failure",
+]
+
+_NOT_RUN = [
+    "0 failed because tests were not run",
+    "未検証",
+    "not tested",
+    "pytest 未実施",
+]
+
+# 「無い」ことを言っているようで、何を測ったのか機械には決められない散文。
+_AMBIGUOUS_PROSE = [
+    "未検出",
+    "空集合",
+    "0件",
+    "npm audit: vulnerability 0",
+    "error 0",
+]
+
+
+@pytest.mark.parametrize("line", _ZERO_FAILURE_SUMMARIES)
+def test_zero_failure_summary_is_not_a_failure(line: str) -> None:
+    from docsweep.closeout import _classify_verification
+
+    assert _classify_verification("検証", line) == "passed"
+
+
+@pytest.mark.parametrize("line", _POSITIVE_FAILURES)
+def test_positive_or_unqualified_failure_still_blocks(line: str) -> None:
+    from docsweep.closeout import _classify_verification
+
+    assert _classify_verification("検証", line) == "failed"
+
+
+@pytest.mark.parametrize("line", _NOT_RUN)
+def test_explicit_not_run_wins_over_a_zero_count(line: str) -> None:
+    from docsweep.closeout import _classify_verification
+
+    assert _classify_verification("検証", line) == "not_run"
+
+
+@pytest.mark.parametrize("line", _AMBIGUOUS_PROSE)
+def test_ambiguous_prose_is_not_promoted_to_passed(line: str) -> None:
+    from docsweep.closeout import _classify_verification
+
+    assert _classify_verification("検証", line) == "claimed"
+
+
+def test_zero_failure_prose_outside_a_verification_section_is_not_auto_passed() -> None:
+    """ゼロ失敗 summary を成功にできるのは検証 section の機械結果だけ。"""
+    from docsweep.closeout import _classify_verification
+
+    assert _classify_verification("備忘", "pytest: 0 failed") == "claimed"
+
+
+def test_failure_word_inside_an_identifier_is_not_a_failure() -> None:
+    """``continue-on-error`` のような識別子の一部を失敗と読まない。"""
+    from docsweep.closeout import _classify_verification
+
+    line = "`continue-on-error` なし、fixture 2 本で exit 挙動を検証する構成を機械確認した"
+    assert _classify_verification("検証", line) == "claimed"
+
+
+def test_zero_failure_summary_no_longer_blocks_closeout(tmp_path: Path) -> None:
+    """行単位の分類だけでなく、closeout-check の blocker が消えることまで見る。"""
+    project = tmp_path / "proj"
+    local = project / "docs" / "local"
+    local.mkdir(parents=True)
+    (project / ".git").mkdir()
+    plan = _write(
+        local / "plan_zero_failures.md",
+        "---\ntype: plan\nstatus: draft\ndocsweep_state: in-progress\n---\n\n"
+        "# [実行中] ゼロ失敗 summary の扱い\n\n"
+        "## 完了条件\n\n- [x] 実装した\n\n"
+        "## 検証\n\n- [x] pytest: 0 failed\n- [x] ruff: 0 errors\n",
+    )
+
+    result = check_closeout(plan, project_dir=project, config=_cfg(project))
+
+    codes = {b["code"] for b in result.blockers}
+    assert "failed" not in codes
+    assert "not_run" not in codes
+    statuses = {e["status"] for e in result.parent["details"]["verification"]}
+    assert statuses == {"passed"}
