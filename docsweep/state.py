@@ -33,28 +33,44 @@ def _now_iso() -> str:
 
 @dataclass
 class FileState:
-    """1 ファイルの付随情報。postpone_count・due_history・label_history を保持。"""
+    """1 ファイルの付随情報。postpone_count・due_history・label_history を保持。
+
+    ``snoozed_until`` / ``pinned`` は UX W4 / P21（人間の拒否権）。
+    **MD 本体には書かない**。score が気に入らないときの一時的な見え方の調整であって、
+    文書そのものの状態ではないため（正本主義を崩さない）。
+    """
 
     postpone_count: int = 0
     due_history: list[dict] = field(default_factory=list)
     label_history: list[dict] = field(default_factory=list)
+    snoozed_until: str | None = None
+    pinned: bool = False
 
     def to_dict(self) -> dict:
         return {
             "postpone_count": self.postpone_count,
             "due_history": list(self.due_history),
             "label_history": list(self.label_history),
+            "snoozed_until": self.snoozed_until,
+            "pinned": self.pinned,
         }
 
     @classmethod
     def from_dict(cls, data: Any) -> FileState:
         if not isinstance(data, dict):
             return cls()
+        snoozed = data.get("snoozed_until")
         return cls(
             postpone_count=int(data.get("postpone_count") or 0),
             due_history=list(data.get("due_history") or []),
             label_history=list(data.get("label_history") or []),
+            snoozed_until=str(snoozed) if isinstance(snoozed, str) and snoozed else None,
+            pinned=bool(data.get("pinned")),
         )
+
+    def is_snoozed(self, today: str) -> bool:
+        """``today``（ISO 日付）時点で snooze 中か。期限切れは自然に False へ戻る。"""
+        return bool(self.snoozed_until) and str(self.snoozed_until) >= today
 
 
 @dataclass
@@ -196,3 +212,46 @@ def should_reset_postpone(*, old_state_key: str | None, new_state_key: str | Non
     if old_state_key is None or new_state_key is None:
         return False
     return (old_state_key, new_state_key) in _RESET_TRANSITIONS
+
+
+# ===== UX W4 / P21: snooze / pin =============================================
+# score の並びに対する人間側の拒否権。snooze は「今日は見ない」（既定で当日限り）、
+# pin は「常に上に出す」。どちらも state.json だけに書き、MD には触らない。
+
+
+def set_snooze(project_root: Path, abs_path: Path, until: str | None) -> FileState:
+    """``until``（ISO 日付）まで board から隠す。``None`` で解除。"""
+    doc = load(project_root)
+    key = _rel_key(project_root, abs_path)
+    fs = doc.get(key)
+    fs.snoozed_until = until or None
+    doc.upsert(key, fs)
+    save(project_root, doc)
+    return fs
+
+
+def set_pinned(project_root: Path, abs_path: Path, pinned: bool) -> FileState:
+    """常に上へ出す/やめる。"""
+    doc = load(project_root)
+    key = _rel_key(project_root, abs_path)
+    fs = doc.get(key)
+    fs.pinned = bool(pinned)
+    doc.upsert(key, fs)
+    save(project_root, doc)
+    return fs
+
+
+def get_view_state(project_root: Path, abs_path: Path) -> FileState:
+    """snooze / pin を含む FileState をそのまま返す（読み取り専用）。"""
+    return load(project_root).get(_rel_key(project_root, abs_path))
+
+
+def snoozed_paths(project_root: Path, today: str) -> set[str]:
+    """``today`` 時点で snooze 中のプロジェクト相対 POSIX パス集合。"""
+    doc = load(project_root)
+    return {k for k, v in doc.files.items() if v.is_snoozed(today)}
+
+
+def pinned_paths(project_root: Path) -> set[str]:
+    doc = load(project_root)
+    return {k for k, v in doc.files.items() if v.pinned}

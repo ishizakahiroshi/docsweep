@@ -110,6 +110,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_promote.add_argument("--to", default="done", help="昇格先の状態（既定 done）")
     p_promote.add_argument("--project", help="対象プロジェクトを絞る")
     p_promote.add_argument("--dry-run", action="store_true")
+    p_promote.add_argument(
+        "--yes", action="store_true",
+        help="件数が多いときの 2 段階確認を承諾する（UX W4 / P59）",
+    )
     p_promote.add_argument("--json", action="store_true")
 
     p_index = sub.add_parser("index", help="横断 INDEX（.docsweep/INDEX.md / .json）を再生成")
@@ -704,6 +708,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_memory.add_argument("--path", action="append", dest="paths", help="追加スキャンパス")
     p_memory.add_argument("--stale-days", type=int, default=90)
     p_memory.add_argument("--json", action="store_true")
+
+    p_demo = sub.add_parser(
+        "demo",
+        help="使い捨てのサンプル project を作る（記事・初回体験用・既存には触らない）",
+    )
+    p_demo.add_argument(
+        "--dir", dest="demo_dir", default=None,
+        help="生成先（省略で一時ディレクトリに新規作成）",
+    )
+    p_demo.add_argument("--json", action="store_true")
 
     p_ics = sub.add_parser("ics", help="due 付き open を .ics で export")
     _add_scope_args(p_ics)

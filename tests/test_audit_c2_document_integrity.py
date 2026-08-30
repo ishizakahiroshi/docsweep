@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 import docsweep.engine as engine_module
-import docsweep.related as related_module
 from docsweep.archive import archive_file
 from docsweep.config import load_config
 from docsweep.day import _local_day_bounds

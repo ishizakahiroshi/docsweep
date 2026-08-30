@@ -5,8 +5,47 @@
 
 ## [Unreleased]
 
+（次の版の変更をここへ書く）
+
+## [0.5.0] - 2026-08-30
+
 ### Added
 
+- **`docsweep demo` を追加。** 使い捨てのサンプル project を一時ディレクトリへ作る。
+  overdue / 今日 / 未来 / 期日なし / 保留 / 完了 が 1 画面でそろう md を 8 本と
+  `.docsweep.yaml` を生成するので、`scan` も `triage` も `serve` も「空っぽ」にならない。
+  記事・SNS デモ・初回体験用。**既存のプロジェクトには触らず、グローバル config の
+  `roots` にも登録しない**（`--root <生成先>` を明示して使う）。`--dir` で生成先を指定できる。
+- **エラーメッセージからドキュメントへの深リンク。** 未知のサブコマンド・`.docsweep.yaml` の
+  YAML パース失敗・出力先エンコーディングの 3 か所で、「何を読めばいいか」を 1 行足す。
+  docs/ は wheel に同梱されないのでリンク先は GitHub の URL。`help id` を併記するので
+  問い合わせのときに場所を特定できる。`DOCSWEEP_HINTS=0` で抑止できる。
+- **一括破壊操作の 2 段階確認。** 対象件数が `bulk_confirm_threshold`（既定 20）以上のとき、
+  Web の一括 archive / 一括ラベル変更は `ARCHIVE` / `RELABEL` の打ち込みを求め、
+  CLI の `promote` は `--yes` を要求する。**しきい値未満は従来どおり 1 段階のまま。**
+  操作ごとにフレーズを変えて惰性の確認を効かなくしてある。`--dry-run` は下見なので求めない。
+  非対話が本プロジェクトの不変条件なので、CLI は TTY でもプロンプトを出さない。
+- **カードの snooze（今日は見ない）と pin（常に上）。** score の並びに対する人間側の拒否権。
+  `.docsweep/state.json` にだけ持ち、**MD 本体には書かない**（文書の状態ではなく見え方のため）。
+  snooze は期限が来れば自然に戻る。板面の 💤 トグルで非表示分を半透明で出して解除できる。
+- **習慣メトリクス（連続日数と今週の片付け件数）を board へ。** 記録するのは
+  「朝の入口を開いた日付」だけで、何を見たかは残さない。`metrics: false`（config）または
+  `DOCSWEEP_METRICS=0` で記録ごと止まる。0 件でも責める文言は出さない。
+- **カード密度モード（compact / cozy / detailed）と高コントラストの明示トグル。**
+  どちらも `localStorage` に残る。`prefers-reduced-motion` も尊重する。
+- **focus session。** カードの 🎯 で 1 枚だけ残して他を薄くする。Esc で戻る。
+- **初回だけ出る 30 秒クイックツアー（Web・4 ステップ）。** 一度閉じたら再表示しない。
+- **キーボード: `g g` / `g e` で最上・最下のカードへ。**
+- **プロジェクト固有の本文節（`template_sections`）。** `.docsweep.yaml` と
+  `~/.docsweep/config.yaml` に生成種別ごとの追加見出しを宣言でき、`docsweep new` で
+  本文へ差し込まれる。同じ見出しはプロジェクト側がグローバル側を置き換え、新しい見出しは
+  末尾へ追加する。空リストを指定した種別は継承した追加節をすべて解除する。
+- **実装を別 AI へ委譲する plan の書式と検査。** frontmatter に
+  `docsweep_delegation: external` を宣言した plan は `## C 詳細` を必須にする。
+  `docsweep new plan <topic> --delegate` で雛形を生成でき、`closeout-check` /
+  `linkcheck` / `templates/.githooks/docsweep-check.py` が書式を検査する。
+  各 C は「目的 1 つ / 変更対象 1〜4 ファイル / 完了条件 3〜6 項目 / その C 単独で
+  静的チェックかテストを実行できる」粒度を求める。
 - 作業 md の frontmatter に `ai_session_logs` を追加。その md を書いた AI セッションの
   transcript（AI CLI 自身が残す生ログ）のフルパスを記録し、md の記述だけでは追えない判断の
   経緯へ後から会話ログで戻れるようにする。対応は Claude Code / Codex / Grok / Copilot /
@@ -28,6 +67,19 @@
 
 ### Changed
 
+- **`context配分` 表の書式を統一した（テンプレートの破壊的変更）。** 種別の語彙を
+  `planned` / `done` の 2 つへ揃え、列順を `C / 種別 / 内容 / 備考・注意点` に固定した。
+  `bugfix_*.md` にも同じ表を持たせる。既存ファイルは書き換えない（新規生成分から適用）。
+  採用者が `templates/CLAUDE.md` を取り込み直す場合は、この書式差分に注意。
+- **相対日付と絶対日付の表記を言語ごとに統一した。** board の「今日の 1 個」が
+  `19d` という素の英語表記のままだったのを `19 日前` / `19d ago` へ揃え、期日バッジには
+  絶対日付と曜日のツールチップ（`期日 2026-08-30（日）`）を付けた。相対表示だけだと
+  週をまたいだときに読み違える。
+- **キーボード焦点を全操作要素で見えるようにした。** `:focus-visible` の輪郭を
+  ボタン・リンク・入力へ統一し、Tab 1 回で board 本体へ入れるスキップリンクを追加した。
+  マウス操作時の見た目は変えていない。
+- 資料と実装のズレ 6 件を修正（README / `docs/ai-agent-integration.md` /
+  `docs/conventions.md` / `templates/.docsweep.yaml` と、capture・inject・status の実装）。
 - **設定を書いていないプロジェクトの archive 移送先を、repo 直下 `archive/` から
   `<work_dir>/archive`（既定 `docs/local/archive`）へ変更。** 既定値は
   `work_dir=docs/local` / `work_policy=private` なので、従来の既定は private な作業文書を

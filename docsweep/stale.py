@@ -12,10 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from pathlib import Path
 
 from .config import Config
-from .engine import run_scan
 from .models import FileRecord
 
 

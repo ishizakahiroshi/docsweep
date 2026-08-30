@@ -10,6 +10,7 @@ from .brief.service import build_brief
 from .config import Config
 from .engine import scan_records
 from .models import FileRecord, Flag
+from .record_view import masked_title
 
 
 @dataclass
@@ -55,7 +56,7 @@ def _slim(rec: FileRecord) -> dict:
         "name": rec.path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
         "state": rec.state,
         "state_label": rec.state_label,
-        "title": "[sensitive]" if rec.sensitive else rec.title,
+        "title": masked_title(rec),
         "sensitive": rec.sensitive,
         "due": rec.due,
         "age_days": rec.age_days,
@@ -63,6 +64,14 @@ def _slim(rec: FileRecord) -> dict:
 
 
 def day_open(config: Config) -> DayOpenResult:
+    # UX W4 / P20: 朝の儀式を開いた日付だけ記録する（無効化可・失敗しても続行）。
+    try:
+        from .streak import metrics_enabled, record_open
+
+        if metrics_enabled(config):
+            record_open()
+    except Exception:  # noqa: BLE001
+        pass
     brief = build_brief(config, all_projects=True)
     today_pick = None
     best = -1.0

@@ -132,6 +132,13 @@ class Config:
     due_default_offset_days: dict[str, int] = field(
         default_factory=lambda: dict(DEFAULT_DUE_OFFSET_DAYS)
     )
+    # 習慣メトリクス（streak / 今週の片付け件数）の表示可否（UX W4 / P20）。
+    # false で完全に無効（記録も表示もしない）。DOCSWEEP_METRICS=0 でも切れる。
+    metrics_enabled: bool = True
+    # 一括破壊操作の 2 段階確認しきい値（UX W4 / P59）。
+    # 対象件数がこの値以上のとき、Web は typed confirm を要求し、CLI は --yes を要求する。
+    # 0 以下にすると常に要求する。既定 20（それ未満は従来どおり 1 段階）。
+    bulk_confirm_threshold: int = 20
     # C2 で追加: 任意の tag 語彙宣言（補完候補に使う・宣言外は warn する未来拡張用）。
     known_tags: list[str] = field(default_factory=list)
     # C2 で追加: `docsweep stale` の review_status 別しきい値（日数）。
@@ -186,10 +193,22 @@ class Config:
 def _load_yaml(path: Path) -> dict:
     if not path.is_file():
         return {}
-    with path.open("r", encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    except yaml.YAMLError as exc:
+        # YAML の構文エラーはここで一番よく止まる。素の PyYAML 例外だと
+        # 「どのファイルの話か」も「何を読めばいいか」も分からないので付ける
+        # （UX W4 / P71）。壊れた設定を既定へフォールバックさせないのは従来どおり。
+        from .doc_links import doc_hint
+
+        hint = doc_hint("config.yaml_parse") or ""
+        raise ValueError("\n".join(x for x in (f"{path} の YAML を読めません: {exc}", hint) if x)) from exc
     if not isinstance(data, dict):
-        raise ValueError(f"{path} はマップ形式である必要があります")
+        from .doc_links import doc_hint
+
+        hint = doc_hint("config.yaml_parse") or ""
+        raise ValueError("\n".join(x for x in (f"{path} はマップ形式である必要があります", hint) if x))
     return data
 
 
@@ -585,8 +604,11 @@ def load_config(
     # ユーザー YAML に文字列や None が入っても load_config を落とさない。落とすと
     # doctor / brief / scan など全コマンドが起動不能になる。
     def _safe_int(value: object, default: int) -> int:
+        # bool は int の派生なので先に弾く（true が 1 として通ると設定ミスが黙って通る）。
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            return default
         try:
-            return int(value)  # type: ignore[arg-type]
+            return int(value)
         except (TypeError, ValueError):
             return default
 
@@ -607,6 +629,16 @@ def load_config(
                 except (TypeError, ValueError):
                     # 不正な値は前段（global → DEFAULT）の値を温存（嘘の日付を量産しない方針）。
                     pass
+
+    # UX W4 / P20: 習慣メトリクスの表示可否（project > global > 既定 true）。
+    metrics_raw = project_cfg.get("metrics", g.get("metrics", True))
+    metrics_enabled_value = False if metrics_raw is False else True
+
+    # UX W4 / P59: 一括破壊操作の 2 段階確認しきい値（project > global > 既定 20）。
+    bulk_confirm_threshold = _safe_int(
+        project_cfg.get("bulk_confirm_threshold", g.get("bulk_confirm_threshold", 20)),
+        20,
+    )
 
     # C2: `known_tags` / `stale_thresholds` も deep merge（project 上書き優先）。
     known_tags_set: list[str] = []
@@ -738,6 +770,8 @@ def load_config(
         due_warn_threshold=due_warn,
         due_alert_threshold=due_alert,
         due_default_offset_days=offsets,
+        metrics_enabled=metrics_enabled_value,
+        bulk_confirm_threshold=bulk_confirm_threshold,
         known_tags=known_tags_set,
         stale_thresholds=stale_thresholds,
         user_name=user_name,

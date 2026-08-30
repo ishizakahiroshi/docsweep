@@ -772,3 +772,146 @@ dialog.confirm::backdrop { background: rgba(0, 0, 0, 0.45); }
   .topbar { flex-wrap: wrap; row-gap: 8px; }
   .topbar-search { order: 3; flex-basis: 100%; max-width: none; }
 }
+
+/* =============================================================================
+   UX W4（C4）— 密度 / a11y / 高コントラスト / 焦点 / pin・snooze / メトリクス /
+   DnD プレビュー / クイックツアー
+   ============================================================================= */
+
+/* ----- P15: カード密度モード（compact / cozy / detailed） --------------------
+   body[data-density] を JS が localStorage から復元して付ける。既定は cozy＝従来の見た目。 */
+body[data-density="compact"] .card { padding: 4px 8px; gap: 2px; }
+body[data-density="compact"] .card-summary,
+body[data-density="compact"] .card-okf { display: none; }
+body[data-density="compact"] .card-actions { margin-top: 2px; }
+body[data-density="compact"] .card-name { font-size: 12px; }
+
+body[data-density="detailed"] .card { padding: 12px 12px; }
+body[data-density="detailed"] .card-summary {
+  display: -webkit-box; -webkit-line-clamp: 6; line-clamp: 6;
+}
+
+/* ----- P64: a11y — キーボード焦点を全操作要素で見えるようにする ---------------
+   .card:focus は既存。ボタン・バッジ・リンクはブラウザ既定に任せていて、
+   ダーク背景だと事実上見えなかった。 */
+:where(button, a, select, input, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* マウス操作では出さない（既存の見た目を変えない）。 */
+:where(button, a, select, input):focus:not(:focus-visible) { outline: none; }
+
+/* 画面外へ逃がすスキップリンク。Tab 1 回で board 本体へ入れる。 */
+.skip-link {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  background: var(--card2); color: var(--fg);
+  padding: 8px 12px; border: 1px solid var(--accent); border-radius: 0 0 6px 0;
+}
+.skip-link:focus { left: 0; }
+
+/* ----- P65: 縮小モーション / 高コントラスト --------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* OS 設定と、設定モーダルの明示トグル（body[data-contrast="high"]）の両方を受ける。 */
+body[data-contrast="high"] {
+  --bg: #000000; --bg2: #0a0a0a;
+  --card: #101010; --card2: #1a1a1a; --card-soft: #141414;
+  --border: #8a8a8a; --border-soft: #6a6a6a;
+  --fg: #ffffff; --fg-dim: #e0e0e0; --fg-dim2: #bdbdbd;
+  --accent: #d7b3ff; --pink: #ff9ecb;
+  --col-overdue: #ff8fa3; --col-today: #ffe27a; --col-active: #7ee9c0;
+  --due-overdue: #ff8fa3; --due-today: #ffe27a; --due-future: #e0e0e0;
+}
+body[data-contrast="high"] .card { border-width: 2px; }
+body[data-contrast="high"] .card-summary { color: var(--fg-dim); }
+
+/* ----- P22: focus session（今からこの 1 枚） ---------------------------------
+   選んだ 1 枚以外を dim にする。消さないのは「戻れること」を優先しているため。 */
+body[data-focus-path] .card:not(.focus-target) { opacity: 0.28; filter: saturate(0.5); }
+body[data-focus-path] .card.focus-target {
+  outline: 2px solid var(--col-active); outline-offset: 2px;
+}
+.focus-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 12px; background: var(--card2);
+  border-bottom: 1px solid var(--border);
+}
+/* display:flex は [hidden] の既定 display:none より強い。明示しないと
+   hidden 属性が効かず、集中していないのにバーが出たままになる（実機で発生した）。 */
+.focus-bar[hidden] { display: none; }
+.tour-mask[hidden] { display: none; }
+.focus-bar .focus-name { font-weight: 600; }
+.focus-bar .focus-hint { color: var(--fg-dim2); font-size: 12px; }
+
+/* ----- P21 / P22: カード下段のアイコンボタン ---------------------------------
+   .act は flex:1 1 auto なので、横幅の広い折り畳みセクションでは 1 文字の
+   アイコンボタンまで間延びする（実機で発生した）。アイコン系だけ伸びを止める。 */
+.act-pin, .act-snooze, .act-focus {
+  flex: 0 0 auto; min-width: 30px; text-align: center;
+}
+.act-pin[aria-pressed="true"] { border-color: var(--col-today); color: var(--col-today); }
+.act-snooze[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+/* ----- P21: pin / snooze ---------------------------------------------------- */
+.card.pinned { border-left-width: 4px; }
+.pin-badge, .snooze-badge {
+  font-size: 11px; padding: 0 5px; border-radius: 4px;
+  border: 1px solid var(--border); color: var(--fg-dim);
+  background: var(--card-soft);
+}
+.pin-badge { color: var(--col-today); border-color: var(--col-today); }
+.card.snoozed { display: none; }
+body[data-show-snoozed="1"] .card.snoozed { display: flex; opacity: 0.5; }
+
+/* ----- P20: 習慣メトリクス（罪悪感 UI にしない・0 でも責めない） -------------- */
+.metrics-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 10px; font-family: var(--mono); color: var(--fg-dim);
+  padding: 2px 8px; border: 1px solid var(--border-soft); border-radius: 999px;
+  /* .topbar-health は overflow:hidden の nowrap flex。ここで折り返しを止めないと
+     1 文字ずつ縦積みになる（実機で発生した）。 */
+  white-space: nowrap; flex: 0 0 auto;
+}
+.metrics-chip > span { white-space: nowrap; }
+.metrics-chip b { color: var(--fg); font-weight: 600; }
+
+/* ----- P13: DnD の意味をドロップ前に見せる ------------------------------------ */
+.dnd-preview {
+  /* ドラッグ中にカード・列より手前へ出す（モーダルより下でよい）。 */
+  position: fixed; z-index: 250; pointer-events: none;
+  padding: 4px 10px; border-radius: 6px;
+  background: var(--card2); color: var(--fg);
+  border: 1px solid var(--accent); font-size: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.dnd-preview.reject { border-color: var(--due-overdue); color: var(--due-overdue); }
+
+/* ----- P5: 30 秒クイックツアー ------------------------------------------------ */
+.tour-mask {
+  /* 一括バー（z-index 200）や設定モーダルより手前に出す。初回だけ全面に被せる
+     ものなので、既存の重なり順の上へ明示的に載せる。 */
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex; align-items: center; justify-content: center;
+}
+.tour-card {
+  max-width: 460px; background: var(--card2); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px;
+}
+.tour-card h3 { margin: 0 0 8px; font-size: 15px; }
+.tour-card p { margin: 0 0 14px; color: var(--fg-dim); }
+.tour-steps { display: flex; gap: 6px; margin-bottom: 12px; }
+.tour-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+.tour-dot.on { background: var(--accent); }
+.tour-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ----- P59: 一括操作の 2 段階確認 --------------------------------------------- */
+.confirm-phrase { width: 100%; margin-top: 8px; font-family: var(--mono); }
+.confirm-warn { color: var(--due-overdue); }

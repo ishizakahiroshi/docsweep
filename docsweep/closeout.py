@@ -945,11 +945,11 @@ def check_closeout(
             cycle_nodes.update(path_keys[seen[current]:])
     if cycle_nodes:
         for key in sorted(cycle_nodes):
-            doc = docs.get(key)
-            if doc:
+            cycle_doc = docs.get(key)
+            if cycle_doc:
                 relation_errors.append({
                     "code": "cycle",
-                    "path": doc.path.as_posix(),
+                    "path": cycle_doc.path.as_posix(),
                     "message": "親子関係が循環しています",
                 })
 
@@ -1022,8 +1022,8 @@ def check_closeout(
     planned_keys: set[str] = set()
     for details in [parent_details, *(inspected[doc.key] for doc, _kind in child_docs)]:
         planned_keys.update(
-            key for raw in details["changed_files"]
-            if (key := _planned_path(raw, project)) is not None
+            planned_key for raw in details["changed_files"]
+            if (planned_key := _planned_path(raw, project)) is not None
         )
     dirty_keys = {
         _path_key(_lexical_path(raw, base=project))

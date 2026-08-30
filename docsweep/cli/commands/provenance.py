@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-from ...config import load_config
+from ...config import Config, load_config
 from ...provenance_hint import warn_if_unresolved
 from ...provenance import (
     AIMetadata,
@@ -22,7 +22,7 @@ from ...provenance import (
 from ...work_queue import find_project_dir
 
 
-def _context(args: argparse.Namespace) -> tuple[Path, object]:
+def _context(args: argparse.Namespace) -> tuple[Path, Config]:
     project_dir = (
         Path(args.project_dir).resolve()
         if getattr(args, "project_dir", None)

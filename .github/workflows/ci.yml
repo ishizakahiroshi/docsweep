@@ -3,7 +3,7 @@
 # トリガー: 全 push / pull_request
 # 目的:    lint (ruff) / test (pytest) / typecheck (mypy) を回して
 #          リグレッションを PR 段階で検出する。
-# 段階導入: mypy は初回 continue-on-error（赤許容）。ruff / pytest は fail on error。
+# lint / test / typecheck はすべてエラー時に失敗させる。
 
 name: CI
 
@@ -38,6 +38,4 @@ jobs:
         run: ruff check docsweep tests
 
       - name: Run mypy
-        # 段階導入: 初回は赤許容（continue-on-error）。将来的に外す。
-        continue-on-error: true
         run: mypy docsweep

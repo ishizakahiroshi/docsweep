@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .atomic import update_line
 from .config import Config
 from .engine import run_scan
 from .models import FileRecord

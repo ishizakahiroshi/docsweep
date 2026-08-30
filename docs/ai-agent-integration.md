@@ -8,7 +8,7 @@ docsweep は **「全 AI エージェント対応」** を方針として、3 �
 | **CLI 直叩き** | あらゆる AI（Bash ツールがあれば動く） | `docsweep <command>` をシェル経由で実行。`--json` で構造化出力を得てパースする |
 | **`/D` Skill**（Claude Code 専用） | Claude Code | `~/.claude/skills/D` 経由の薄いラッパー。MCP の主要 3 + CLI 直叩きをディスパッチ |
 
-### MCP が露出する tool（v0.4.0 時点・24 個）
+### MCP が露出する tool（v0.5.0 時点・24 個）
 
 scan / list_projects / set_project_enabled / route_intent / doctor / day / brief / capture_extract / capture_save / cross / triage / apply / sweep / promote / index / summary / inject / eject / inject_global / eject_global / update_status / update_due / update_content / archive_done
 

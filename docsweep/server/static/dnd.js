@@ -64,18 +64,61 @@
     const card = e.target.closest && e.target.closest(".card");
     if (card) card.classList.remove("dragging");
     document.querySelectorAll(".dnd-over").forEach((el) => el.classList.remove("dnd-over"));
+    hidePreview();
   });
+
+  // ===== UX W4 / P13: 落とす前に「何が起きるか」を出す =======================
+  // DnD で変わるのは due（と start のときのラベル）だけ、という不変条件を
+  // 言葉にしてカーソルの横へ出す。拒否される組み合わせもその場で分かるようにする。
+
+  let previewEl = null;
+
+  function previewNode() {
+    if (previewEl) return previewEl;
+    previewEl = document.createElement("div");
+    previewEl.className = "dnd-preview";
+    previewEl.setAttribute("aria-hidden", "true");
+    document.body.appendChild(previewEl);
+    return previewEl;
+  }
+
+  function showPreview(x, y, text, rejected) {
+    const el = previewNode();
+    el.textContent = text;
+    el.classList.toggle("reject", !!rejected);
+    el.style.left = (x + 14) + "px";
+    el.style.top = (y + 14) + "px";
+    el.hidden = false;
+  }
+
+  function hidePreview() {
+    if (previewEl) previewEl.hidden = true;
+  }
+
+  function effectText(kind) {
+    if (kind === "today") return DS_T("dnd_effect_today");
+    if (kind === "start") return DS_T("dnd_effect_start");
+    if (kind === "future") return DS_T("dnd_effect_future");
+    return DS_T("dnd_effect_rejected");
+  }
 
   document.addEventListener("dragover", (e) => {
     const card = document.querySelector(".card.dragging");
     if (!card) return;
     const t = dropTarget(e.target);
-    if (!t) return;
+    if (!t) { hidePreview(); return; }
     const from = fromColumnOf(card);
-    if (!allowed(from, t.key)) return;
+    const kind = allowed(from, t.key);
+    if (!kind) {
+      // 拒否される組み合わせは dnd-over を出さない既存挙動のまま。
+      // ただし「なぜ落ちないか」は伝える（無反応だと壊れて見える）。
+      showPreview(e.clientX, e.clientY, effectText(null), true);
+      return;
+    }
     e.preventDefault();
     document.querySelectorAll(".dnd-over").forEach((el) => el.classList.remove("dnd-over"));
     t.el.classList.add("dnd-over");
+    showPreview(e.clientX, e.clientY, effectText(kind), false);
   });
 
   document.addEventListener("drop", async (e) => {
@@ -88,6 +131,7 @@
     if (!kind) return;
     e.preventDefault();
     document.querySelectorAll(".dnd-over").forEach((el) => el.classList.remove("dnd-over"));
+    hidePreview();
 
     const path = card.dataset.path;
     const mtime = card.dataset.mtime;

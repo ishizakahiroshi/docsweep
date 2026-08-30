@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import time
-from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
 
 from docsweep.brief.score import (
-    _STATE_BASE,
     W_DEP_CHAIN,
     ScoreBreakdown,
     score_record,

@@ -13,7 +13,6 @@ md は OKF 互換語彙で読めることを実演するためのコマンド。
 
 from __future__ import annotations
 
-import io
 import json
 import re
 import zipfile
@@ -27,8 +26,6 @@ from . import __version__
 from .config import Config, config_for_project, project_work_settings, privacy_enforced, resolve_work_dir
 from .engine import run_scan
 from .okf import OkfProfile, bundled_okf_profile, load_okf_profile
-from .scan import scan_root
-from .services.frontmatter import read_frontmatter_text
 
 
 # docsweep 固定 type 集合の説明。OKF v0.2 は type を登録制にしていないため、

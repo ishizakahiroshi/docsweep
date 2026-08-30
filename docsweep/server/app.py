@@ -14,7 +14,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import __version__
 from ..config import Config, config_for_project
 from ..engine import ScanResult, apply_action, auto_sweep, run_scan
 from ..aggregate_index import write_index
@@ -23,7 +22,6 @@ from ..inject import (
     eject_global,
     inject,
     inject_global,
-    list_injected,
     preview_global,
     preview_inject,
 )

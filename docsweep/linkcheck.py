@@ -124,12 +124,12 @@ def _extract_files_from_section(section: str) -> list[str]:
                 out.append(f)
         return out
     # フォールバック: 箇条書きの先頭トークン
-    out: list[str] = []
+    fallback: list[str] = []
     for line in section.splitlines():
         m = re.match(r"^\s*[-*]\s*([\w./\\-]+\.\w+)", line)
         if m:
-            out.append(m.group(1))
-    return out
+            fallback.append(m.group(1))
+    return fallback
 
 
 def _git_log_count(repo: Path, file_path: Path, since_iso: str | None) -> int:

@@ -62,7 +62,7 @@
   {% if data.today_pick.summary %}
     <div class="tp-summary">{{ data.today_pick.summary }}</div>
   {% endif %}
-  <div class="tp-meta">{{ data.today_pick.project }} · {{ data.today_pick.rel or data.today_pick.name }}{% if data.today_pick.age_days is not none %} · {{ data.today_pick.age_days }}d{% endif %}</div>
+  <div class="tp-meta">{{ data.today_pick.project }} · {{ data.today_pick.rel or data.today_pick.name }}{% if data.today_pick.age_label %} · {{ data.today_pick.age_label }}{% endif %}</div>
   <div class="tp-actions">
     <button type="button" class="primary" data-action="open-today-pick" data-path="{{ data.today_pick.path }}">{{ T.today_pick_open }}</button>
     <button type="button" data-action="copy-context" data-path="{{ data.today_pick.path }}">{{ T.work_pack_copy }}</button>

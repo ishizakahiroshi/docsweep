@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -149,7 +147,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         write_index(cfg)
     routes = getattr(moved, "routes", [])
     if getattr(args, "json", False):
-        payload = [m.to_dict() for m in moved]
+        payload: list | dict = [m.to_dict() for m in moved]
         if moved.failed or routes:
             payload = {"moved": payload, "failed": moved.failed, "archive_routes": routes}
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -171,14 +169,39 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 def cmd_promote(args: argparse.Namespace) -> int:
     from ...engine import promote_state
 
+    from ...bulk_confirm import BulkConfirmRequired, phrase_for
+    from ...bulk_confirm import require as bulk_require
+
     cfg = _build_config(args)
+    if not args.dry_run:
+        # 実行前に同じ条件で下見して件数を数える。しきい値以上なら --yes を要求する
+        # （UX W4 / P59）。非対話が不変条件なのでプロンプトは出さない。
+        try:
+            preview = promote_state(
+                cfg, from_state=args.state, to_state=args.to,
+                project=args.project, dry_run=True,
+            )
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        supplied = phrase_for("promote") if getattr(args, "yes", False) else None
+        try:
+            bulk_require("promote", len(preview), cfg.bulk_confirm_threshold, supplied)
+        except BulkConfirmRequired as exc:
+            print(
+                f"promote: {exc.count} 件はしきい値 {exc.threshold} 件以上です。"
+                "内容を確認して --yes を付けて再実行してください"
+                "（下見: docsweep promote --dry-run）",
+                file=sys.stderr,
+            )
+            return 2
     try:
         moved = promote_state(cfg, from_state=args.state, to_state=args.to, project=args.project, dry_run=args.dry_run)
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
     if getattr(args, "json", False):
-        payload = [m.to_dict() for m in moved]
+        payload: list | dict = [m.to_dict() for m in moved]
         if moved.failed:
             payload = {"moved": payload, "failed": moved.failed}
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -363,8 +386,8 @@ def cmd_auto_triage(args: argparse.Namespace) -> int:
             return 2
         if isinstance(decisions, dict):
             decisions = decisions.get("decisions") or decisions.get("suggestions") or []
-        result = apply_suggestions(cfg, decisions, dry_run=getattr(args, "dry_run", False))
-        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        apply_result = apply_suggestions(cfg, decisions, dry_run=getattr(args, "dry_run", False))
+        print(json.dumps(apply_result.to_dict(), ensure_ascii=False, indent=2))
         return 0
     return 2
 

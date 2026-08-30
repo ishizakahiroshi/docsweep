@@ -15,7 +15,6 @@ from docsweep.linkcheck import (
     _extract_section,
     linkcheck,
 )
-from docsweep.models import Flag
 
 
 # ===================================================================

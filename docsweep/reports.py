@@ -7,7 +7,6 @@ from datetime import date, datetime
 from pathlib import Path
 
 from .config import Config
-from .engine import run_scan
 from .aggregate_index import build_index
 from .models import Action
 from .state import load as load_state

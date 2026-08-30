@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import Config
-from .engine import run_scan
 from .models import FileRecord
 
 

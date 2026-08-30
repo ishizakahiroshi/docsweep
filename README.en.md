@@ -507,6 +507,38 @@ moved**: the project disappears from listings only, nothing is archived or delet
 exposes the same toggle per project row, and MCP exposes it as `list_projects` /
 `set_project_enabled`.
 
+### Trying it on sample data (`docsweep demo`)
+
+To look around before pointing docsweep at your own repositories, generate a throwaway project.
+
+```bash
+# Creates a sample project in a temp directory. Your own projects are never touched.
+python -m docsweep demo
+
+# Then point the commands at the printed root
+python -m docsweep triage --root <generated root>
+python -m docsweep serve   --root <generated root>
+```
+
+It writes 8 documents spread across overdue / today / future / no-due / pending / done, so the
+board and `triage` are never empty. It is not registered in the global `roots`, so you can
+delete the folder when you are done. `--dir` picks the location.
+
+### Confirmation for bulk operations (`bulk_confirm_threshold`)
+
+Bulk archive, bulk relabel and `promote` can move dozens of files in one action. When the
+number of targets reaches the threshold, one extra confirmation step appears (default 20;
+below the threshold nothing changes).
+
+```yaml
+# .docsweep.yaml or ~/.docsweep/config.yaml
+bulk_confirm_threshold: 20   # 0 always asks
+metrics: true                # streak / weekly archive count (false stops recording entirely)
+```
+
+The Web UI asks you to type the phrase (`ARCHIVE` / `RELABEL`); the CLI `promote` requires
+`--yes`. The CLI never prompts, even on a TTY, so non-interactive use stays non-interactive.
+
 See [docs/conventions.md](docs/conventions.md) and
 [templates/AGENT_GUIDE.md](templates/AGENT_GUIDE.md) for details.
 

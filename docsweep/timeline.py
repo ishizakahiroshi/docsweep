@@ -18,7 +18,6 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import Config
-from .engine import run_scan
 from .models import FileRecord
 from .services.frontmatter import read_frontmatter
 

@@ -20,27 +20,13 @@ from ..config import Config
 from ..engine import scan_records
 from ..scan import detect_project_for_path
 from ..models import FileRecord, Flag
+from ..record_view import is_open_state, short_record
 from .score import ScoreBreakdown, score_record, tiebreak_key
 
 
 def _short_record(rec: FileRecord, score: ScoreBreakdown | None = None) -> dict:
     """brief 表示で使う slim 表現。冗長な path は basename を併記して人間にも AI にも読める形に。"""
-    out = {
-        "path": rec.path,
-        "rel": Path(rec.path).name,
-        "project": rec.project,
-        "type": rec.type,
-        "state": rec.state,
-        "state_label": rec.state_label,
-        "title": "[sensitive]" if rec.sensitive else rec.title,
-        "summary": "[sensitive]" if rec.sensitive else rec.summary,
-        "sensitive": rec.sensitive,
-        "age_days": rec.age_days,
-        "due": rec.due,
-        "owner": rec.owner,
-        "flags": list(rec.flags or []),
-        "tags": list(rec.tags or []),
-    }
+    out = short_record(rec)
     if score is not None:
         out["score"] = score.to_dict()
     return out
@@ -80,7 +66,7 @@ class BriefResult:
 
 def _is_open_state(rec: FileRecord) -> bool:
     """brief の主要対象（done/discarded 以外の未終端）。"""
-    return rec.state in {"in-progress", "planned", "watching", "pending"}
+    return is_open_state(rec)
 
 
 def _yesterday_window(now: datetime) -> tuple[float, float]:

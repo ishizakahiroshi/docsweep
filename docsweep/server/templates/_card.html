@@ -11,8 +11,10 @@
    経緯: docs/local/kanban-card-ux-options/index.html — 独立ボタン（着手・廃止）を
    撤去してピッカーに完全集約。バッジクリックと下段ボタンの機能重複も解消済み。
    プロジェクトバッジは絞り込み機能（下段に同等機能が無い）なのでクリック可能のまま残す。 #}
-<li class="card pp-{% if card.postpone_count >= data.postpone_alert %}danger{% elif card.postpone_count >= data.postpone_warn %}warn{% else %}normal{% endif %}"
+<li class="card pp-{% if card.postpone_count >= data.postpone_alert %}danger{% elif card.postpone_count >= data.postpone_warn %}warn{% else %}normal{% endif %}{% if card.pinned %} pinned{% endif %}{% if card.snoozed %} snoozed{% endif %}"
     data-path="{{ card.path }}"
+    data-pinned="{{ 1 if card.pinned else 0 }}"
+    data-snoozed="{{ 1 if card.snoozed else 0 }}"
     data-state="{{ card.state or 'unknown' }}"
     data-type="{{ card.type or '' }}"
     data-project="{{ card.project }}"
@@ -27,11 +29,14 @@
     {% if card.postpone_count > 0 %}
       <span class="pp-badge" title="{{ T.postpone_title }}">🔁 {{ card.postpone_count }}</span>
     {% endif %}
+    {% if card.pinned %}<span class="pin-badge">{{ T.pin_badge }}</span>{% endif %}
+    {% if card.snoozed %}<span class="snooze-badge">{{ T.snooze_badge }}</span>{% endif %}
   </div>
   <div class="card-name">{{ card.name }}</div>
   <div class="card-meta">
     {% if card.due %}
-      <span class="due-badge due-badge-static due-{{ card.due_kind }}">📅 {{ card.due }}{% if card.due_label %}（{{ card.due_label }}）{% endif %}</span>
+      <span class="due-badge due-badge-static due-{{ card.due_kind }}"
+            {% if card.due_title %}title="{{ card.due_title }}"{% endif %}>📅 {{ card.due }}{% if card.due_label %}（{{ card.due_label }}）{% endif %}</span>
     {% else %}
       <span class="due-badge due-badge-static due-none">{{ T.due_none }}</span>
     {% endif %}
@@ -77,5 +82,13 @@
             title="{{ T.change_btn_title }}">{{ T.change_btn }}</button>
     <button type="button" class="act act-due" data-action="open-due-picker"
             title="{{ T.due_btn_title }}">{{ T.due_btn }}</button>
+    <button type="button" class="act act-pin" data-action="toggle-pin"
+            aria-pressed="{{ 'true' if card.pinned else 'false' }}"
+            title="{{ T.unpin_action if card.pinned else T.pin_action }}">📌</button>
+    <button type="button" class="act act-snooze" data-action="toggle-snooze"
+            aria-pressed="{{ 'true' if card.snoozed else 'false' }}"
+            title="{{ T.unsnooze_action if card.snoozed else T.snooze_action }}">💤</button>
+    <button type="button" class="act act-focus" data-action="focus-card"
+            title="{{ T.focus_action }}">🎯</button>
   </div>
 </li>

@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .config import Config
-from .engine import ScanResult, run_scan, scan_records
+from .engine import ScanResult, scan_records
 from .models import Flag
 
 INDEX_DIRNAME = ".docsweep"

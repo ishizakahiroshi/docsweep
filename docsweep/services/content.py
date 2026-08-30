@@ -77,7 +77,7 @@ def update_content(
     )
     warnings.extend(format_warnings(hits))
 
-    if config is not None:
+    if effective_config is not None:
         ensure_write_allowed(
             config=effective_config,
             project_dir=project_root,

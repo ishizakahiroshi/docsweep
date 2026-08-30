@@ -6,11 +6,9 @@ H1 ラベルが書き換わらないこと、後方互換が保たれている�
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
-from contextlib import redirect_stdout
 from datetime import date
 from pathlib import Path
 

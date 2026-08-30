@@ -4,13 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import sqlite3
 import sys
-from pathlib import Path
 
-from ...config import DEFAULT_PROJECT_MARKERS, load_config
-from ...engine import apply_action, auto_sweep, run_scan
 from ..parser import _build_config
 
 def cmd_review_week(args: argparse.Namespace) -> int:
@@ -28,6 +23,12 @@ def cmd_review_week(args: argparse.Namespace) -> int:
     ]
     conflict = [r for r in records if Flag.CONFLICT.value in (r.flags or [])]
     suggestions = suggest_transitions(cfg).suggestions
+    hints: list[str] = [
+        "docsweep project list  # 不要プロジェクトを disable",
+        "docsweep fix-conflict --list",
+        "docsweep auto-triage --suggest",
+        "docsweep promote --dry-run",
+    ]
     payload = {
         "watching_count": len(watching),
         "watching": [
@@ -42,12 +43,7 @@ def cmd_review_week(args: argparse.Namespace) -> int:
         "conflict_count": len(conflict),
         "suggestion_count": len(suggestions),
         "suggestions": [s.to_dict() for s in suggestions[:20]],
-        "hints": [
-            "docsweep project list  # 不要プロジェクトを disable",
-            "docsweep fix-conflict --list",
-            "docsweep auto-triage --suggest",
-            "docsweep promote --dry-run",
-        ],
+        "hints": hints,
     }
     if getattr(args, "json", False):
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -57,7 +53,7 @@ def cmd_review_week(args: argparse.Namespace) -> int:
         print(f"  planned>=90d: {payload['old_planned_count']}")
         print(f"  conflict: {payload['conflict_count']}")
         print(f"  auto-triage suggestions: {payload['suggestion_count']}")
-        for h in payload["hints"]:
+        for h in hints:
             print(f"  next: {h}")
     return 0
 

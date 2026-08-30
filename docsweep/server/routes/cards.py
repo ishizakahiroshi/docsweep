@@ -9,12 +9,15 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from ...atomic import ConflictError
+from ...bulk_confirm import BulkConfirmRequired
+from ...bulk_confirm import require as bulk_require
 from ...services.archive import archive_done, undo_last_batch
 from ...services.content import ContentValidationError, update_content
 from ...services.due import DueParseError, update_due
@@ -26,6 +29,7 @@ from ...services.frontmatter import (
     update_frontmatter_field,
 )
 from ...services.status import StatusValidationError, update_status
+from ...state import set_pinned, set_snooze
 from ..security import check_token, resolve_under_roots
 
 router = APIRouter()
@@ -235,8 +239,15 @@ def post_bulk_due(
     failed: list[dict] = []
     for raw in paths:
         resolved, err = _try_resolve(request, raw)
-        if err is not None:
-            failed.append(err)
+        if err is not None or resolved is None:
+            if err is not None:
+                failed.append(err)
+            else:
+                failed.append({
+                    "path": raw,
+                    "error": "path outside scan roots or not a file",
+                    "kind": "path_scope",
+                })
             continue
         project_root = _project_root_for(resolved, cfg.roots)
         try:
@@ -266,6 +277,7 @@ def post_bulk_status(
     token: str = Form(default=""),
     paths: list[str] = Form(...),
     new_state: str = Form(...),
+    confirm: str = Form(default=""),
 ):
     """複数ファイルの H1 ラベルを一括書き換え。``[完了]`` / ``[廃止]`` 指定で archive 移送まで一気通貫。
 
@@ -274,13 +286,24 @@ def post_bulk_status(
     """
     check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
+    try:
+        bulk_require("bulk_status", len(paths), cfg.bulk_confirm_threshold, confirm)
+    except BulkConfirmRequired as exc:
+        return JSONResponse(exc.to_dict(), status_code=409)
     ok: list[dict] = []
     failed: list[dict] = []
     archive_targets: list[str] = []
     for raw in paths:
         resolved, err = _try_resolve(request, raw)
-        if err is not None:
-            failed.append(err)
+        if err is not None or resolved is None:
+            if err is not None:
+                failed.append(err)
+            else:
+                failed.append({
+                    "path": raw,
+                    "error": "path outside scan roots or not a file",
+                    "kind": "path_scope",
+                })
             continue
         project_root = _project_root_for(resolved, cfg.roots)
         file_type = _file_type(request, resolved.name)
@@ -414,22 +437,110 @@ def post_bulk_archive(
     token: str = Form(default=""),
     paths: list[str] = Form(...),
     dry_run: bool = Form(default=False),
+    confirm: str = Form(default=""),
 ):
     """複数ファイルを archive へ一括移送。``[完了]`` / ``[廃止]`` 以外は services 層が拒否。
 
     スコープ外パスは ``failed_validation[]`` に分けて返す（services の skipped[] とは別枠）。
+    件数が ``bulk_confirm_threshold`` 以上のときは ``confirm`` の打ち込みを求める
+    （UX W4 / P59）。``dry_run`` は下見なので確認を求めない。
     """
     check_token(request, token, status_code=403, detail="invalid or missing token")
     cfg = request.app.state.docsweep.config
+    if not dry_run:
+        try:
+            bulk_require("bulk_archive", len(paths), cfg.bulk_confirm_threshold, confirm)
+        except BulkConfirmRequired as exc:
+            return JSONResponse(exc.to_dict(), status_code=409)
     valid: list[str] = []
     failed_validation: list[dict] = []
     for raw in paths:
         resolved, err = _try_resolve(request, raw)
-        if err is not None:
-            failed_validation.append(err)
+        if err is not None or resolved is None:
+            if err is not None:
+                failed_validation.append(err)
+            else:
+                failed_validation.append({
+                    "path": raw,
+                    "error": "path outside scan roots or not a file",
+                    "kind": "path_scope",
+                })
             continue
         valid.append(resolved.as_posix())
     res = archive_done(config=cfg, paths=valid, dry_run=dry_run)
     out = res.to_dict()
     out["failed_validation"] = failed_validation
     return JSONResponse(out)
+
+
+@router.post("/api/cards/snooze")
+def post_snooze(
+    request: Request,
+    token: str = Form(default=""),
+    path: str = Form(...),
+    until: str = Form(default=""),
+):
+    """カードを ``until``（ISO 日付）まで board から隠す（UX W4 / P21）。
+
+    ``until`` 省略で「今日いっぱい」。空文字の ``until=`` ではなく ``clear=1`` で解除する。
+    MD には一切書かない（score への人間側の拒否権であって文書の状態ではない）。
+    """
+    check_token(request, token, status_code=403, detail="invalid or missing token")
+    resolved, err = _try_resolve(request, path)
+    if err is not None or resolved is None:
+        return JSONResponse(err or {"error": "unresolved_path"}, status_code=400)
+    cfg = request.app.state.docsweep.config
+    project_root = _project_root_for(resolved, cfg.roots)
+    target = (until or "").strip() or date.today().isoformat()
+    try:
+        date.fromisoformat(target)
+    except ValueError:
+        return JSONResponse(
+            {"error": "invalid_until", "detail": f"ISO 日付ではありません: {target}"},
+            status_code=400,
+        )
+    fs = set_snooze(project_root, resolved, target)
+    return JSONResponse({
+        "path": resolved.as_posix(),
+        "snoozed_until": fs.snoozed_until,
+        "snoozed": fs.is_snoozed(date.today().isoformat()),
+    })
+
+
+@router.post("/api/cards/snooze/clear")
+def post_snooze_clear(
+    request: Request,
+    token: str = Form(default=""),
+    path: str = Form(...),
+):
+    """snooze を解除する（UX W4 / P21）。"""
+    check_token(request, token, status_code=403, detail="invalid or missing token")
+    resolved, err = _try_resolve(request, path)
+    if err is not None or resolved is None:
+        return JSONResponse(err or {"error": "unresolved_path"}, status_code=400)
+    cfg = request.app.state.docsweep.config
+    project_root = _project_root_for(resolved, cfg.roots)
+    fs = set_snooze(project_root, resolved, None)
+    return JSONResponse({
+        "path": resolved.as_posix(),
+        "snoozed_until": fs.snoozed_until,
+        "snoozed": False,
+    })
+
+
+@router.post("/api/cards/pin")
+def post_pin(
+    request: Request,
+    token: str = Form(default=""),
+    path: str = Form(...),
+    pinned: bool = Form(default=True),
+):
+    """カードを列の先頭に固定する / やめる（UX W4 / P21）。"""
+    check_token(request, token, status_code=403, detail="invalid or missing token")
+    resolved, err = _try_resolve(request, path)
+    if err is not None or resolved is None:
+        return JSONResponse(err or {"error": "unresolved_path"}, status_code=400)
+    cfg = request.app.state.docsweep.config
+    project_root = _project_root_for(resolved, cfg.roots)
+    fs = set_pinned(project_root, resolved, pinned)
+    return JSONResponse({"path": resolved.as_posix(), "pinned": fs.pinned})

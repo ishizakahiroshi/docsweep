@@ -17,6 +17,7 @@ from pathlib import Path
 from ..config import Config
 from ..engine import scan_records
 from ..models import FileRecord, Flag
+from ..record_view import is_open_state, short_record
 from ..brief.score import _urgency_score, score_record, tiebreak_key
 
 # 凍結予備軍の閾値: open 状態だがこの日数以上動きが無いもの。
@@ -25,22 +26,7 @@ FROZEN_AGE_DAYS = 90
 
 
 def _short_record(rec: FileRecord, *, score: float | None = None) -> dict:
-    out = {
-        "path": rec.path,
-        "rel": Path(rec.path).name,
-        "project": rec.project,
-        "type": rec.type,
-        "state": rec.state,
-        "state_label": rec.state_label,
-        "title": "[sensitive]" if rec.sensitive else rec.title,
-        "summary": "[sensitive]" if rec.sensitive else rec.summary,
-        "sensitive": rec.sensitive,
-        "age_days": rec.age_days,
-        "due": rec.due,
-        "owner": rec.owner,
-        "flags": list(rec.flags or []),
-        "tags": list(rec.tags or []),
-    }
+    out = short_record(rec)
     if score is not None:
         out["score"] = round(score, 2)
     return out
@@ -82,7 +68,7 @@ class CrossResult:
 
 
 def _is_open_state(rec: FileRecord) -> bool:
-    return rec.state in {"in-progress", "planned", "watching", "pending"}
+    return is_open_state(rec)
 
 
 def build_cross(

@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import sqlite3
 import sys
 from pathlib import Path
 
-from ...config import DEFAULT_PROJECT_MARKERS, load_config
-from ...engine import apply_action, auto_sweep, run_scan
 from ..parser import _build_config
 
 def _print_records_table(records, lang: str) -> None:
@@ -32,11 +28,9 @@ def cmd_day(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
     phase = args.phase
     if phase == "open":
-        result = day_open(cfg)
-        payload = result.to_dict()
+        payload = day_open(cfg).to_dict()
     else:
-        result = day_close(cfg)
-        payload = result.to_dict()
+        payload = day_close(cfg).to_dict()
     if getattr(args, "json", False):
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
@@ -281,6 +275,21 @@ def cmd_activity(args: argparse.Namespace) -> int:
     return 0
 
 
+def _record_morning_open(cfg) -> None:
+    """朝の入口を見た日付だけを記録する（UX W4 / P20）。
+
+    記録するのは日付 1 個。無効化されていれば何もしない。計測でコマンドを
+    落とさないよう、失敗は握りつぶす。
+    """
+    try:
+        from ...streak import metrics_enabled, record_open
+
+        if metrics_enabled(cfg):
+            record_open()
+    except Exception:  # noqa: BLE001
+        return
+
+
 def cmd_brief(args: argparse.Namespace) -> int:
     """今日の 1 個を断定する朝の入口（CLI 側）。
 
@@ -290,6 +299,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
     from ...brief import build_brief
 
     cfg = _build_config(args)
+    _record_morning_open(cfg)
     result = build_brief(
         cfg,
         project=getattr(args, "project", None),
@@ -347,11 +357,11 @@ def cmd_cross(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
 
     if getattr(args, "explain", None):
-        result = explain_score(cfg, args.explain)
-        if result is None:
+        explained = explain_score(cfg, args.explain)
+        if explained is None:
             print(f"対象が見つかりません: {args.explain}", file=sys.stderr)
             return 2
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(explained, ensure_ascii=False, indent=2))
         return 0
 
     project_arg = getattr(args, "project", None)
@@ -786,3 +796,18 @@ def cmd_closeout_check(args: argparse.Namespace) -> int:
         "manual_review_required": 1,
         "not_ready": 2,
     }.get(result.verdict, 2)
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    """使い捨てサンプル project の生成（UX W4 / P70）。"""
+    from pathlib import Path as _Path
+
+    from ...demo import build_demo, demo_json, render_demo
+
+    target = _Path(args.demo_dir) if getattr(args, "demo_dir", None) else None
+    result = build_demo(target)
+    if getattr(args, "json", False):
+        print(demo_json(result))
+        return 0
+    print(render_demo(result))
+    return 0

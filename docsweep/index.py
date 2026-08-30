@@ -598,7 +598,7 @@ def load_records_from_index(
 
         sql = """
         SELECT
-          project_id, rel_path, type, status, review_status, owner,
+          file_id, project_id, rel_path, type, status, review_status, owner,
           last_reviewed, mtime, title, summary, state_label, state_source,
           flags, allowed_actions, due, due_parse_error, archivable, auto_movable,
           project_root, abs_path
@@ -609,23 +609,40 @@ def load_records_from_index(
             sql += " WHERE project_id = ?"
             params = (project_filter,)
 
+        tag_sql = """
+        SELECT t.file_id, t.tag
+        FROM tags AS t
+        JOIN files AS f ON f.file_id = t.file_id
+        """
+        related_sql = """
+        SELECT r.src_file_id, r.dst_path
+        FROM related AS r
+        JOIN files AS f ON f.file_id = r.src_file_id
+        """
+        tag_params: tuple = ()
+        related_params: tuple = ()
+        if project_filter:
+            tag_sql += " WHERE f.project_id = ?"
+            related_sql += " WHERE f.project_id = ?"
+            tag_params = (project_filter,)
+            related_params = (project_filter,)
+        tag_sql += " ORDER BY t.file_id, t.tag"
+        related_sql += " ORDER BY r.src_file_id, r.dst_path"
+
+        tags_by_file: dict[int, list[str]] = {}
+        for tag_row in conn.execute(tag_sql, tag_params).fetchall():
+            tags_by_file.setdefault(tag_row["file_id"], []).append(tag_row["tag"])
+        related_by_file: dict[int, list[str]] = {}
+        for related_row in conn.execute(related_sql, related_params).fetchall():
+            related_by_file.setdefault(related_row["src_file_id"], []).append(
+                related_row["dst_path"]
+            )
+
         records: list[FileRecord] = []
         for row in conn.execute(sql, params).fetchall():
-            file_id_row = conn.execute(
-                "SELECT file_id FROM files WHERE project_id=? AND rel_path=?",
-                (row["project_id"], row["rel_path"]),
-            ).fetchone()
-            file_id = file_id_row[0] if file_id_row else None
-
-            tags: list[str] = []
-            related: list[str] = []
-            if file_id is not None:
-                tags = [r[0] for r in conn.execute(
-                    "SELECT tag FROM tags WHERE file_id=? ORDER BY tag", (file_id,)
-                ).fetchall()]
-                related = [r[0] for r in conn.execute(
-                    "SELECT dst_path FROM related WHERE src_file_id=? ORDER BY dst_path", (file_id,)
-                ).fetchall()]
+            file_id = row["file_id"]
+            tags = tags_by_file.get(file_id, [])
+            related = related_by_file.get(file_id, [])
 
             try:
                 flags = _json.loads(row["flags"]) if row["flags"] else []

@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from ..config import Config
 from ..engine import scan_records
+from ..models import FileRecord
 
 
 @dataclass
@@ -50,7 +52,7 @@ class GraphData:
         }
 
 
-def _make_id_resolver(records) -> callable:
+def _make_id_resolver(records: list[FileRecord]) -> Callable[[FileRecord], str]:
     """basename が全体で一意なら basename、複数出現なら ``project/basename`` を返す関数を作る。
 
     後方互換を保つため、衝突が無い通常ケースでは以前と同じ basename id を返す。
@@ -61,7 +63,7 @@ def _make_id_resolver(records) -> callable:
         name = Path(r.path).name
         counts[name] = counts.get(name, 0) + 1
 
-    def _resolve(record) -> str:
+    def _resolve(record: FileRecord) -> str:
         name = Path(record.path).name
         if counts.get(name, 0) > 1:
             return f"{record.project}/{name}"
@@ -85,7 +87,7 @@ def build_graph(config: Config, *, project: str | None = None) -> GraphData:
     # basename → 属する project の一覧（同名複数プロジェクトを許容）。
     # related の参照は「同一プロジェクト内優先」で解決し、無ければ他プロジェクトの候補が
     # 1 件だけならそれに解決、複数プロジェクト同名なら未解決として残す。
-    name_to_records: dict[str, list] = {}
+    name_to_records: dict[str, list[FileRecord]] = {}
     for r in records:
         name_to_records.setdefault(Path(r.path).name, []).append(r)
 

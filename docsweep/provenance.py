@@ -14,7 +14,7 @@ import re
 import time
 import uuid
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -875,4 +875,8 @@ def check_document(path: Path, *, project_dir: Path, config: Config) -> dict:
 
 def result_dict(value: object) -> dict:
     """Small public helper for callers that accept dataclass or dict results."""
-    return asdict(value) if hasattr(value, "__dataclass_fields__") else dict(value)  # type: ignore[arg-type]
+    if is_dataclass(value) and not isinstance(value, type):
+        return asdict(value)
+    if isinstance(value, dict):
+        return dict(value)
+    return dict(value)  # type: ignore[call-overload]

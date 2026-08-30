@@ -555,6 +555,37 @@ python -m docsweep project enable D:/dev/github/public/foo
 （表示から外れるだけで archive も削除もしません）。Web UI ではプロジェクト行のトグルから、
 MCP では `list_projects` / `set_project_enabled` から同じ操作ができます。
 
+### 中身の入った状態で試す（`docsweep demo`）
+
+自分のプロジェクトへ入れる前に触ってみたいときは、使い捨てのサンプルを作れます。
+
+```bash
+# 一時ディレクトリにサンプル project を作る（既存のプロジェクトには触りません）
+python -m docsweep demo
+
+# 出力された root を指定して見る
+python -m docsweep triage --root <生成先>
+python -m docsweep serve   --root <生成先>
+```
+
+overdue / 今日 / 未来 / 期日なし / 保留 / 完了 がそろった md が 8 本できるので、
+看板も `triage` も空になりません。グローバル設定の `roots` には登録しないので、
+使い終わったらフォルダごと消せます。`--dir` で生成先を指定できます。
+
+### まとめて動かすときの確認（`bulk_confirm_threshold`）
+
+一括 archive・一括ラベル変更・`promote` は 1 手で数十件を動かせます。対象件数が
+しきい値以上のときだけ確認の段が 1 つ増えます（既定 20 件。しきい値未満は従来どおり）。
+
+```yaml
+# .docsweep.yaml または ~/.docsweep/config.yaml
+bulk_confirm_threshold: 20   # 0 にすると常に確認する
+metrics: true                # 連続日数・今週の片付け件数の表示（false で記録ごと停止）
+```
+
+Web はフレーズ（`ARCHIVE` / `RELABEL`）の打ち込みを求め、CLI の `promote` は `--yes` を
+要求します。非対話を崩さないため、CLI は端末でもプロンプトを出しません。
+
 詳細は [docs/conventions.md](docs/conventions.md) と
 [templates/AGENT_GUIDE.md](templates/AGENT_GUIDE.md) を参照してください。
 

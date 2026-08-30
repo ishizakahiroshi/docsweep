@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
@@ -24,7 +24,8 @@ from ...engine import run_scan
 from ...inject import list_injected
 from ...models import Flag
 from ...presets import DEFAULT_PRESET, PRESETS
-from ...state import get_postpone_count
+from ...state import get_postpone_count, get_view_state
+from ..i18n import age_label
 from ..security import check_token
 
 _DIR = Path(__file__).parent.parent
@@ -92,15 +93,27 @@ def _card_view(
     link_progress: str | None = None,
 ) -> dict:
     """テンプレートに渡すカード dict（path/state/期日/postpone を整形）。"""
-    from ..i18n import get_messages
+    from ..i18n import absolute_title, get_messages
 
     t = t or get_messages("ja")
+    lang = (t.get("__lang__") or "ja") if isinstance(t, dict) else "ja"
     project_root = Path(rec.project_root)
     abs_path = Path(rec.path)
     try:
         postpone = get_postpone_count(project_root, abs_path)
     except Exception:  # noqa: BLE001 - state.json 破損時も UI は止めない
         postpone = 0
+
+    # UX W4 / P21: snooze / pin は state.json だけに載る「見え方」の情報。
+    # 壊れていてもカード描画は続ける（MD が正本なので実害が無い）。
+    snoozed = False
+    pinned = False
+    try:
+        view = get_view_state(project_root, abs_path)
+        snoozed = view.is_snoozed(date.today().isoformat())
+        pinned = view.pinned
+    except Exception:  # noqa: BLE001
+        pass
 
     due_label = ""
     due_kind = "none"
@@ -138,7 +151,12 @@ def _card_view(
         "due": rec.due,
         "due_label": due_label,
         "due_kind": due_kind,
+        # UX W4 / P66: 相対表示だけだと週をまたぐと分からないので絶対日付を tooltip に置く。
+        "due_title": absolute_title(rec.due or "", lang),
+        "mtime_title": absolute_title(_mtime_iso(rec.mtime), lang, kind="mtime"),
         "postpone_count": postpone,
+        "snoozed": snoozed,  # UX W4 / P21
+        "pinned": pinned,    # UX W4 / P21
         "mtime": rec.mtime,
         "flags": list(rec.flags),
         # OKF（plan_okf-adoption_2026-06-29.md C4）拡張: tags / owner / related と
@@ -153,6 +171,19 @@ def _card_view(
         "backref_count": backref_count,
         "link_progress": link_progress,  # UX W3 / P8
     }
+
+
+def _mtime_iso(mtime: float | None) -> str:
+    """epoch 秒の mtime を ISO 日付へ（UX W4 / P66 の tooltip 用）。
+
+    ``FileRecord.mtime`` は epoch 秒の float。文字列として扱うと落ちるので変換を 1 か所に置く。
+    """
+    if not mtime:
+        return ""
+    try:
+        return datetime.fromtimestamp(float(mtime)).date().isoformat()
+    except (OSError, OverflowError, ValueError):
+        return ""
 
 
 def _backref_map(records) -> dict[str, int]:
@@ -255,7 +286,12 @@ def _columns(records, config, t: dict | None = None) -> dict:
     # 並び順: overdue/graduate は due 昇順（古いほど上）、他は postpone 多→少 → name 昇順。
     cols["overdue"].sort(key=lambda c: (c["due"] or ""))
     cols["graduate"].sort(key=lambda c: (c["due"] or ""))
-    cols["today"].sort(key=lambda c: -c["postpone_count"])
+    # UX W4 / P21: pin は常に列の先頭。同じ pin 状態の中は従来の並び（先送り回数順）。
+    cols["today"].sort(key=lambda c: (not c.get("pinned"), -c["postpone_count"]))
+    for key, items in cols.items():
+        if key == "today":
+            continue
+        items.sort(key=lambda c: not c.get("pinned"))
     cols["active"].sort(key=lambda c: (c["due"] or "~"))
     cols["future"].sort(key=lambda c: (c["due"] or "~"))
     cols["no_due"].sort(key=lambda c: c["name"])
@@ -272,8 +308,10 @@ def _health(records, top_n: int = 5) -> list[dict]:
         cur = by.get(r.project)
         if cur is None or r.age_days > cur:
             by[r.project] = r.age_days
-    rows = [{"project": p, "oldest": d} for p, d in by.items()]
-    rows.sort(key=lambda x: x["oldest"], reverse=True)
+    rows = [
+        {"project": project, "oldest": oldest}
+        for project, oldest in sorted(by.items(), key=lambda item: item[1], reverse=True)
+    ]
     return rows[:top_n]
 
 
@@ -354,6 +392,8 @@ def _today_pick_view(config, t: dict | None = None) -> dict | None:
         "summary": best.get("summary") or "",
         "rel": best.get("rel") or "",
         "age_days": best.get("age_days"),
+        # UX W4 / P66: 「19d」だけ英語表記のまま残っていたのを言語で統一する。
+        "age_label": age_label(best.get("age_days"), (t or {}).get("__lang__") or "ja"),
         "score_total": (sc or {}).get("total"),
         "score": sc,
     }
@@ -385,7 +425,19 @@ def _board_data(request: Request, t: dict | None = None) -> dict:
         "profile": profile,
         "profiles": profiles,
         "suggestion_count": suggestion_count,
+        # UX W4 / P20: 習慣メトリクス。metrics: false / DOCSWEEP_METRICS=0 で enabled=False。
+        "metrics": _metrics_view(state.config),
     }
+
+
+def _metrics_view(config) -> dict:
+    """streak / 今週の片付け件数。計測で board を落とさない（失敗はゼロ値）。"""
+    try:
+        from ...streak import collect
+
+        return collect(config).to_dict()
+    except Exception:  # noqa: BLE001
+        return {"streak_days": 0, "archived_this_week": 0, "enabled": False}
 
 
 @router.get("/board", response_class=HTMLResponse)

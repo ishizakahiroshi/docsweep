@@ -15,6 +15,7 @@ from .brief.service import _detect_cwd_project, _resolve_target_projects
 from .config import Config
 from .engine import scan_records
 from .models import FileRecord
+from .record_view import masked_title
 from .services.due import DueParseError, resolve_relative_offset
 
 
@@ -87,7 +88,7 @@ def _short_record(rec: FileRecord) -> dict:
         "type": rec.type,
         "state": rec.state,
         "state_label": rec.state_label,
-        "title": "[sensitive]" if rec.sensitive else rec.title,
+        "title": masked_title(rec),
         "sensitive": rec.sensitive,
         "due": rec.due,
         "age_days": rec.age_days,

@@ -19,7 +19,6 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
-import yaml
 
 from ..atomic import write_atomic
 from ..config import DEFAULT_DUE_OFFSET_DAYS, GLOBAL_CONFIG_PATH, load_config, relative_work_dir
@@ -28,17 +27,14 @@ from ..states import StateModel
 from .agent_claude import _agent_uses_central
 from .agent_codex import _warn_if_shadowed, resolve_global_target
 from .blocks import (
-    MARK_END,
-    MARK_START,
     _block_hash,
     _find_all_blocks,
-    _find_block,
     _inner_of,
     _private_backup,
     _strip_managed_blocks,
     _wrap,
 )
-from .manifest import MANIFEST_PATH, load_manifest, save_manifest
+from .manifest import load_manifest, save_manifest
 
 DEFAULT_TARGETS = ("CLAUDE.md", "AGENTS.md")
 
@@ -129,9 +125,13 @@ def generate_label_block(sm: StateModel, lang: str = "ja", *, use_frontmatter: b
     en = lang == "en"
     watching_state = sm.by_key("watching")
     watching_label = watching_state.label(lang) if watching_state else ("Watching" if en else "様子見")
-    done_label = sm.by_key("done").label(lang) if sm.by_key("done") else ("Done" if en else "完了")
+    done_state = sm.by_key("done")
+    done_label = done_state.label(lang) if done_state else ("Done" if en else "完了")
+    discarded_state = sm.by_key("discarded")
     discarded_label = (
-        sm.by_key("discarded").label(lang) if sm.by_key("discarded") else ("Discarded" if en else "廃止")
+        discarded_state.label(lang)
+        if discarded_state
+        else ("Discarded" if en else "廃止")
     )
     if en:
         lines: list[str] = [

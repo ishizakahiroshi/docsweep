@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docsweep"
-version = "0.4.0"
+version = "0.5.0"
 description = "Sweep, triage and archive AI coding agents' plan/bugfix/pending Markdown across projects."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -103,14 +103,12 @@ select = ["E", "F", "I", "UP", "B"]
 # 既存コードスタイル温存（監査シリーズの scope 外・別 refactor PR で cleanup 予定）:
 # - E501: 100 char 上限は JP CJK 幅換算で現実的でない（別 PR で line-length=120 検討）
 # - E402: 大依存の lazy import が意図的（起動時間削減）
-# - F401: __init__.py の re-export 経路で必要
 # - F841: 一部は test 残骸・別 cleanup で解消予定
-# - BLE001: `except Exception: pass` は graceful degradation の意図的パターン
 # - B008: FastAPI の `Query()` / `Body()` を default 引数に置くのは framework 慣習
 # - UP035: `typing.List` 等の deprecated import は一部 lazy import で残っている
 # - I001: import 並び順の isort 規則は `ruff --fix` で一括整形するのが正道。手 fix
 #   は非現実的（31 件散在）で別 PR で auto-fix cadence を回してから enforce する
-ignore = ["E501", "E402", "F401", "F841", "BLE001", "B008", "UP035", "I001"]
+ignore = ["E501", "E402", "F841", "B008", "UP035", "I001"]
 
 [tool.mypy]
 # 段階導入: strict モードは既存コードで大量エラーになるため見送り。

@@ -436,8 +436,8 @@ def build_server(config: Config):
         archive 移送する（人クリック相当の意思決定が MCP 呼び出しに含まれている前提）。
         """
         resolved, err = _resolve_or_error(path, config)
-        if err is not None:
-            return err
+        if err is not None or resolved is None:
+            return err or {"error": "unresolved_path", "path": path, "kind": "path_scope"}
         # 日本語ラベル → 内部 state key の解決（"計画" でも "planned" でも通す）。
         st = config.state_model.match(new_status)
         new_state_key = st.key if st else new_status
@@ -460,7 +460,7 @@ def build_server(config: Config):
                 "error": str(e), "path": path, "kind": "conflict",
                 "expected_mtime": e.expected, "actual_mtime": e.actual,
             }
-        out = {
+        out: dict[str, object] = {
             "path": res.path,
             "old_label": res.old_label,
             "new_label": res.new_label,
@@ -485,8 +485,8 @@ def build_server(config: Config):
         過去日を指定された場合も警告のみで拒否しない（やり忘れ列に残るだけ）。
         """
         resolved, err = _resolve_or_error(path, config)
-        if err is not None:
-            return err
+        if err is not None or resolved is None:
+            return err or {"error": "unresolved_path", "path": path, "kind": "path_scope"}
         project_root = _project_root_for(resolved, config)
         # しきい値は ``.docsweep.yaml`` の ``due:`` ブロックから読まれた Config 値を使う。
         try:
@@ -523,8 +523,8 @@ def build_server(config: Config):
         ``expected_mtime`` 不一致は ``kind=conflict`` で返却。Web UI からは必須。
         """
         resolved, err = _resolve_or_error(path, config)
-        if err is not None:
-            return err
+        if err is not None or resolved is None:
+            return err or {"error": "unresolved_path", "path": path, "kind": "path_scope"}
         try:
             res = svc_update_content(
                 resolved,
@@ -559,8 +559,15 @@ def build_server(config: Config):
         if paths:
             for p in paths:
                 resolved, err = _resolve_or_error(p, config)
-                if err is not None:
-                    errors.append(err)
+                if err is not None or resolved is None:
+                    if err is not None:
+                        errors.append(err)
+                    else:
+                        errors.append({
+                            "error": "unresolved_path",
+                            "path": p,
+                            "kind": "path_scope",
+                        })
                     continue
                 validated_paths.append(str(resolved))
         res = svc_archive_done(

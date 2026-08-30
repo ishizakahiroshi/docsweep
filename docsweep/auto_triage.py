@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, field
 from .config import Config
 from .engine import apply_action, run_scan
 from .linkcheck import linkcheck
-from .models import Action, FileRecord, Flag
+from .models import FileRecord, Flag
 
 
 @dataclass

@@ -19,7 +19,6 @@ import docsweep.export as export_module
 from docsweep.cli import main
 from docsweep.config import load_config
 from docsweep.doctor import _max_project_last_scanned
-from docsweep.ics_export import build_ics
 from docsweep.linkcheck import FileStatus, LinkCheckResult
 
 

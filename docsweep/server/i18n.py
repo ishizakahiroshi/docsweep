@@ -319,13 +319,101 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "蘇生候補なし（threshold を下げるか、archive を増やしてみてください）",
         "en": "No resurrection candidates (try lowering the threshold or archiving more files)",
     },
+    # ===== UX W4（C4）=====================================================
+    "skip_to_board": {"ja": "本文へスキップ", "en": "Skip to board"},
+    # UX W4 / P66: 相対表記と絶対表記の言い回しをここに集約する。
+    # 「19d」と「3 日超過」が同じ画面に混在していたのを、言語ごとに 1 つへ揃える。
+    "age_days": {"ja": "{n} 日前", "en": "{n}d ago"},
+    "age_today": {"ja": "今日", "en": "today"},
+    "abs_date_title": {"ja": "期日 {date}（{wd}）", "en": "Due {date} ({wd})"},
+    "abs_mtime_title": {"ja": "最終更新 {date}（{wd}）", "en": "Updated {date} ({wd})"},
+    "density_label": {"ja": "密度", "en": "Density"},
+    "density_compact": {"ja": "コンパクト", "en": "Compact"},
+    "density_cozy": {"ja": "標準", "en": "Cozy"},
+    "density_detailed": {"ja": "詳しく", "en": "Detailed"},
+    "contrast_label": {"ja": "高コントラスト", "en": "High contrast"},
+    "metrics_streak": {"ja": "連続 {n} 日", "en": "{n}-day streak"},
+    "metrics_archived": {"ja": "今週 {n} 件片付け", "en": "{n} archived this week"},
+    "metrics_title": {
+        "ja": "朝の 1 個を見た連続日数と、今週 archive した件数",
+        "en": "Consecutive mornings opened, and files archived this week",
+    },
+    "pin_badge": {"ja": "📌 固定", "en": "📌 Pinned"},
+    "snooze_badge": {"ja": "💤 今日は非表示", "en": "💤 Snoozed"},
+    "pin_action": {"ja": "固定", "en": "Pin"},
+    "unpin_action": {"ja": "固定解除", "en": "Unpin"},
+    "snooze_action": {"ja": "今日は見ない", "en": "Snooze today"},
+    "unsnooze_action": {"ja": "非表示を解除", "en": "Unsnooze"},
+    "show_snoozed": {"ja": "非表示分も出す", "en": "Show snoozed"},
+    "focus_action": {"ja": "この 1 枚に集中", "en": "Focus this card"},
+    "focus_exit": {"ja": "集中をやめる", "en": "Exit focus"},
+    "focus_hint": {
+        "ja": "ほかのカードを薄くしています。Esc で戻ります",
+        "en": "Other cards are dimmed. Press Esc to exit",
+    },
+    "tour_skip": {"ja": "スキップ", "en": "Skip"},
+    "tour_next": {"ja": "次へ", "en": "Next"},
+    "tour_done": {"ja": "はじめる", "en": "Start"},
+    "confirm_phrase_label": {
+        "ja": "確認のため {phrase} と入力してください",
+        "en": "Type {phrase} to confirm",
+    },
+    "confirm_phrase_count": {
+        "ja": "{n} 件をまとめて変更します。取り消しは Undo でできます",
+        "en": "This changes {n} files at once. You can Undo afterwards",
+    },
 }
+
+
+_WEEKDAYS = {
+    "ja": ("月", "火", "水", "木", "金", "土", "日"),
+    "en": ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),
+}
+
+
+def weekday_label(iso_date: str, lang: str) -> str:
+    """ISO 日付の曜日ラベル（UX W4 / P66）。解釈できなければ空文字。"""
+    from datetime import date
+
+    try:
+        d = date.fromisoformat(iso_date)
+    except (TypeError, ValueError):
+        return ""
+    names = _WEEKDAYS.get(lang) or _WEEKDAYS["ja"]
+    return names[d.weekday()]
+
+
+def absolute_title(iso_date: str, lang: str, *, kind: str = "due") -> str:
+    """ツールチップ用の絶対表記（UX W4 / P66）。相対表示だけだと週をまたぐと混乱する。"""
+    if not iso_date:
+        return ""
+    wd = weekday_label(iso_date, lang)
+    if not wd:
+        # 解釈できない日付で「期日 bogus（）」のような壊れたツールチップを出さない。
+        return ""
+    key = "abs_date_title" if kind == "due" else "abs_mtime_title"
+    template = MESSAGES[key].get(lang) or MESSAGES[key]["ja"]
+    return template.format(date=iso_date, wd=wd)
+
+
+def age_label(days: int | None, lang: str) -> str:
+    """経過日数の表記を言語で統一する（UX W4 / P66）。"""
+    if days is None:
+        return ""
+    if days <= 0:
+        return MESSAGES["age_today"].get(lang) or MESSAGES["age_today"]["ja"]
+    template = MESSAGES["age_days"].get(lang) or MESSAGES["age_days"]["ja"]
+    return template.format(n=days)
 
 
 def get_messages(lang: str) -> dict[str, str]:
     """lang 解決済みの文言 dict を返す（テンプレの ``T``）。未知 lang は ja へフォールバック。"""
     key = lang if lang in SUPPORTED_LANGS else "ja"
-    return {k: v.get(key) or v["ja"] for k, v in MESSAGES.items()}
+    out = {k: v.get(key) or v["ja"] for k, v in MESSAGES.items()}
+    # 解決済みの言語を dict 自身に載せる。card view のように Request を持たない層が
+    # 絶対日付ラベルの言語を決めるのに使う（UX W4 / P66）。
+    out["__lang__"] = key
+    return out
 
 
 def resolve_lang(request: Request, lang: str | None = None) -> str:
