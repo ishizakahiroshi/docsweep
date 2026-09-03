@@ -63,6 +63,28 @@ MCP では `apply(path=..., action="relabel", to="watching", watching_days=5)` �
 同じ低レベル経路の `update_status(..., watching_days=5)` でも指定できます。`N` は 0 以上の
 整数で、既に `watching` の文書を再指定した場合は既存の due を保護します。
 
+### 卒業期限が来た様子見を片づける
+
+`[様子見]` へ移した文書には、その日から既定 3 日後の卒業期限が `due` として入ります。
+**`due` が来ただけでは何も起きません。** 昇格は明示操作でのみ実行されます。
+
+```bash
+python -m docsweep promote --due-expired --dry-run   # 対象を下見する
+python -m docsweep promote --due-expired             # 昇格して archive へ移す
+```
+
+MCP では `promote(due_expired_only=True, dry_run=True)` で下見してから、`dry_run` を外して実行します
+（CLI のフラグ名は `--due-expired`、MCP の引数名は `due_expired_only` で綴りが違う点に注意）。
+
+AI がこれを扱うときの注意:
+
+- **下見を先に出し、対象一覧をユーザーへ見せてから実行する。** `--due-expired` を付けない
+  `promote` は様子見全件が対象になるので、下見と本実行で同じ絞り込みを使う
+- 対象は「due 到来（当日を含む）」かつ `[様子見]` の文書だけ。`due` 無し・未来 due・不正 due・
+  `docsweep_policy: never_archive` は動かない
+- `sweep` は様子見を対象にしない。寝かせ中の文書を自動移送する経路は存在しない
+- 期限切れを理由に `[廃止]` へ倒さない。廃止は人または AI の明示的な意思決定でのみ行う
+
 ---
 
 ## 各 AI 向けセットアップ
