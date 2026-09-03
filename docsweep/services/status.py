@@ -31,7 +31,8 @@ from .frontmatter import (
 #   （2026-06-23 改修: 旧 bugfix 専用の active=[対応中] を in-progress に統合・state モデル簡素化）
 # - bugfix も [保留] (pending) を許可（修正後の中断・寝かせ前の一時停止を表現）
 # - pending ファイルは [保留] / [計画] / [廃止] のみ
-# 経緯: docs/local/kanban-card-ux-options/index.html、plan_state-tag-orthogonalization.md 改訂版
+# 経緯: docs/local/kanban-card-ux-options/index.html、
+#       docs/local/archive/v0.5.x/plan_state-tag-orthogonalization.md 改訂版
 _ALLOWED_BY_TYPE: dict[str, frozenset[str]] = {
     "plan": frozenset({"planned", "in-progress", "watching", "pending", "done", "discarded"}),
     "bugfix": frozenset({"in-progress", "watching", "pending", "done", "discarded"}),

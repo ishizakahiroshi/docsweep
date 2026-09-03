@@ -1,6 +1,8 @@
 """状態モデル（states）— 単一正本。
 
-設計の正本: docs/local/plan_state-tag-orthogonalization.md / plan_v0.1.0-product-requirements.md
+設計の正本はこのファイル自身（``DEFAULT_STATES``）と docs/conventions.md。
+設計を決めた経緯は docs/local/archive/v0.5.x/plan_state-tag-orthogonalization.md と
+docs/local/archive/v0.1.0/plan_v0.1.0-product-requirements.md（どちらも非公開の作業ログ）。
 
 config の ``states:`` を唯一の正本とし、ここから
 「検出ロジック・自動 archive 可否・Web 表示・注入テンプレ文面」を全部導出する。
@@ -54,7 +56,7 @@ class State:
 # 既存の `bugfix_*.md` に書かれた ``[対応中]`` は ``in-progress`` のエイリアスとして
 # 読み取り時にマッチさせる（既存ファイルは書き換えない）。
 # 経緯: docs/local/kanban-card-ux-options/index.html、設計プラン
-# plan_state-tag-orthogonalization.md（改訂版）
+# docs/local/archive/v0.5.x/plan_state-tag-orthogonalization.md（改訂版）
 DEFAULT_STATES: tuple[State, ...] = (
     State("planned", {"ja": "計画", "en": "Planned"}, archive=False, auto_move=False),
     State(
