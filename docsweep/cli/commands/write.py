@@ -101,7 +101,14 @@ def cmd_apply(args: argparse.Namespace) -> int:
         print(f"対象が見つかりません（スキャン範囲外?）: {args.path}", file=sys.stderr)
         return 2
     try:
-        entry = apply_action(doc, args.action, cfg, to=args.to, dry_run=args.dry_run)
+        entry = apply_action(
+            doc,
+            args.action,
+            cfg,
+            to=args.to,
+            dry_run=args.dry_run,
+            watching_days=getattr(args, "watching_days", None),
+        )
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
@@ -173,6 +180,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
     from ...bulk_confirm import require as bulk_require
 
     cfg = _build_config(args)
+    due_expired_only = getattr(args, "due_expired", False)
     if not args.dry_run:
         # 実行前に同じ条件で下見して件数を数える。しきい値以上なら --yes を要求する
         # （UX W4 / P59）。非対話が不変条件なのでプロンプトは出さない。
@@ -180,6 +188,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
             preview = promote_state(
                 cfg, from_state=args.state, to_state=args.to,
                 project=args.project, dry_run=True,
+                due_expired_only=due_expired_only,
             )
         except ValueError as e:
             print(str(e), file=sys.stderr)
@@ -188,15 +197,19 @@ def cmd_promote(args: argparse.Namespace) -> int:
         try:
             bulk_require("promote", len(preview), cfg.bulk_confirm_threshold, supplied)
         except BulkConfirmRequired as exc:
+            preview_cmd = "docsweep promote --due-expired --dry-run" if due_expired_only else "docsweep promote --dry-run"
             print(
                 f"promote: {exc.count} 件はしきい値 {exc.threshold} 件以上です。"
                 "内容を確認して --yes を付けて再実行してください"
-                "（下見: docsweep promote --dry-run）",
+                f"（下見: {preview_cmd}）",
                 file=sys.stderr,
             )
             return 2
     try:
-        moved = promote_state(cfg, from_state=args.state, to_state=args.to, project=args.project, dry_run=args.dry_run)
+        moved = promote_state(
+            cfg, from_state=args.state, to_state=args.to, project=args.project,
+            dry_run=args.dry_run, due_expired_only=due_expired_only,
+        )
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
@@ -207,7 +220,10 @@ def cmd_promote(args: argparse.Namespace) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         if not moved:
-            print(f"昇格対象なし（{args.state} のファイルが無い）")
+            if due_expired_only:
+                print(f"昇格対象なし（{args.state} の due 到来ファイルが無い）")
+            else:
+                print(f"昇格対象なし（{args.state} のファイルが無い）")
         for m in moved:
             print(f"昇格→archive: {m.src} -> {m.dst}")
         for failure in moved.failed:

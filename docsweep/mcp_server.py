@@ -312,13 +312,28 @@ def build_server(config: Config):
         return build_triage(config, project=project)
 
     @mcp.tool()
-    def apply(path: str, action: str, to: str | None = None) -> dict:
-        """1 ファイルに閉じた action（discard/keep/resume/relabel/promote）を機械実行する。"""
+    def apply(
+        path: str,
+        action: str,
+        to: str | None = None,
+        watching_days: int | None = None,
+    ) -> dict:
+        """1 ファイルに閉じた action を機械実行する。
+
+        ``watching_days`` は ``action="relabel", to="watching"`` の今回だけの
+        due 日数上書きで、プロジェクト設定は変更しない。
+        """
         doc = _doc_for(path)
         if doc is None:
             return {"error": "対象が見つかりません（スキャン範囲外?）", "path": path}
         try:
-            return apply_action(doc, action, config, to=to).to_dict()
+            return apply_action(
+                doc,
+                action,
+                config,
+                to=to,
+                watching_days=watching_days,
+            ).to_dict()
         except ValueError as e:
             return {"error": str(e), "path": path}
 
@@ -338,11 +353,17 @@ def build_server(config: Config):
 
     @mcp.tool()
     def promote(from_state: str = "watching", to_state: str = "done",
-                project: str | None = None, dry_run: bool = False) -> list[dict] | dict:
-        """release sweep: 溜まった様子見をまとめて完了へ昇格し archive へ移送する。"""
+                project: str | None = None, dry_run: bool = False,
+                due_expired_only: bool = False) -> list[dict] | dict:
+        """様子見を完了へ昇格し archive へ移送する。
+
+        due_expired_only=True の場合は due 到来（当日を含む）の watching だけを対象にする。
+        """
         try:
             batch = promote_state(
-                config, from_state=from_state, to_state=to_state, project=project, dry_run=dry_run)
+                config, from_state=from_state, to_state=to_state, project=project,
+                dry_run=dry_run, due_expired_only=due_expired_only,
+            )
             if batch.failed:
                 return {"moved": [m.to_dict() for m in batch], "failed": batch.failed}
             return [m.to_dict() for m in batch]
@@ -424,7 +445,10 @@ def build_server(config: Config):
 
     @mcp.tool()
     def update_status(
-        path: str, new_status: str, expected_mtime: float | None = None
+        path: str,
+        new_status: str,
+        expected_mtime: float | None = None,
+        watching_days: int | None = None,
     ) -> dict:
         """MD の H1 ラベルを ``new_status`` に書き換える。
 
@@ -434,6 +458,7 @@ def build_server(config: Config):
         （2026-06-23 改修で active を in-progress に統合）。
         ``[完了]`` / ``[廃止]`` 指定時は内部で ``archive_done`` を呼んで一気通貫で
         archive 移送する（人クリック相当の意思決定が MCP 呼び出しに含まれている前提）。
+        ``watching_days`` は様子見への遷移時だけ使う一回限りの due 日数上書き。
         """
         resolved, err = _resolve_or_error(path, config)
         if err is not None or resolved is None:
@@ -451,7 +476,9 @@ def build_server(config: Config):
             res = svc_update_status(
                 resolved, new_state_key,
                 project_root=project_root, config=config,
-                file_type=file_type, expected_mtime=expected_mtime,
+                file_type=file_type,
+                expected_mtime=expected_mtime,
+                watching_days=watching_days,
             )
         except StatusValidationError as e:
             return {"error": str(e), "path": path, "kind": "validation"}
@@ -464,6 +491,7 @@ def build_server(config: Config):
             "path": res.path,
             "old_label": res.old_label,
             "new_label": res.new_label,
+            "due_set": res.due_set,
             "new_mtime_iso": _mtime_iso(res.new_mtime),
             "postpone_count_reset": res.postpone_count_reset,
             "archive_triggered": res.archive_triggered,

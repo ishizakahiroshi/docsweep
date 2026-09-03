@@ -34,7 +34,7 @@ PRESETS: dict[str, Preset] = {
         lang="ja",
         states=_default_state_model(),
         use_frontmatter=False,
-        version="1",
+        version="2",
     ),
     "frontmatter": Preset(
         name="frontmatter",
@@ -42,7 +42,7 @@ PRESETS: dict[str, Preset] = {
         lang="en",
         states=_default_state_model(),
         use_frontmatter=True,
-        version="1",
+        version="2",
     ),
 }
 

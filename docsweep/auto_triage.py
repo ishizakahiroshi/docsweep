@@ -49,7 +49,8 @@ def _ruleset_decide(rec: FileRecord, lc_progress: str | None) -> TriageSuggestio
     判定ルール:
       - linkcheck progress = "implemented" の plan → "promote" (完了候補)
       - NEEDS_DECISION + age > 180 → "discard" 候補（陳腐化が長すぎる）
-      - state=watching + age > 14 → "promote" (release sweep 候補)
+      - state=watching + due 到来 → "promote" (release sweep 候補)
+        （due が無い legacy は従来どおり age > 14 を fallback にする）
       - それ以外 → 提案無し
     """
     flags = set(rec.flags or [])
@@ -73,12 +74,19 @@ def _ruleset_decide(rec: FileRecord, lc_progress: str | None) -> TriageSuggestio
             confidence=0.6,
         )
 
-    if rec.state == "watching" and age > 14:
+    watching_due_reached = Flag.OVERDUE_GRADUATE.value in flags
+    watching_legacy_old = rec.state == "watching" and not rec.due and age > 14
+    if rec.state == "watching" and (watching_due_reached or watching_legacy_old):
+        reason = (
+            "様子見の due 到来（当日を含む）- 昇格候補"
+            if watching_due_reached
+            else f"様子見 → 完了 へ昇格候補 (age={age}d, release sweep に該当)"
+        )
         return TriageSuggestion(
             path=rec.path, project=rec.project, current_state=rec.state,
             proposed_action="promote",
             proposed_to=None,
-            reason=f"様子見 → 完了 へ昇格候補 (age={age}d, release sweep に該当)",
+            reason=reason,
             confidence=0.5,
         )
 

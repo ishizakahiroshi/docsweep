@@ -138,7 +138,7 @@ def _open_in_os(path: Path) -> str | None:
     """OS デフォルトのアプリで md ファイルを開く。失敗時はエラー文字列を返す。"""
     try:
         if sys.platform == "win32":
-            os.startfile(str(path))  # type: ignore[attr-defined]
+            os.startfile(str(path))
         elif sys.platform == "darwin":
             subprocess.Popen(["open", str(path)])  # noqa: S603,S607
         else:

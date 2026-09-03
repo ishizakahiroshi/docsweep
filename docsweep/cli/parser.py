@@ -21,6 +21,17 @@ def _add_scope_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--allow-sensitive", action="store_true", help="秘密情報らしき本文の保存・表示を明示許可")
 
 
+def _non_negative_int(value: str) -> int:
+    """Parse a day offset while rejecting values that would create a past due date."""
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("0 以上の整数を指定してください") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("0 以上の整数を指定してください")
+    return parsed
+
+
 def _build_config(args: argparse.Namespace):
     explicit = list(getattr(args, "roots", None) or [])
     explicit += list(getattr(args, "paths", None) or [])
@@ -82,6 +93,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument("--path", required=True, help="対象ファイルの絶対パス")
     p_apply.add_argument("--action", required=True, help="discard|keep|resume|relabel|promote")
     p_apply.add_argument("--to", help="relabel 時のラベル名")
+    p_apply.add_argument(
+        "--watching-days", type=_non_negative_int, metavar="N",
+        help="relabel --to watching のときだけ、今回の卒業期限を今日 + N 日にする",
+    )
     p_apply.add_argument("--dry-run", action="store_true")
 
     p_sweep = sub.add_parser("sweep", help="--auto 相当: done/discarded を archive へ自動移送")
@@ -104,11 +119,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Web UI からのスキャンルート追加を許可（既定は拒否）",
     )
 
-    p_promote = sub.add_parser("promote", help="release sweep: 様子見をまとめて完了へ昇格し archive へ")
+    p_promote = sub.add_parser("promote", help="release sweep: 様子見を完了へ昇格し archive へ")
     _add_scope_args(p_promote)
     p_promote.add_argument("--state", default="watching", help="昇格元の状態（既定 watching）")
     p_promote.add_argument("--to", default="done", help="昇格先の状態（既定 done）")
     p_promote.add_argument("--project", help="対象プロジェクトを絞る")
+    p_promote.add_argument(
+        "--due-expired", action="store_true",
+        help="due 到来（当日を含む）の様子見だけを対象にする",
+    )
     p_promote.add_argument("--dry-run", action="store_true")
     p_promote.add_argument(
         "--yes", action="store_true",

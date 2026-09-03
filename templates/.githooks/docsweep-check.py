@@ -65,8 +65,17 @@ _CLASSIFICATION_WORDS = (
     "changed files",
 )
 # closeout-check に分類させたい正規の節は例外。分類語を含むこと自体が目的なので警告しない。
-# 対象は plan 全体をまとめる 1 節のみ（C 単位の H4 8 項目は level 4 なのでそもそも走査外）。
-_CLASSIFICATION_EXEMPT_TITLES = frozenset({"全体の検証手順"})
+# C 単位の H4 8 項目は level 4 なのでそもそも走査外。
+# 正規セクション（plan の 完了条件 / 検証 / 受入条件、bugfix の 変更ファイル、
+# 委譲 plan の 変更予定ファイル）を入れていないと、**必須の節そのものが警告される**。
+_CLASSIFICATION_EXEMPT_TITLES = frozenset({
+    "全体の検証手順",
+    "完了条件",
+    "検証",
+    "受入条件",
+    "変更ファイル",
+    "変更予定ファイル",
+})
 _MARKDOWN_HEADING_RE = re.compile(r"^(#{2,6})[ \t]+(.+?)[ \t]*$")
 _CONTEXT_C_ROW_RE = re.compile(r"^\s*\|\s*(C[1-9][0-9]*)\s*\|")
 _C_HEADING_RE = re.compile(r"^C([1-9][0-9]*)\b")

@@ -215,7 +215,7 @@ def test_update_status_loose_when_type_unknown(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# bugfix を [様子見] へ寝かせるときの due 付与（2026-08-25 の仕様点検で配線）
+# plan / bugfix を [様子見] へ寝かせるときの卒業期限（due）付与
 # ---------------------------------------------------------------------------
 
 
@@ -240,30 +240,31 @@ def _bugfix_with_frontmatter(proj: Path, *, due: str | None = None) -> Path:
 
 
 def test_bugfix_watching_sets_due_from_offset(tmp_path: Path):
-    """期限なしで眠り続けないよう、[様子見] へ移す時に due を入れる。"""
+    """bugfix を [様子見] へ移す時に既定の卒業期限を入れる。"""
     proj = _setup_project(tmp_path)
     f = _bugfix_with_frontmatter(proj)
     res = update_status(
         f, "watching", project_root=proj, config=_cfg(tmp_path), file_type="bugfix",
     )
-    expected = (date.today() + timedelta(days=7)).isoformat()
+    expected = (date.today() + timedelta(days=3)).isoformat()
     assert res.due_set == expected
     assert f"due: {expected}" in f.read_text(encoding="utf-8")
 
 
-def test_bugfix_watching_keeps_existing_due(tmp_path: Path):
-    """人が決めた期限は上書きしない。"""
+def test_bugfix_watching_resets_existing_due(tmp_path: Path):
+    """前の状態の due は意味が違うため、様子見への遷移時に卒業期限へ張り替える。"""
     proj = _setup_project(tmp_path)
     f = _bugfix_with_frontmatter(proj, due="2026-12-31")
     res = update_status(
         f, "watching", project_root=proj, config=_cfg(tmp_path), file_type="bugfix",
     )
-    assert res.due_set is None
-    assert "due: 2026-12-31" in f.read_text(encoding="utf-8")
+    expected = (date.today() + timedelta(days=3)).isoformat()
+    assert res.due_set == expected
+    assert f"due: {expected}" in f.read_text(encoding="utf-8")
 
 
-def test_plan_watching_does_not_get_due(tmp_path: Path):
-    """due 補完は bugfix の [様子見] 限定。plan には効かせない。"""
+def test_plan_watching_sets_due_from_offset(tmp_path: Path):
+    """plan も [様子見] へ移した日から既定の卒業期限を持つ。"""
     proj = _setup_project(tmp_path)
     f = proj / "plan_a.md"
     f.write_text(
@@ -273,8 +274,81 @@ def test_plan_watching_does_not_get_due(tmp_path: Path):
     res = update_status(
         f, "watching", project_root=proj, config=_cfg(tmp_path), file_type="plan",
     )
+    expected = (date.today() + timedelta(days=3)).isoformat()
+    assert res.due_set == expected
+    assert f"due: {expected}" in f.read_text(encoding="utf-8")
+
+
+def test_watching_days_overrides_config_for_one_transition(tmp_path: Path):
+    """明示した watching_days は設定値を変えず、今回の遷移だけに適用する。"""
+    proj = _setup_project(tmp_path)
+    f = proj / "plan_a.md"
+    f.write_text(
+        "---\ntype: plan\ndocsweep_state: in-progress\n---\n\n# [実行中] a\n",
+        encoding="utf-8",
+    )
+    cfg = _cfg(tmp_path)
+    res = update_status(
+        f,
+        "watching",
+        project_root=proj,
+        config=cfg,
+        file_type="plan",
+        watching_days=5,
+    )
+    expected = (date.today() + timedelta(days=5)).isoformat()
+    assert res.due_set == expected
+    assert cfg.due_default_offset_days["plan_watching"] == 3
+    assert f"due: {expected}" in f.read_text(encoding="utf-8")
+
+
+def test_watching_days_zero_sets_due_today(tmp_path: Path):
+    """0 日は明示指定として許可し、当日を due にする。"""
+    proj = _setup_project(tmp_path)
+    f = proj / "bugfix_a_2026-09-03.md"
+    f.write_text(
+        "---\ntype: bugfix\ndocsweep_state: in-progress\n---\n\n# [実行中] a\n",
+        encoding="utf-8",
+    )
+    res = update_status(
+        f,
+        "watching",
+        project_root=proj,
+        config=_cfg(tmp_path),
+        file_type="bugfix",
+        watching_days=0,
+    )
+    expected = date.today().isoformat()
+    assert res.due_set == expected
+    assert f"due: {expected}" in f.read_text(encoding="utf-8")
+
+
+def test_watching_days_rejects_negative_value(tmp_path: Path):
+    proj = _setup_project(tmp_path)
+    f = _bugfix_with_frontmatter(proj)
+    with pytest.raises(StatusValidationError, match="watching_days"):
+        update_status(
+            f,
+            "watching",
+            project_root=proj,
+            config=_cfg(tmp_path),
+            file_type="bugfix",
+            watching_days=-1,
+        )
+
+
+def test_watching_same_state_keeps_existing_due(tmp_path: Path):
+    """同じ状態への再指定では、人が更新した卒業期限を温存する。"""
+    proj = _setup_project(tmp_path)
+    f = _bugfix_with_frontmatter(proj, due="2026-12-31")
+    body = f.read_text(encoding="utf-8").replace("docsweep_state: in-progress", "docsweep_state: watching")
+    body = body.replace("# [実行中] 落ちる", "# [様子見] 落ちる")
+    f.write_text(body, encoding="utf-8")
+    res = update_status(
+        f, "watching", project_root=proj, config=_cfg(tmp_path), file_type="bugfix",
+    )
     assert res.due_set is None
-    assert "due:" not in f.read_text(encoding="utf-8")
+    assert "due: 2026-12-31" in f.read_text(encoding="utf-8")
 
 
 def test_bugfix_without_frontmatter_stays_frontmatterless(tmp_path: Path):

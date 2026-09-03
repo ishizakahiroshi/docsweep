@@ -459,7 +459,7 @@ def _open_in_default_app(path: Path) -> None:
     if sys.platform.startswith("win"):
         import os
 
-        os.startfile(str(path))  # type: ignore[attr-defined]  # noqa: S606
+        os.startfile(str(path))  # noqa: S606
     elif sys.platform == "darwin":
         subprocess.run(["open", str(path)], check=False)
     else:

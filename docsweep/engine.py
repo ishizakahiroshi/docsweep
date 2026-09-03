@@ -2,6 +2,7 @@
 
 「ラベルを立てる＝判断」は人/AI、「archive へ運ぶ＝作業」は自動、と分離する。
 --auto の自動移送対象は done＋discarded（auto_move=True）のみ。watching は絶対に触らない。
+期限到来した watching は、明示した ``promote --due-expired`` の候補にだけ含める。
 """
 
 from __future__ import annotations
@@ -46,17 +47,18 @@ def classify(doc: ScannedDoc, config: Config) -> None:
         if rec.state in {"planned", "in-progress", "watching"}:
             flags.append(Flag.NEEDS_DECISION.value)
 
-    # due 超過フラグ（archive 制御には絡めない — 第2軸は気づきのみ）。
+    # due 超過フラグ（due だけでは archive しない — 第2軸は気づきと明示操作の絞り込み）。
     if rec.due_parse_error:
         flags.append(Flag.DUE_PARSE_ERROR.value)
     elif rec.due and rec.state not in {"done", "discarded"}:
         try:
             due_date = date.fromisoformat(rec.due)
-            if date.today() > due_date:
-                if rec.state == "watching":
+            if rec.state == "watching":
+                # 様子見は due 当日を含めて卒業判定どきとする。
+                if date.today() >= due_date:
                     flags.append(Flag.OVERDUE_GRADUATE.value)
-                else:
-                    flags.append(Flag.OVERDUE_TODO.value)
+            elif date.today() > due_date:
+                flags.append(Flag.OVERDUE_TODO.value)
         except ValueError:
             flags.append(Flag.DUE_PARSE_ERROR.value)
 
@@ -312,8 +314,15 @@ def archive_doc(
 def promote_state(
     config: Config, *, from_state: str = "watching", to_state: str = "done",
     project: str | None = None, dry_run: bool = False,
+    due_expired_only: bool = False,
 ) -> MoveBatchResult:
-    """release sweep: 溜まった from_state を to_state へ一括昇格し archive へ移送。"""
+    """状態を一括昇格して archive へ移送する。
+
+    ``due_expired_only`` は ``watching`` のうち due 到来（当日を含む）だけを
+    対象にする安全側の絞り込みで、通常の promote の後方互換挙動は維持する。
+    """
+    if due_expired_only and from_state != "watching":
+        raise ValueError("--due-expired は昇格元 watching と組み合わせてください")
     result = run_scan(config)
     sm = config.state_model
     target = sm.by_key(to_state)
@@ -330,6 +339,8 @@ def promote_state(
         if rec.state != from_state:
             continue
         if project and rec.project != project:
+            continue
+        if due_expired_only and not _due_reached(rec):
             continue
         # docsweep_policy: never_archive は昇格しても archive しない（policy による保持）。
         if rec.docsweep_policy == "never_archive":
@@ -351,6 +362,16 @@ def promote_state(
             status=to_state, src=rec.path, dst=dst.as_posix(),
         ))
     return MoveBatchResult(moved, failed=failed)
+
+
+def _due_reached(rec: FileRecord) -> bool:
+    """due が正しい日付で、今日を含む到来日になっているかを返す。"""
+    if rec.due_parse_error or not rec.due:
+        return False
+    try:
+        return date.fromisoformat(rec.due) <= date.today()
+    except ValueError:
+        return False
 
 
 def _archive_routes(
@@ -402,6 +423,7 @@ def _update_doc_state(
     config: Config,
     *,
     allow_type_override: bool = False,
+    watching_days: int | None = None,
 ) -> None:
     """Update H1 and docsweep frontmatter through the shared status service."""
     try:
@@ -415,6 +437,7 @@ def _update_doc_state(
             # done. CLI relabel/apply keeps the normal type transition guard.
             file_type=None if allow_type_override else doc.record.type,
             expected_mtime=doc.record.mtime,
+            watching_days=watching_days,
         )
     except (ConflictError, OSError, UnicodeError, ValueError) as exc:
         raise ValueError(f"状態を書き換えられません: {doc.record.path}: {exc}") from exc
@@ -428,8 +451,12 @@ def apply_action(
     to: str | None = None,
     dry_run: bool = False,
     allow_type_override: bool = False,
+    watching_days: int | None = None,
 ) -> MoveLogEntry:
-    """triage の閉じた action を 1 ファイルへ機械実行する。"""
+    """triage の閉じた action を 1 ファイルへ機械実行する。
+
+    ``watching_days`` は ``relabel --to watching`` の今回だけの due 上書き。
+    """
     rec = doc.record
     project_dir, root = _project_dir_for(doc, config)
     sm = config.state_model
@@ -437,6 +464,17 @@ def apply_action(
 
     if action not in rec.allowed_actions:
         raise ValueError(f"action '{action}' は {rec.path} に許可されていません（{rec.allowed_actions}）")
+    if (
+        watching_days is not None
+        and (
+            isinstance(watching_days, bool)
+            or not isinstance(watching_days, int)
+            or watching_days < 0
+        )
+    ):
+        raise ValueError("watching_days は 0 以上の整数で指定してください")
+    if watching_days is not None and action != Action.RELABEL.value:
+        raise ValueError("watching_days は relabel --to watching と組み合わせてください")
 
     if action == Action.KEEP.value:
         return MoveLogEntry(ts="", op="keep", project=rec.project, status=rec.state, src=rec.path, dst=None)
@@ -482,9 +520,15 @@ def apply_action(
         st = sm.match(token)
         if st is None:
             raise ValueError(f"未知の state label: {to}")
+        if watching_days is not None and st.key != "watching":
+            raise ValueError("watching_days は relabel --to watching と組み合わせてください")
         if not dry_run:
             _update_doc_state(
-                doc, st.key, config, allow_type_override=allow_type_override
+                doc,
+                st.key,
+                config,
+                allow_type_override=allow_type_override,
+                watching_days=watching_days,
             )
             append_move_log(root, MoveLogEntry(ts=_now_iso(), op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None))
         return MoveLogEntry(ts="", op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None)

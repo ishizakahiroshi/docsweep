@@ -118,8 +118,10 @@ def _overdue_kind(d: dict, *, today: date | None = None) -> tuple[str | None, in
         return (None, None)
     today = today or date.today()
     delta = (today - due_date).days
+    if state == "watching" and delta >= 0:
+        return ("overdue_graduate", delta)
     if delta > 0:
-        kind = "overdue_graduate" if state == "watching" else "overdue_todo"
+        kind = "overdue_todo"
         return (kind, delta)
     if delta == 0:
         return ("today", 0)

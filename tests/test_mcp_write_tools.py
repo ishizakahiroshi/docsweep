@@ -94,6 +94,22 @@ def test_mcp_global_tools_have_no_arbitrary_target_argument(tmp_path: Path):
     assert "target" not in inspect.signature(tools["eject_global"]).parameters
 
 
+def test_apply_watching_days_overrides_due_once(tmp_path: Path):
+    root, proj = _setup(tmp_path)
+    f = _write(
+        proj / "docs" / "plan_a.md",
+        "---\ntype: plan\ndocsweep_state: in-progress\n---\n"
+        "# [実行中] テスト\n\n## 概要\n\nx\n",
+    )
+    server = build_server(_cfg(root))
+    res = _tools(server)["apply"](
+        str(f), "relabel", to="watching", watching_days=5
+    )
+    expected = (date.today() + timedelta(days=5)).isoformat()
+    assert res["status"] == "watching"
+    assert f"due: {expected}" in f.read_text(encoding="utf-8")
+
+
 # ------------------------------------------------------------------
 # update_status
 # ------------------------------------------------------------------
@@ -115,6 +131,23 @@ def test_update_status_accepts_internal_key(tmp_path: Path):
     server = build_server(_cfg(root))
     res = _tools(server)["update_status"](str(f), "in-progress")
     assert res["new_label"] == "[実行中]"
+
+
+def test_update_status_watching_days_overrides_due_once(tmp_path: Path):
+    root, proj = _setup(tmp_path)
+    f = _write(
+        proj / "docs" / "plan_a.md",
+        "---\ntype: plan\ndocsweep_state: in-progress\n---\n"
+        "# [実行中] テスト\n\n## 概要\n\nx\n",
+    )
+    server = build_server(_cfg(root))
+    res = _tools(server)["update_status"](
+        str(f), "watching", watching_days=5
+    )
+    expected = (date.today() + timedelta(days=5)).isoformat()
+    assert res["new_label"] == "[様子見]"
+    assert res["due_set"] == expected
+    assert f"due: {expected}" in f.read_text(encoding="utf-8")
 
 
 def test_update_status_done_triggers_archive(tmp_path: Path):

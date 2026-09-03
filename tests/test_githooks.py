@@ -190,3 +190,25 @@ def test_hook_warns_on_classification_word_in_h3_without_failing(tmp_path: Path)
 
     assert r.returncode == 0
     assert "分類語" in r.stderr
+
+
+def test_hook_does_not_warn_on_canonical_sections(tmp_path: Path):
+    """正規セクションそのものは分類語警告の対象外。
+
+    `## 完了条件` / `## 検証` / `## 受入条件` は closeout-check に分類させるための
+    必須節なので、分類語を含むこと自体が目的。ここを除外していないと、
+    規約どおりに書いた plan がフックに毎回警告される。
+    """
+    p = tmp_path / "plan_canonical_sections.md"
+    p.write_text(
+        _delegated_plan()
+        + "\n## 完了条件\n\n- [x] a\n"
+        + "\n## 検証\n\n- [x] b\n"
+        + "\n## 受入条件\n\n- [x] c\n",
+        encoding="utf-8",
+    )
+
+    r = _run([p])
+
+    assert r.returncode == 0
+    assert "分類語" not in r.stderr

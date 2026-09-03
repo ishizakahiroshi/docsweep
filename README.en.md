@@ -267,6 +267,12 @@ python -m docsweep summary                  # Compressed JSON to hand to an AI
 
 # Release cleanup (promote watching items to done in bulk and archive them)
 python -m docsweep promote --state watching --to done
+# Preview / promote only watching items whose graduation due date has arrived (including today)
+python -m docsweep promote --due-expired --dry-run
+python -m docsweep promote --due-expired
+
+# Override the graduation due date to today + 5 days for this transition only (config unchanged)
+python -m docsweep apply --path <plan-or-bugfix.md> --action relabel --to watching --watching-days 5
 
 # Interactive checklist (humans only)
 python -m docsweep review
@@ -462,7 +468,7 @@ When you manage multiple roots, natural-language queries from an AI tend to be a
 python -m docsweep sweep --dry-run --project many-ai-cli
 
 # "Any watching items ready for promotion in the docsweep project?"
-python -m docsweep promote --dry-run --project docsweep
+python -m docsweep promote --due-expired --dry-run --project docsweep
 
 # "Any remaining work in many-ai-cli?"
 python -m docsweep triage --project many-ai-cli

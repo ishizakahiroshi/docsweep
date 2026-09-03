@@ -50,6 +50,11 @@ due: 2026-08-16
 | `last_reviewed` | 最終レビュー日 | docsweep 拡張。`stale` が利用 |
 | `due` | 作業期限 | docsweep 拡張。看板と期限超過フラグが利用 |
 
+`created_at` / `updated_at` は docsweep の OKF frontmatter には生成しません。最終更新は
+filesystem の `mtime` として読み取り、docsweep 経由の状態遷移時刻はプロジェクトの
+`.docsweep/state.json` の履歴に記録します。`[様子見]` の卒業期限は `due` に置き、
+`promote --due-expired` を明示したときだけ期限到来分の昇格対象を絞り込みます。
+
 `status` が v0.2 lifecycle の値なら docsweep の作業状態として解釈しません。`H1 > filename`
 へフォールバックします。旧形式の `status: planned` などは legacy state として読み取り、
 新形式の `docsweep_state` がある場合はそれを最優先します。新旧フィールドや H1 が食い違う

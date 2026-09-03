@@ -3,8 +3,8 @@
 - 行単位の正規表現置換で本文を触らない（atomic.update_line 経由）
 - 軸 1 のラベル遷移時に postpone_count をリセット（state.should_reset_postpone）
 - ``[完了]`` / ``[廃止]`` は terminal 状態として返すが、archive は呼び出し側の責務
-- bugfix を ``[様子見]`` へ寝かせるとき、due が無ければ ``due.default_offset_days``
-  の ``bugfix_watching`` から期限を入れる（期限なしで眠り続けるのを防ぐ）
+- plan / bugfix を ``[様子見]`` へ寝かせるとき、``due.default_offset_days`` の
+  ``plan_watching`` / ``bugfix_watching`` から卒業判定期限を設定する
 - ファイル種別と無効ラベル組み合わせはバリデーション拒否
 """
 
@@ -98,6 +98,19 @@ def _validate_for_type(file_type: str | None, new_state_key: str) -> None:
         )
 
 
+def _watching_due_type(file_type: str | None, abs_path: Path) -> str | None:
+    """様子見の卒業期限を自動設定する対象種別を返す。"""
+    if file_type in {"plan", "bugfix"}:
+        return file_type
+    if file_type is None:
+        filename = abs_path.name
+        if filename.startswith("plan_"):
+            return "plan"
+        if filename.startswith("bugfix_"):
+            return "bugfix"
+    return None
+
+
 def update_status(
     abs_path: Path,
     new_state_key: str,
@@ -106,6 +119,7 @@ def update_status(
     config: Config,
     file_type: str | None = None,
     expected_mtime: float | None = None,
+    watching_days: int | None = None,
 ) -> UpdateStatusResult:
     """H1 ラベルを ``new_state_key`` に書き換える。
 
@@ -116,11 +130,24 @@ def update_status(
         config: state_model（ラベル文字列の解決）と lang を持つ
         file_type: "plan" / "bugfix" / "pending"（バリデーション用・None で緩判定）
         expected_mtime: 楽観ロック用
+        watching_days: 様子見への遷移時だけ使う一回限りの due 日数上書き（0 以上の整数）
     """
+    if (
+        watching_days is not None
+        and (
+            isinstance(watching_days, bool)
+            or not isinstance(watching_days, int)
+            or watching_days < 0
+        )
+    ):
+        raise StatusValidationError("watching_days は 0 以上の整数で指定してください")
+
     sm = config.state_model
     target = sm.by_key(new_state_key)
     if target is None:
         raise StatusValidationError(f"未知の state key: {new_state_key}")
+    if watching_days is not None and new_state_key != "watching":
+        raise StatusValidationError("watching_days は様子見への遷移と組み合わせてください")
     _validate_for_type(file_type, new_state_key)
 
     new_label_token = target.label(config.lang)
@@ -162,19 +189,24 @@ def update_status(
             ):
                 frontmatter_field = "status"
 
-    # bugfix を [様子見] へ寝かせるときだけ due を補う。
-    # - 既存 due は上書きしない（人が決めた日付が正）
+    # plan / bugfix を [様子見] へ移すときは、前の状態の due を卒業期限へ張り替える。
+    # - 状態ごとに due の意味が違うため、実際の状態遷移時は既存 due も更新する
+    # - 同じ状態への再指定では、人が更新した due を上書きしない
     # - frontmatter が無い legacy ファイルには新設しない（本ヘルパは frontmatter を作らない）
-    # - file_type が None（緩判定）でもファイル名接頭辞で bugfix を拾う。呼び出し口によって
-    #   期限が付いたり付かなかったりする方が事故になるため。
+    # - file_type が None（緩判定）でも plan / bugfix のファイル名接頭辞を拾う。呼び出し口に
+    #   よって期限が付いたり付かなかったりする方が事故になるため。
     due_to_set: str | None = None
-    is_bugfix = file_type == "bugfix" or (
-        file_type is None and Path(abs_path).name.startswith("bugfix_")
-    )
-    if is_bugfix and new_state_key == "watching" and frontmatter is not None:
-        current_due = frontmatter.get("due")
-        if current_due is None or not str(current_due).strip():
-            offset = config.due_default_offset_days.get("bugfix_watching")
+    watching_type = _watching_due_type(file_type, Path(abs_path))
+    if (
+        watching_type is not None
+        and new_state_key == "watching"
+        and old_state_key != "watching"
+        and frontmatter is not None
+    ):
+        if watching_days is not None:
+            due_to_set = (date.today() + timedelta(days=watching_days)).isoformat()
+        else:
+            offset = config.due_default_offset_days.get(f"{watching_type}_watching")
             if offset is not None and int(offset) > 0:
                 due_to_set = (date.today() + timedelta(days=int(offset))).isoformat()
 

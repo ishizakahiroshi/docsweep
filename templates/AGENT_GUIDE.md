@@ -26,13 +26,18 @@ docsweep を操作し、作業ドキュメント（plan/bugfix/pending）の整�
    | `discard` | `[廃止]` にして `archive/` へ隔離（削除ではない・復元可能） |
    | `resume` | 様子見/廃止候補を `[実行中]` へ戻す（旧 `[対応中]` は読み取り互換） |
    | `relabel` | 任意ラベルへ書き換え（`--to <label>` を伴う） |
-   | `promote` | `[様子見]` を `[完了]` へ昇格し `archive/` へ（リリース整理） |
+   | `promote` | `[様子見]` を `[完了]` へ昇格し `archive/` へ（リリース整理。`--due-expired` で期限到来だけに絞れる） |
+
+   `[様子見]` へ移す今回だけ卒業期限を変える場合は、CLI の
+   `--watching-days N` または MCP `watching_days=N` を `relabel` に追加します。
+   設定ファイルは変更されず、既に `[様子見]` の文書の due は上書きしません。
 
    ※ `allowed_actions` に無い action はエラーになる（機械的に安全）。
 
 ## 守るべき原則
 
 - **`[様子見]` は勝手に動かさない**。再発確認の待機列。`sweep` も触らない。
+  期限到来分を整理するときだけ、`promote --due-expired --dry-run` で確認して明示実行する。
 - **完了/廃止の判断はあなた（または人間）がラベルを立てる**。docsweep は「運ぶ作業」だけ自動化する。
 - 破壊的操作は無い（archive は隔離・復元可能）。それでも `--dry-run` で確認してから本実行するとよい。
 
@@ -56,6 +61,7 @@ python -m docsweep closeout-check --path <parent-plan> --json
 
 - `python -m docsweep sweep` — done/discarded を archive へ一括移送（様子見は守る）。
 - `python -m docsweep promote --state watching --to done` — リリース前に様子見をまとめて昇格。
+- `python -m docsweep promote --due-expired --dry-run` — 期限到来（当日を含む）の様子見だけを下見。
 - `python -m docsweep index` / `python -m docsweep pending` — 横断 INDEX 再生成 / 保留だけ表示。
 - `python -m docsweep summary` — 要点だけに絞った JSON。コンテキストに載せやすい。
 - `python -m docsweep project list` — 監視対象プロジェクトの一覧と ON / OFF。`project disable <root>` / `project enable <root>` で board と scan から外す・戻す（`~/.docsweep/excluded.json` に記録されるだけで、ファイルは動かない）。

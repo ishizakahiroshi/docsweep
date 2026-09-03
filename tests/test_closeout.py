@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import subprocess
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -135,16 +136,34 @@ def test_closeout_reports_conflict_and_unchecked_as_blockers(tmp_path: Path):
     assert "state_conflict" in codes
 
 
-def test_closeout_done_requires_acceptance_section(tmp_path: Path):
+def test_closeout_done_reports_missing_acceptance_as_manual_check(tmp_path: Path):
+    """受入条件の欠落は done でも blocker にしない（人が判断する manual check へ降格）。
+
+    blocker にすると、規約より前に書かれた plan が機械的に closeout できず、
+    「節を足すこと自体が gate 通過のための作業」になる。
+    """
     project = tmp_path / "repo"
     parent = _write(
         project / "docs" / "local" / "plan_parent.md",
         _body("parent", acceptance=False),
     )
     result = check_closeout(parent, project_dir=project, config=_cfg(project), target_state="done")
-    assert result.verdict == "not_ready"
-    assert any(item["code"] == "missing_section" and item["section"] == "acceptance"
-               for item in result.blockers)
+    assert result.verdict == "manual_review_required"
+    assert not any(item.get("section") == "acceptance" for item in result.blockers)
+    assert not any(item["code"] == "missing_section" for item in result.blockers)
+    assert any(item["reason"] == "missing_acceptance_section" and item["section"] == "受入条件"
+               for item in result.manual_checks)
+
+
+def test_closeout_done_with_acceptance_section_has_no_missing_manual_check(tmp_path: Path):
+    project = tmp_path / "repo"
+    parent = _write(
+        project / "docs" / "local" / "plan_parent.md",
+        _body("parent", acceptance=True),
+    )
+    result = check_closeout(parent, project_dir=project, config=_cfg(project), target_state="done")
+    assert not any(item["reason"] == "missing_acceptance_section"
+                   for item in result.manual_checks)
 
 
 def test_closeout_watching_does_not_require_acceptance_section(tmp_path: Path):
@@ -349,6 +368,26 @@ def test_apply_relabel_explicit_ignored_plan_updates_h1_and_frontmatter(tmp_path
     text = plan.read_text(encoding="utf-8")
     assert "docsweep_state: watching" in text
     assert "# [様子見] parent" in text
+    assert not (project / "archive" / plan.name).exists()
+
+
+def test_apply_relabel_watching_days_overrides_due_once(tmp_path: Path, capsys):
+    project = tmp_path / "repo"
+    (project / ".git").mkdir(parents=True)
+    _write(project / ".gitignore", "docs/local/\n")
+    plan = _write(project / "docs" / "local" / "plan_parent.md", _body("parent"))
+
+    rc = cli_mod.main([
+        "apply", "--root", str(project), "--path", str(plan),
+        "--action", "relabel", "--to", "watching", "--watching-days", "5",
+    ])
+    capsys.readouterr()
+
+    expected = (date.today() + timedelta(days=5)).isoformat()
+    assert rc == 0
+    text = plan.read_text(encoding="utf-8")
+    assert "docsweep_state: watching" in text
+    assert f"due: {expected}" in text
     assert not (project / "archive" / plan.name).exists()
 
 

@@ -72,6 +72,8 @@ def _column_key(rec, today: date) -> str:
         d = date.fromisoformat(rec.due)
     except ValueError:
         return "no_due"
+    if rec.state == "watching" and d <= today:
+        return "graduate"
     if d == today:
         return "today"
     if d < today:

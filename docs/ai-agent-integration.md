@@ -49,6 +49,20 @@ AI に話しかけた典型発話と、その時 AI が選ぶべき経路・コ�
 > 上表は「その発話でどちらを選ぶと速いか」の推奨であって、MCP に無いから CLI という意味ではない
 > （`triage` / `apply` / `index` などは両方から使える）。
 
+### 様子見期限の日数を今回だけ変える
+
+通常は `.docsweep.yaml` の `due.default_offset_days` が使われます。特定の状態遷移だけ日数を
+変える場合は設定ファイルを変更せず、次のように指定します。
+
+```bash
+python -m docsweep apply --path <plan-or-bugfix.md> \
+  --action relabel --to watching --watching-days 5
+```
+
+MCP では `apply(path=..., action="relabel", to="watching", watching_days=5)` を使います。
+同じ低レベル経路の `update_status(..., watching_days=5)` でも指定できます。`N` は 0 以上の
+整数で、既に `watching` の文書を再指定した場合は既存の due を保護します。
+
 ---
 
 ## 各 AI 向けセットアップ

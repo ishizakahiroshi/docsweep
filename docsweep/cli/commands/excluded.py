@@ -27,7 +27,7 @@ def cmd_review_week(args: argparse.Namespace) -> int:
         "docsweep project list  # 不要プロジェクトを disable",
         "docsweep fix-conflict --list",
         "docsweep auto-triage --suggest",
-        "docsweep promote --dry-run",
+        "docsweep promote --due-expired --dry-run",
     ]
     payload = {
         "watching_count": len(watching),

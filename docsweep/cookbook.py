@@ -10,7 +10,7 @@ SCENARIOS: dict[str, list[dict[str, str]]] = {
     ],
     "release": [
         {"cmd": "docsweep review-week --json", "why": "週次サマリ"},
-        {"cmd": "docsweep promote --dry-run", "why": "様子見の昇格候補"},
+        {"cmd": "docsweep promote --due-expired --dry-run", "why": "期限到来した様子見の昇格候補"},
         {"cmd": "docsweep sweep --dry-run", "why": "完了/廃止の移送確認"},
         {"cmd": "docsweep undo", "why": "誤移送を戻す"},
     ],

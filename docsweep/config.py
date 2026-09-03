@@ -78,7 +78,8 @@ DEFAULT_TEMPLATE_SECTION_HEADINGS: dict[str, frozenset[str]] = {
 DEFAULT_DUE_OFFSET_DAYS: dict[str, int] = {
     "plan": 7,
     "pending": 14,
-    "bugfix_watching": 7,
+    "plan_watching": 3,
+    "bugfix_watching": 3,
 }
 
 

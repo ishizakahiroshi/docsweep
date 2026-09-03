@@ -49,7 +49,7 @@ GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "9"
+GUIDANCE_VERSION = "11"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -199,12 +199,18 @@ def generate_due_block(lang: str = "ja") -> str:
             "When creating a new `plan_*.md` / `pending_*.md`, add `due: YYYY-MM-DD` to the frontmatter.",
             "Compute the date as \"today + N days\" from `due.default_offset_days` in `.docsweep.yaml`",
             "(falling back to the same setting in ~/.docsweep/config.yaml, then the built-in DEFAULT:",
-            "`plan=7` / `pending=14`).",
+            "`plan=7` / `pending=14` / `plan_watching=3` / `bugfix_watching=3`).",
             f"To skip computing it by hand, `{docsweep_command('new', '<type>', '<topic>')}` assigns it automatically",
             f"(set it explicitly with `{docsweep_command('new', '<type>', '<topic>', '--due', 'YYYY-MM-DD')}`).",
-            "Do not add `due:` to a brand-new `bugfix_*.md`. docsweep adds it from "
-            "`due.default_offset_days.bugfix_watching` when the file moves to watching, "
-            "and never overwrites an existing `due:`.",
+            "Do not add `due:` to a brand-new `bugfix_*.md`. When a `plan_*.md` or `bugfix_*.md` "
+            "moves to watching, docsweep sets its graduation due date from "
+            "`due.default_offset_days.plan_watching` or `bugfix_watching`; the previous state's due "
+            "date is replaced because its meaning is state-specific. Repeating the same watching state "
+            "does not overwrite a manually updated due date.",
+            f"For a one-off override, add `{docsweep_command('apply', '--action', 'relabel', '--to', 'watching', '--watching-days', 'N')}`; "
+            "MCP `apply` and `update_status` accept `watching_days=N`. This does not change the config file.",
+            f"To preview only watching items whose graduation due date has arrived, use `{docsweep_command('promote', '--due-expired', '--dry-run')}`; "
+            f"after review, run `{docsweep_command('promote', '--due-expired')}`.",
             "For project-specific due dates, edit `due.default_offset_days` in `.docsweep.yaml`",
             "(only the keys you write override the shared defaults = partial override).",
         ])
@@ -213,11 +219,15 @@ def generate_due_block(lang: str = "ja") -> str:
         "",
         "新規 `plan_*.md` / `pending_*.md` を作る時は frontmatter に `due: YYYY-MM-DD` を入れる。",
         "日付は `.docsweep.yaml` の `due.default_offset_days`（無ければ ~/.docsweep/config.yaml の同設定、",
-        "それも無ければ内蔵 DEFAULT: `plan=7` / `pending=14`）から「今日 + N 日」で計算する。",
+        "それも無ければ内蔵 DEFAULT: `plan=7` / `pending=14` / `plan_watching=3` / `bugfix_watching=3`）から「今日 + N 日」で計算する。",
         f"手で計算したくなければ `{docsweep_command('new', '<type>', '<topic>')}` を使えば自動で付く",
         f"（明示したい時は `{docsweep_command('new', '<type>', '<topic>', '--due', 'YYYY-MM-DD')}`）。",
-        "`bugfix_*.md` は新規時には `due:` を付けない（`[様子見]` へ移した時に docsweep が "
-        "`due.default_offset_days.bugfix_watching` から付ける。既存の `due:` は上書きしない）。",
+        "`bugfix_*.md` は新規時には `due:` を付けない。`plan_*.md` / `bugfix_*.md` を `[様子見]` へ移した時に、"
+        "docsweep が `plan_watching` / `bugfix_watching` から卒業期限を付ける（前の状態の due は遷移時に張り替え、"
+        "同じ状態への再指定では手動更新した due を上書きしない）。",
+        f"今回だけ日数を変える場合は `{docsweep_command('apply', '--action', 'relabel', '--to', 'watching', '--watching-days', 'N')}`、"
+        "または MCP の `apply` / `update_status` に `watching_days=N` を指定する（設定ファイルは変更しない）。",
+        "卒業期限が来た様子見だけを整理するときは `promote --due-expired --dry-run` で確認し、明示実行する。",
         "プロジェクト固有の期日が必要なら `.docsweep.yaml` の `due.default_offset_days` を編集する",
         "（プロジェクトで書いたキーだけが全体既定を上書きする＝部分上書き可）。",
     ])

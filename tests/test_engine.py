@@ -1,10 +1,11 @@
 import time
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
 from docsweep.config import load_config
-from docsweep.engine import apply_action, auto_sweep, run_scan
+from docsweep.engine import apply_action, auto_sweep, promote_state, run_scan
 
 
 def _write(p: Path, text: str, age_days: int = 0) -> Path:
@@ -294,6 +295,56 @@ def test_apply_promote_watching_to_done(workspace: Path):
     entry = apply_action(watch, "promote", cfg, dry_run=False)
     assert entry.status == "done"
     assert (workspace / "proj_a" / "docs" / "local" / "archive" / "plan_watch.md").exists()
+
+
+def test_promote_due_expired_only_moves_reached_watching(tmp_path: Path):
+    """期限到来フィルタは past/today の watching だけを昇格させる。"""
+    root = tmp_path / "dev"
+    queue = root / "proj" / "docs" / "local"
+    past = (date.today() - timedelta(days=1)).isoformat()
+    today = date.today().isoformat()
+    future = (date.today() + timedelta(days=1)).isoformat()
+    for name, due in (
+        ("plan_past.md", past),
+        ("plan_today.md", today),
+        ("plan_future.md", future),
+    ):
+        _write(
+            queue / name,
+            f"---\ntype: plan\ndocsweep_state: watching\ndue: {due}\n---\n"
+            f"# [様子見] {name}\n\n## 概要\n\n確認中。\n",
+        )
+    _write(
+        queue / "plan_no_due.md",
+        "---\ntype: plan\ndocsweep_state: watching\n---\n"
+        "# [様子見] plan_no_due.md\n\n## 概要\n\n確認中。\n",
+    )
+    _write(
+        queue / "plan_bad_due.md",
+        "---\ntype: plan\ndocsweep_state: watching\ndue: not-a-date\n---\n"
+        "# [様子見] plan_bad_due.md\n\n## 概要\n\n確認中。\n",
+    )
+    _write(
+        queue / "plan_never_archive.md",
+        f"---\ntype: plan\ndocsweep_state: watching\ndue: {past}\n"
+        "docsweep_policy: never_archive\n---\n"
+        "# [様子見] plan_never_archive.md\n\n## 概要\n\n確認中。\n",
+    )
+    cfg = _cfg(root)
+
+    preview = promote_state(cfg, due_expired_only=True, dry_run=True)
+    assert {Path(m.src).name for m in preview} == {"plan_past.md", "plan_today.md"}
+    assert (queue / "plan_future.md").exists()
+
+    moved = promote_state(cfg, due_expired_only=True, dry_run=False)
+    assert {Path(m.src).name for m in moved} == {"plan_past.md", "plan_today.md"}
+    archive = root / "proj" / "docs" / "local" / "archive"
+    assert (archive / "plan_past.md").exists()
+    assert (archive / "plan_today.md").exists()
+    assert (queue / "plan_future.md").exists()
+    assert (queue / "plan_no_due.md").exists()
+    assert (queue / "plan_bad_due.md").exists()
+    assert (queue / "plan_never_archive.md").exists()
 
 
 def test_apply_rejects_disallowed_action(workspace: Path):

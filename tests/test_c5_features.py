@@ -127,7 +127,7 @@ def triage_workspace(tmp_path: Path):
     (root / "docs" / "local").mkdir(parents=True)
     (root / "pyproject.toml").write_text("[project]\nname='proj'\n")
 
-    # 様子見 (age > 14 想定 → mtime 過去に)
+    # due の無い legacy 様子見は age > 14 の fallback で提案される。
     watch = root / "docs" / "local" / "plan_watch.md"
     watch.write_text("# [様子見] w\n\n## 概要\n\nx\n", encoding="utf-8")
     import os
@@ -144,7 +144,7 @@ def triage_workspace(tmp_path: Path):
 def test_suggest_transitions_promotes_old_watching(triage_workspace, tmp_path):
     cfg = load_config(explicit_roots=[str(triage_workspace)], global_path=tmp_path / "no.yaml")
     result = suggest_transitions(cfg)
-    # 様子見 (age > 14) は promote 提案
+    # due の無い legacy 様子見は age > 14 で promote 提案になる。
     promotes = [s for s in result.suggestions if s.proposed_action == "promote"]
     assert any(s.path.endswith("plan_watch.md") for s in promotes)
 

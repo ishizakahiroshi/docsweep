@@ -622,6 +622,7 @@ def test_inject_label_block_mentions_due(tmp_path, manifest):
     text = (proj / "CLAUDE.md").read_text(encoding="utf-8")
     assert "対応期日" in text
     assert "default_offset_days" in text
+    assert "--due-expired" in text
     # bugfix は新規時 due を付けない仕様も明記
     assert "[様子見]" in text and "bugfix" in text
 
@@ -638,7 +639,7 @@ def test_inject_label_block_mentions_delegated_plan_guidance(tmp_path, manifest)
     assert "docsweep_delegation: external" in text
     assert "--delegate" in text
     assert "1〜4 ファイル" in text
-    assert GUIDANCE_VERSION == "9"
+    assert GUIDANCE_VERSION == "11"
 
 
 def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypatch):
@@ -654,6 +655,7 @@ def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypat
     body = gpath.read_text(encoding="utf-8")
     assert "対応期日" in body
     assert "default_offset_days" in body
+    assert "--due-expired" in body
 
 
 def test_inject_global_guidance_includes_delegated_plan_rules(tmp_path, manifest, monkeypatch):
@@ -826,6 +828,27 @@ def test_due_overdue_graduate_flag(tmp_path):
     rec = next(r for r in result.records if r.path.endswith("plan_watch.md"))
     assert Flag.OVERDUE_GRADUATE.value in rec.flags
     assert Flag.OVERDUE_TODO.value not in rec.flags
+
+
+def test_due_today_watching_is_graduation_candidate(tmp_path):
+    """watching の due 当日も期限到来として卒業判定候補になる。"""
+    from datetime import date
+
+    from docsweep.config import load_config
+    from docsweep.engine import run_scan
+    from docsweep.models import Flag
+
+    p = tmp_path / "a" / "plan_watch_today.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(
+        f"---\ndue: {date.today().isoformat()}\n---\n"
+        "# [様子見] watch today\n\n## 概要\n\ntest\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(explicit_roots=[str(tmp_path)], global_path=tmp_path / "no.yaml")
+    result = run_scan(cfg)
+    rec = next(r for r in result.records if r.path.endswith("plan_watch_today.md"))
+    assert Flag.OVERDUE_GRADUATE.value in rec.flags
 
 
 def test_due_no_flag_when_done(tmp_path):

@@ -49,9 +49,10 @@ def test_yaml_overrides_offset_days_partially(tmp_path: Path):
     )
     cfg = load_config(project_dir=proj, global_path=tmp_path / "no_global.yaml")
     assert cfg.due_default_offset_days["plan"] == 14
-    # pending と bugfix_watching は既定値が温存される
+    # pending / watching 用 offset は既定値が温存される
     assert cfg.due_default_offset_days["pending"] == 14  # default は 14
-    assert cfg.due_default_offset_days["bugfix_watching"] == 7
+    assert cfg.due_default_offset_days["plan_watching"] == 3
+    assert cfg.due_default_offset_days["bugfix_watching"] == 3
 
 
 def test_yaml_invalid_offset_ignored(tmp_path: Path):
@@ -106,7 +107,8 @@ def test_project_partially_overrides_global_per_key(tmp_path: Path):
     cfg = load_config(project_dir=proj, global_path=g)
     assert cfg.due_default_offset_days["plan"] == 3  # プロジェクトが上書き
     assert cfg.due_default_offset_days["pending"] == 20  # global を温存（巻き添えにならない）
-    assert cfg.due_default_offset_days["bugfix_watching"] == 7  # DEFAULT を温存
+    assert cfg.due_default_offset_days["plan_watching"] == 3  # DEFAULT を温存
+    assert cfg.due_default_offset_days["bugfix_watching"] == 3  # DEFAULT を温存
 
 
 def test_project_thresholds_override_global(tmp_path: Path):

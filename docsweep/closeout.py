@@ -510,15 +510,11 @@ def _inspect_document(
             "message": "due を YYYY-MM-DD として解釈できません",
         })
 
-    required = ["completion", "verification"]
-    if target_state == "done":
-        required.append("acceptance")
-    for kind in required:
+    for kind in ("completion", "verification"):
         if not sections[kind]:
             label = {
                 "completion": "完了条件（子 plan は子 plan 完了条件を含む）",
                 "verification": "検証",
-                "acceptance": "受入条件",
             }[kind]
             blockers.append({
                 "code": "missing_section",
@@ -526,6 +522,16 @@ def _inspect_document(
                 "section": kind,
                 "message": f"必須セクションがありません: {label}",
             })
+
+    # ``受入条件`` は done 遷移でだけ求めるが、**blocker にはしない**。
+    # blocker にすると、この規約が書かれる前に作られた plan が機械的に closeout できず、
+    # 「節を足すこと自体が gate 通過のための作業」になってしまう（2026-08-30 に実際に
+    # 発生し、7 本の plan が同じ理由で止まった）。書式は templates/CLAUDE.md が
+    # 必須として教えるので、足すかどうかの判断は人が manual check として行う。
+    if target_state == "done" and not sections["acceptance"]:
+        manual.append(_manual_check(
+            doc.path, "受入条件", "", reason="missing_acceptance_section",
+        ))
 
     for kind in ("completion", "verification", "acceptance"):
         for title, body in sections[kind]:

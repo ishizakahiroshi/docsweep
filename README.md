@@ -260,6 +260,12 @@ python -m docsweep summary                  # AI に渡す圧縮 JSON
 
 # リリース整理（様子見をまとめて完了へ昇格し archive へ）
 python -m docsweep promote --state watching --to done
+# 卒業期限が来た様子見だけを下見／昇格（due 当日を含む）
+python -m docsweep promote --due-expired --dry-run
+python -m docsweep promote --due-expired
+
+# 今回だけ卒業期限を今日 + 5 日に上書き（設定ファイルは変更しない）
+python -m docsweep apply --path <plan-or-bugfix.md> --action relabel --to watching --watching-days 5
 
 # 対話チェックリスト（人間専用）
 python -m docsweep review
@@ -512,7 +518,7 @@ Codex はインラインで「作業前に triage を読む」導線を個人グ
 python -m docsweep sweep --dry-run --project many-ai-cli
 
 # 「docsweep プロジェクトの様子見昇格候補は?」
-python -m docsweep promote --dry-run --project docsweep
+python -m docsweep promote --due-expired --dry-run --project docsweep
 
 # 「many-ai-cli の残作業ある?」
 python -m docsweep triage --project many-ai-cli

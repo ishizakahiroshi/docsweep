@@ -53,7 +53,7 @@ class FileRecord:
     age_days: int  # 最終更新からの経過日数
     archivable: bool  # この状態は archive 対象か
     auto_movable: bool  # --auto で自動移送してよいか
-    due: str | None = field(default=None)  # frontmatter due: YYYY-MM-DD（archive には絡めない）
+    due: str | None = field(default=None)  # frontmatter due: YYYY-MM-DD（単独では archive しない）
     due_parse_error: bool = field(default=False)  # due フィールドがあるがパース不能
     flags: list[str] = field(default_factory=list)
     allowed_actions: list[str] = field(default_factory=list)
