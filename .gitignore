@@ -78,6 +78,11 @@ secrets.*
 # docsweep の個人作業ログ（公開しない）
 docs/local/
 
+# 作業 md の archive は docs/local/archive/ が正しい置き場。
+# リポ直下の archive/ に置かれたものも同じ「非公開の作業ログ」として扱う
+# （2026-09-04: plan 3 本がここで公開追跡されていたのを git rm --cached で外した）。
+/archive/
+
 # AI 監査の生レポート（人間レビュー前は公開しない）
 /docs/ai-audit-prompts/
 
