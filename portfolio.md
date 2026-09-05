@@ -14,7 +14,7 @@ short:
 tech: ["Python", "CLI", "Web UI", "SQLite", "MCP"]
 store: null
 live: null
-guide: null
+guide: "https://ishizakahiroshi.com/articles/docsweep/usage.html"
 featured: true
 features:
   - icon: "⌦"
