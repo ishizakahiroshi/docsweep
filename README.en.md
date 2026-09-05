@@ -11,6 +11,9 @@ labels such as `[完了]` / `[計画]` / `[廃止]` are supported out of the box
 completed docs into each project's `archive/`, surfaces stale ones with a "needs decision" flag,
 and gives you a cross-project INDEX at a glance.
 
+**See what it buys you, with screenshots**:
+[How to use docsweep](https://ishizakahiroshi.com/articles/docsweep/usage.html) (Japanese only)
+
 ## OKF (Open Knowledge Format) v0.2 support
 
 docsweep follows the [official OKF v0.2 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
