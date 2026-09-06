@@ -108,6 +108,26 @@ def cmd_config(args: argparse.Namespace) -> int:
     if not key:
         print(f"使い方: docsweep config <key> [<value>]  /  --list  /  --get KEY  /  --unset KEY  （許可キー: {sorted(SETTABLE_KEYS)}）")
         return 2
+    if getattr(args, "from_github", False):
+        # GitHub アカウントは 1 つしかなく、リポジトリ単位で上書きできる git config user.name より
+        # 識別子として安定している。ただし解決はここ 1 回だけで、生成のたびに gh は叩かない。
+        if key != "user.name":
+            print("--from-github は user.name にだけ使えます", file=sys.stderr)
+            return 2
+        if value is not None:
+            print("--from-github と値の同時指定はできません", file=sys.stderr)
+            return 2
+        from ...services.frontmatter import github_login
+
+        login = github_login()
+        if not login:
+            print(
+                "gh からアカウント名を取得できませんでした（gh 未導入 / 未ログイン / オフライン）。"
+                "`gh auth status` を確認するか、値を直接指定してください。",
+                file=sys.stderr,
+            )
+            return 1
+        value = login
     if value is None:
         try:
             v = get_user_setting(key)

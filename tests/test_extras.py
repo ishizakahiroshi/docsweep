@@ -639,7 +639,7 @@ def test_inject_label_block_mentions_delegated_plan_guidance(tmp_path, manifest)
     assert "docsweep_delegation: external" in text
     assert "--delegate" in text
     assert "1〜4 ファイル" in text
-    assert GUIDANCE_VERSION == "11"
+    assert GUIDANCE_VERSION == "13"
 
 
 def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypatch):

@@ -49,7 +49,7 @@ GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "11"
+GUIDANCE_VERSION = "13"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -233,6 +233,16 @@ def generate_due_block(lang: str = "ja") -> str:
     ])
 
 
+def _guidance_owner() -> str:
+    """導線へ埋め込む owner の実効値（解決できなければ空文字）。"""
+    try:
+        from ..services.frontmatter import default_doc_owner
+
+        return default_doc_owner()
+    except Exception:  # noqa: BLE001 - 導線生成を owner の解決失敗で止めない
+        return ""
+
+
 def generate_okf_block(
     lang: str = "ja",
     *,
@@ -246,9 +256,14 @@ def generate_okf_block(
     AI が Write 等で手書きすると ``due:`` だけの最小 frontmatter になり OKF が欠落する
     （2026-07-04 に many-ai-cli で実発生）。導線側で「原則 new を使う / 手書き時は
     OKF 一式を必ず入れる」を宣言して穴を塞ぐ。many-ai-cli 等の特定ツールには依存しない。
+
+    ``owner`` は解決済みの値を導線へ埋め込む。「空で書け」とだけ言うと、埋める場面に
+    なったときの値が AI の判断になり、リポジトリごとに別表記へ分岐する（同一人物に
+    対する 4 表記の並存を実測）。書くべき値そのものを見せれば判断が要らない。
     """
     new_cmd = docsweep_command("new", "<type>", "<topic>")
     migrate_cmd = docsweep_command("migrate-frontmatter", "--apply")
+    owner_value = _guidance_owner()
     queue_lines_en = [
         (
             f"The effective project-relative work queue is `{work_dir}`."
@@ -285,8 +300,21 @@ def generate_okf_block(
             "If you (an AI agent) hand-write the file instead, do NOT emit a due-only minimal frontmatter:",
             "always include the same OKF field set (`type: plan|bugfix|pending`, `status: draft`,",
             "`docsweep_state: planned` for plan / `in-progress` for bugfix / `pending` for pending,",
-            "`tags: []`, `owner: `, `review_status: draft`,",
+            f"`tags: []`, `owner: {owner_value}`, `review_status: draft`,",
             "`related: []`, `last_reviewed: <today>`).",
+            (
+                f"Write `owner: {owner_value}` verbatim — it is the configured `user.name`. "
+                "Never substitute another spelling of the same person (display name, OS login, "
+                "abbreviation), and never copy the owner from a neighbouring file. "
+                "Exception: a project may override it with `user.name` in its `.docsweep.yaml` "
+                "(repositories with several contributors often pin owner to a per-person key). "
+                f"Check the project config before hand-writing; when in doubt run `{new_cmd}` "
+                "and keep the value it fills in."
+                if owner_value
+                else "Leave `owner:` empty unless the user tells you what to put there; "
+                "do not invent a value or copy one from a neighbouring file. "
+                "Set it once with `docsweep config user.name --from-github`."
+            ),
             "Reusable `manual_*.md` / `reference_*.md` / `setup_*.md` are static knowledge docs:",
             "give them an OKF `type` and lifecycle `status`, but normally omit `docsweep_state` and `due`.",
             f"To retrofit existing frontmatter-less docs in bulk, run `{migrate_cmd}`.",
@@ -305,7 +333,18 @@ def generate_okf_block(
         "（`type` / OKF lifecycle の `status` / `docsweep_state` / `tags` / `owner` / `review_status` / `related` / `last_reviewed` と `due`）が自動注入される。",
         "AI が Write 等で手書きする場合も、`due:` だけの最小 frontmatter にせず、同じ OKF フィールド一式を必ず入れること",
         "（`type: plan|bugfix|pending`、`status: draft`、`docsweep_state:` は plan=`planned` / bugfix=`in-progress` / pending=`pending`、",
-        "`tags: []` / `owner: ` / `review_status: draft` / `related: []` / `last_reviewed: <今日>`）。",
+        f"`tags: []` / `owner: {owner_value}` / `review_status: draft` / `related: []` / `last_reviewed: <今日>`）。",
+        (
+            f"`owner:` は `{owner_value}` と書く（`docsweep config user.name` の値）。"
+            "同じ人物の別表記（日本語氏名・OS ログイン名・短縮形）へ置き換えない。"
+            "近くのファイルの owner を真似ない。"
+            "ただしプロジェクトの `.docsweep.yaml` に `user.name` があればそちらが優先"
+            "（複数人が書くリポジトリでは、owner を人物ごとの安定 key に固定していることがある）。"
+            f"手書きの前にプロジェクト設定を見る。迷ったら `{new_cmd}` で作って、入った値をそのまま使う。"
+            if owner_value
+            else "`owner:` はユーザーから指示が無いかぎり空のままにする（値を創作しない・"
+            "近くのファイルから写さない）。`docsweep config user.name --from-github` で 1 回設定する。"
+        ),
         "再利用する `manual_*.md` / `reference_*.md` / `setup_*.md` は静的な知識文書なので、OKF の `type` / `status` は付けても、通常 `docsweep_state` / `due` は付けない。",
         f"frontmatter 無しの既存 md を一括変換したい時は `{migrate_cmd}` を使う。",
         "",

@@ -362,9 +362,59 @@ def current_owner(cwd: Path | None = None) -> str:
     4. ``"unknown"``
     """
     # 1 の解決は config.get_user_setting に集約（循環 import を避けるため遅延 import）。
+    return _configured_user_name() or _git_user_name(cwd) or _os_login() or "unknown"
+
+
+def _configured_user_name() -> str | None:
+    """``~/.docsweep/config.yaml`` の ``user.name``。設定ファイル破損時も落とさない。"""
     try:
         from ..config import get_user_setting
-        configured = get_user_setting("user.name")
-    except Exception:  # noqa: BLE001 - 設定ファイル破損時も claim を止めない
-        configured = None
-    return configured or _git_user_name(cwd) or _os_login() or "unknown"
+
+        return get_user_setting("user.name")
+    except Exception:  # noqa: BLE001 - 設定ファイル破損時も claim/生成を止めない
+        return None
+
+
+def github_login(timeout: float = 5.0) -> str | None:
+    """``gh api user --jq .login`` で GitHub アカウント名を取る。取れなければ None。
+
+    **生成のたびには呼ばない。** ``docsweep config user.name --from-github`` の種取り専用で、
+    解決した値は ``~/.docsweep/config.yaml`` へ凍結する。md を作るたびに subprocess と
+    ネットワークを挟むと、gh 未導入・未ログイン・オフラインの利用者で生成結果が変わる。
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "api", "user", "--jq", ".login"],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return (result.stdout or "").strip() or None
+
+
+def default_doc_owner(cwd: Path | None = None, config: object | None = None) -> str:
+    """``docsweep new`` が frontmatter へ書く owner の既定値（解決できなければ空文字）。
+
+    解決順は ``config.user_name``（プロジェクトの ``.docsweep.yaml`` の ``user.name`` が
+    グローバルを部分上書きした結果）→ グローバル ``user.name`` → ``git config user.name``。
+
+    :func:`current_owner` との違いは末尾 2 段（OS ログイン名・``"unknown"``）を持たないこと。
+    OS ログイン名は「その人の名前」ではなく端末の都合なので、生成時に書き込むと表記ゆれの
+    種になる（`ishiz` のような端末アカウント名が owner として残っていた実測がある）。
+    解決できないときは空にして、**誰も値を作らない**状態を保つ。
+
+    ``config`` を受けるのは、リポジトリごとに人物の書き方が違う場合があるため。
+    複数人の登録簿を持つリポジトリでは owner を各人の安定 key に揃えたいことがあり、
+    グローバル 1 個の値を全リポジトリへ押し付けると、そこだけ毎回ずれ続ける。
+    """
+    project_name = getattr(config, "user_name", None) if config is not None else None
+    name = (project_name or _configured_user_name() or _git_user_name(cwd) or "").strip()
+    if not name:
+        return ""
+    try:
+        return _validate_scalar(name)
+    except FrontmatterValidationError:
+        # `:` `#` を含む表示名は引用が要る。owner を壊すより空のままにする。
+        return ""

@@ -116,6 +116,7 @@ def extract_drafts(
             conversation=text, project_hint=project, max_drafts=max_drafts,
             offset_days=effective_config.due_default_offset_days,
             template_sections=effective_config.template_sections,
+            owner=_capture_owner(effective_config),
         )
         return client.extract(request)
 
@@ -125,7 +126,18 @@ def extract_drafts(
         max_drafts=max_drafts,
         offset_days=effective_config.due_default_offset_days,
         template_sections=effective_config.template_sections,
+        owner=_capture_owner(effective_config),
     )
+
+
+def _capture_owner(effective_config: Config) -> str:
+    """capture 経由でも ``docsweep new`` と同じ owner を載せる。
+
+    md の生まれ方で owner が変わると、同じプロジェクトの中で表記が割れる。
+    """
+    from ..services.frontmatter import default_doc_owner
+
+    return default_doc_owner(config=effective_config)
 
 
 def save_drafts(

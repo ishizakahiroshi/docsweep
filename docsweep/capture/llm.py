@@ -25,6 +25,7 @@ class LLMRequest:
     max_drafts: int = 5
     offset_days: dict[str, int] | None = None
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None
+    owner: str | None = None
 
 
 class LLMClient(Protocol):
@@ -66,6 +67,7 @@ class MockLLM:
                 project=request.project_hint,
                 offset_days=request.offset_days,
                 template_sections=request.template_sections,
+                owner=request.owner,
             ))
             if len(drafts) >= request.max_drafts:
                 break
@@ -111,6 +113,7 @@ def _make_draft(
     project: str | None,
     offset_days: dict[str, int] | None = None,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
+    owner: str | None = None,
 ) -> Draft:
     from .models import Draft as _Draft
 
@@ -128,6 +131,7 @@ def _make_draft(
     front = okf_frontmatter(
         kind,
         offset_days=DEFAULT_DUE_OFFSET_DAYS if offset_days is None else offset_days,
+        owner=owner,
     )
     body = front + _render_body_seed(
         kind, title, body_seed, template_sections=template_sections

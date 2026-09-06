@@ -55,6 +55,7 @@ def extract_drafts_heuristic(
     max_drafts: int = 5,
     offset_days: dict[str, int] | None = None,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
+    owner: str | None = None,
 ) -> list[Draft]:
     """LLM 不要のヒューリスティック抽出。"""
     drafts: list[Draft] = []
@@ -72,6 +73,7 @@ def extract_drafts_heuristic(
             project=project,
             offset_days=offset_days,
             template_sections=template_sections,
+            owner=owner,
         ))
         if len(drafts) >= max_drafts:
             break
