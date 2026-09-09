@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:bd8a8690d9a91b05273b7ca0de26743a674b44864fa24b6f046de6a6ce32bb06",
+  "claims": [
+    {
+      "id": "claim_5398ee7aa3494caf90bfee657006c434",
+      "statement": "docsweep/states.py's states: config (or DEFAULT_STATES when unset) is documented as the single source of truth from which detection logic, auto-archive eligibility, web display, and injected-template wording are all derived; docs/conventions.md is a human-facing explanation of it, not an independent spec.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/states.py#L1-L9",
+          "version": "repo-lines-v1:sha256:9ccb0043f4158643deb756cea16b787231746bc38941cd7475f22084d51ccb83:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2VhNmMyYWEzYTZjYjFmNjY2M2U3N2Q1ZDk4MTUxNmVmMGYyYTBhMTE5NGQ1NjkwNjljYmZhYmY3ZThiNGVhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTExZmFkM2Q0ZjI1Y2ZlNmViMTlmNWJkMGQ0NWUxZThjZmE5NzliNTM2ZTI5ZWYzMGY2MDgzNjljOWNkNDQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTNiOWU1ZTA1OGM1YzlmNDFkOGU3ZGNkZGQwMTFhNjJjMmNkM2YxYzU2Yzg4NDJlZjVmMTNlYTM0ZGY1ZWYxYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5250a1f894514d9baf0f19fd654f9a36",
+      "statement": "Only the done and discarded states have archive=True and auto_move=True in DEFAULT_STATES; watching is archive=False, auto_move=False so an unattended sweep can never move a watching document.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/states.py#L60-L73",
+          "version": "repo-lines-v1:sha256:9b9c59d2a369f2bc84ad651610417a426ae0605e27ec75b3fdb35b3b2d79b83f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NDIzNzc0ZGM0YTkyODMxZWJkMTdhN2FkOGU5MzBhNDBlOWU4ODNhNjhhMzk5YmEwZmFkNzYwYmFkZTdhYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMzllMDIyZTBkODU0MTIwMDAzZDc5MGMyOGI3NTk2MmVkZDMwMzc1NmQ1MTMzM2RmNzQ1Y2ZiODZlYTExY2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkNTdjOTg2ZDZhNzZmZmM4MWU2ZGIzMGNlODI4NmM2NDYxNzUwNTA3NzU0NzU2MzIzYzU3ZTdlZDkwYWYyMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmN2ZjZmRhMjcyNzE3MmFiNmQwMDc3NjMxYmIyNmQxY2E0ZTgwOTQ4MzBkMWFjMzk2ZjY4N2QzZGVkM2MzNGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_27c41e071bd641cb83b2811e40982ce8",
+      "statement": "The in-progress state accepts the retired label 対応中 (and Active) as a read-only extra_alias, absorbing a prior version's separate bugfix-only active label without rewriting existing files.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/states.py#L62-L68",
+          "version": "repo-lines-v1:sha256:1d46f9a9ddb729d821bb58bc4c26b084658e9feef05d93099d8350f73be67f75:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmFjMjc1N2EwNzczMjI4ZTE0OTcwZmU4MDFjNjYyNjZhMmE0NTAwZWRmZTg3ZGUwNjA5NzEyMjBjMjdjYzlhYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjYxYTRjMWU5MjUyYTgxMDUxM2U5MWVjMzdkZTRkM2U0MzBhNjY5ZGI0YmVhMDM4NWM5ODgyZjY4NDM5Njg3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODhkN2UwMjBhZmMzNzA2NGFiNjhlZGQ3MDQxZWM0MDBjNjI2OWZhYmJiM2RlOTE3OGQ1OTlkY2I5NWVmNjUwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2JjMzI0NjMxMTg2MzlmYTNmNDQxOTE1MjY1OTQ5MzliZDVjYzYxMjliMjg5OTAzZjJiN2YwZTUwYTU2MDMzZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ac5d6a70b0ff46c8be0d33a657c94124",
+      "statement": "build_state_model() raises ValueError and fails fast if a project's states: config defines a duplicate state key or two different keys that share the same label alias, rather than silently letting the later definition win.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/states.py#L127-L167",
+          "version": "repo-lines-v1:sha256:3ef70e2d377d25937d8a27acc1cccc4d69dbf59b0fe4fca25aca6eeb6bb8a75b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYjNkYjM2MjZlYTdkYTJhMzNhZDExYWQwYzIwMTJlOGNkNDFlYjU1ODQ3NGU0ZDIyZmU5YjYwMjg5OTRkZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczOWI5ZGExYjUyYjZjNzk5Y2ZjYTUzZDkyOTU1ODcxYWIzNzQ5ZmQ3NDgyNDIwZTk1OWJhYWVlN2Q0NGM3NmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwMzc2MmRiOTYyZTljYzViM2M1M2Q3MmM3NjkxYmFjNGVhZTJiMTAwNDBkNWY1MmE4ODY3MzQ2NzMwNDdhOWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8f471626473245b4a057fa006a2aa934",
+      "statement": "detect_status() resolves a document's state with fixed precedence frontmatter > H1 label > filename prefix, treats OKF's status field as a legacy docsweep-state alias only when its value is not a reserved OKF lifecycle value, and masks fenced code blocks before searching for the H1 line so a `#` inside a code fence is never misread as the document heading.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/detect.py#L1-L4",
+          "version": "repo-lines-v1:sha256:b16d323ead36ee40a89749b86ff307731d1566c293dbbf8106bf7120c4634afe:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI4NmQyYWM3N2FjMGM1NjI0OWZiMGI2YzA5NmMwMTg3N2RkOTQwYTBkYTI3YjU3YjQ2NmNkMzE0YzYwNGFlNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjQ0YmZmNDMwODE0ZjRkNTAyMjBmNzVlMmJhZjk3MjQ5N2M4NzgzMGNhMmQ0ZjZiNDczNmViZTI0MjY1YWMzMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTNiOWU1ZTA1OGM1YzlmNDFkOGU3ZGNkZGQwMTFhNjJjMmNkM2YxYzU2Yzg4NDJlZjVmMTNlYTM0ZGY1ZWYxYSJ9"
+        },
+        {
+          "resource": "repo://docsweep/detect.py#L202-L219",
+          "version": "repo-lines-v1:sha256:fd838ea254aaacc361a730c3ac6ed06e0eef4687b7d8103a2d7d23a21ee25d4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYTdlNTQ5YzliYjkyNmM4NzM5MDM0ZWViNDUwNTNiOTI4MmRjNmZlNmFmYTMwOTI4ODJlYWQwODgzYWQ0MDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhNTgzNDU2YTkwOTNlYTc2NjUwYjNjYjBjMTNiZTUxYjRmMDMxZDEzNzc3ZjQ3ZmM4YTIyY2E3YmY0ZmZhNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MzdmYjA3OGMyODFhN2I5NDNhZTNhNzE2YmNjNjNjYjRlZWQ2ZGNiY2E3NTZkNTc2ODNiMWNlMjA4ODUzNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1YTI2MTViZjUwZDBmZGQ5YzMzY2ExYTUyYzM2ZWUwMzBmYzE2OWVhODlkZTBkY2M0OTJmZDQ0OTUwOTk4NjQifQ"
+        },
+        {
+          "resource": "repo://docsweep/detect.py#L254-L268",
+          "version": "repo-lines-v1:sha256:f930e9da6951cc49efeeea5332e1788ee26d53b91e53ac0416aa1c3998127c31:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMGQ1YmRjZjVjNTY2YmZmMGEwNGZhNjc1NWJkOGU0ZjM0NzcxZDFmNDdhNWMwMWM3NjIxNzQwMmNlOTJiNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYjcwMjU3NTkzZGEwNmY2ODJhM2RkZGE1NGE5ZDI2MGQ0ZmM1MTRmNjQ1MjM3ZjVjYTc0YjA4ZjhkYTYxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhMzk4NWZiY2JiODQ3M2ExNDNlYjlkZDQ5NjI2M2NiMjUxYWY1ODFiMjcyYjU3MmYxMDNiNzI1Njc2ZDRmODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0MmExOWQwNmMyYTliNTZiMjk0YTkxNTU4YTQ5MGM0YjdlY2IwMzZiN2EzNzY0NmVkY2E2ZWIxZDdiMWRlYWQifQ"
+        },
+        {
+          "resource": "repo://docsweep/detect.py#L339-L347",
+          "version": "repo-lines-v1:sha256:465886ad719c5b0c9c2b7275df5a744fcd9e40f8d0182fc224a3b7de52e1be3c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI0Y2ZhZDQyZjI4Nzg5MDgzNjczM2IxODZkYjVjOTRlNTc3ZmI1OTNjN2NlYjM5NDg2MmEyMjAwZDM2OTY5NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWVjMjJjYTFlN2E0MGI4YTkyODQ0YjhjNGEwZjM5Y2M1NjA1M2RkZjBjZGE0N2ExNTQ1MDAzYWNiOGQ2NmEwMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjMxYTk3Y2IzNzM5NDQ1NDAwY2I3ZjViN2JlZjgxYzU5ZDAxZGE0NWI4NWEwNDQxZDgyMDViNWJjNWJjYTdiYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2ZlYmMxODNhMDYxMzE5ZTM4YzNhMmEyZTJkYjQ4MmVhODdlMzVlYTNkMmM2NzVlMjFkODhhMjlmYmEyYWM3MyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_07704dc660eb4700bf5fc17cb44bc270",
+      "statement": "When frontmatter, H1, and filename detection disagree, detect_status() sets Detection.conflict=True but still returns a resolved state via the frontmatter>H1>filename precedence rather than raising or guessing; the conflict is surfaced downstream as a needs_fix flag rather than auto-resolved.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/detect.py#L335-L347",
+          "version": "repo-lines-v1:sha256:5dbd077e2ee1a5ed3da2831e7ec26744e54014ba5f0df1f3cbf3cda958437daa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmN2E0ZGZhMzkwNGNjM2E1MjY1YzU0MWNlNDU1Yzk3Njg2MDkzNGE5OWU0MjdlYzUwODQzZWQ2YThjNzUwMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlYzIyY2ExZTdhNDBiOGE5Mjg0NGI4YzRhMGYzOWNjNTYwNTNkZGYwY2RhNDdhMTU0NTAwM2FjYjhkNjZhMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxNjM5NzI4NGIyNjUwZjdlODkwZmU3MmQ4YjVmNTk3MjhmNjM3MGFjM2FkZjU3NGEzOWQ0ZDYxOTVkNWYwY2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmZWJjMTgzYTA2MTMxOWUzOGMzYTJhMmUyZGI0ODJlYTg3ZTM1ZWEzZDJjNjc1ZTIxZDg4YTI5ZmJhMmFjNzMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_38014068d9d04d5db8b1ee29d10e18db",
+      "statement": "A document's due: date is a second axis independent of its H1 state; classify() raises overdue_todo when a movable state's due has passed, but for the watching state a past-or-equal due instead raises overdue_graduate, and only promote_state(due_expired_only=True) restricts a watching-to-done/discarded promotion to documents whose due has actually been reached.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/engine.py#L314-L326",
+          "version": "repo-lines-v1:sha256:48dde4689464f91387e81d9bd6788654a85543d987abe4ac32e2199787520965:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1Mzg1NDU0NzZmZDkyMDBiZGQyYzcyYTJlOWE3ZjM4NGE1Y2ZhOWU1NDY1ZDBiZDUwOWEwNWQxY2JhNGUxN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiODJlNDRkNGYzODgzZGIxYTA5Nzc5OWEzNjFmZjQ3MzY0MWNmYTQ3MWI5MjE5ZmNmYTVhMmU1YjhiMmI4ZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhiOTc0ZGE0MDg2MzJhNGFhN2UyYWU4MGI4NjAzOTFhM2RjZDgyMTFjNzllY2FkN2NhOGU5NTEyOGIwMDE4MzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4ZDg1MGE2MmQ4ZjdiY2QxZmY1NjgxNTI0MWZlMDRjMzMwNTY2YmRiZjYwZmM3ZWYyNTM4NGM5NmQyMzA1MmMifQ"
+        },
+        {
+          "resource": "repo://docsweep/engine.py#L367-L374",
+          "version": "repo-lines-v1:sha256:9819ed96f917392135e76acecb82158e816a6c202e95d77239bd8f557287e48e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmZhMjI4MDFiNjRhNTYyOWZiZDBlYTdiZjIzZTFlYzMyZmJmZDJlNzJhNjJlNDdmNTIzNGY4MjEyODY1NDk3NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTNlNjdmNzZhMjI4N2JiNmI2YWRiMDE1MDU1ZGZmMDg5YzA2NjhmYWUyYTVjZmM5OGZjYmZhMjNlZjJiNDI4MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGRiN2Q4NzI0NGRkODM2ZjJiMTRmYjcxOWM3NGNjZDJlMGQ2MDhjYTlkZTZjNDdmMTAwZjBlNjY1ZjkwZWQ0YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDBhNjIxOTE0NGJkMzVkZjVlNzcyMjVhMmZiMzI4ZGRhYzZlMmMyMmU1OGMxZTY3NzVhYjMzYWFkYWU4ZWY4MiJ9"
+        },
+        {
+          "resource": "repo://docsweep/engine.py#L50-L63",
+          "version": "repo-lines-v1:sha256:74ce016ff4adc9c98ec02acf172355826c91a2a5a87a5305a70bc6d38f21b4c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2ODA1NTIzNjRkMDNjODIyYWM0OTQ3NzkxNmY1NDI2MmUyOTFmMThiYmFmMmJkMTdmOGVmMmFiNDQxMTQ2MTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMzZkZDM1OTdkODRhMTdkNGRmM2U0YzY5MDQ0MWEyZTY0MDdmMzdhMjFiZTg0YjFmNTM5NDkzZmViNDVmZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViYmY3OWIxNzU1NDdjMmEwNmRlYjAyOTg4ODc4NmQyNjgyNWFlZjk1ZjNhMjRiZDRhMTAxZjVhNmZlYzg2Y2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNWJjMTRlZTYxNDRhNWJjZDhkZmJlNzMyM2ZmOWE4MzhlN2E5YTM2YWUxMzU2OWE2YTZjYTYzMTEwZjMxNDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b087b82a7a254bfdb8301c05dc94a062",
+      "statement": "docsweep/state.py stores postpone_count, due_history, label_history, snoozed_until and pinned in a per-project .docsweep/state.json keyed by project-relative path, and explicitly keeps this bookkeeping out of the Markdown file itself; postpone_count resets to 0 only on a fixed allowlist of transitions (planned to in-progress, in-progress to watching, pending to planned, pending to in-progress).",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/state.py#L1-L9",
+          "version": "repo-lines-v1:sha256:c813bb83d37f4c010798706273062f31c68a92180a64eb9ffa98543bee9f63c0:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzBlMjVmMTliYTIxMzY2NTg1NjNkMmY2MTgxZDhmMjMyNzBjZTc3YzcyOTljYTYyMWQ5YTQ2ZTBkMGIzYjM4NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDc1ZDQ1ODllOTFjYzhjYjk3NDg4OWRhYjAxZGUxNWRiMTU3NGNhMTBlZWM3MjkwYTEwOWJmNTg4Yzk0ZTAxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzQzMGEwOGY5OWU3M2M5NTA2MTQxZTJjYjBkZjZjZGQ5MzY1ZWRkYTlmNDBjYjBlZTBjYjNhN2NkZGFhMWEyMiJ9"
+        },
+        {
+          "resource": "repo://docsweep/state.py#L197-L214",
+          "version": "repo-lines-v1:sha256:558502a45f0ee2ca88a5cb143239e944788d0a26f293458bf5f27e0d8b06b4b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNTg4YWY3NGUwNDZiZmEwYWQzNzZmZjllMGYyYjlkM2U4ZjNiNTJhZjY3MjYzODlhOTdlMDU5NGQzMDUyZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzMjJkYWExMDYwNjQ4YWE2M2ZkNTk5N2VkMDU5ZWQxMDAxZjI1NWY2ZWY5YWIwOWZiYmUzMzg2N2UyOTg5YzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExMDc0NWEyZTM4MGY4MDliZmQ0YzQ1MzlmMmQwYWRjZWVlMGU1NWU2YjE2M2RiNmEzZjRjN2IyOTcyOTc5NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4ODk2ZDU5NDQ4YWYxMGYzN2VmMDc1NTM3N2Y1NTdiNjI0YjM3OWYyNmFmZmZkMzM4NWRkZTIwYjAwYzZlZTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c1a2b67e5a02419fa497138e45d28307",
+      "statement": "state.json is treated as disposable cache rather than a source of truth: load() returns an empty StateDoc on missing or corrupt JSON instead of raising, because the Markdown file's own H1/frontmatter remains authoritative for a document's state.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/state.py#L108-L119",
+          "version": "repo-lines-v1:sha256:1e5367ac4f8b7b7b33f25bd997a4748e6f15b536be745879ed5ee3300542c524:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4OWE3NTBiYWM4MDU3NDVjYjczOTlhOTY5ZWMyZTA3NTZjYmViYmRkYzFlYWNhMDg3NTRmYWUzNmVlNDY0ZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmZjc0ZTZjNzRhZWNkMjcwNDI2MjEwZWNmODM0MzFiNDc4MjZlODJhZDFlZWEyNmVjMTk0YTk5YzcwOTIxNjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4NjIzNjRkY2FiOWQ3OTMxNWIzNGI1NGY5YTM0Mjc5ODgyM2E2YmViNDRlMmI4NzdkMmIyYzY1YjI1YzY3ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlY2IzZWM2NzliMzI1MGIxYzUzNGYxNmM2ZGY2NTdkMjk0MTc2YjI5NjMyOTliOTc1ZjY1MzcyY2I4Y2UwYzUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

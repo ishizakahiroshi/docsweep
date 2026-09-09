@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c39b350f47341b55a143c1a768ae8f20adb8d2beceb59e0869ce7fa1c8b51164",
+  "claims": [
+    {
+      "id": "claim_7cdc32f27b954c5f8a346ea8e7fee201",
+      "statement": "docsweep/cli/__init__.py's main() dispatches subcommands through a _DISPATCH dict, and if the first argv token is not a known subcommand, not a flag, and not an existing directory, it fails immediately with exit code 2 rather than treating a typo as an empty scan.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/__init__.py#L128-L144",
+          "version": "repo-lines-v1:sha256:34fc158a0b9b4ac4f3bf07044ec75d988eed6e1ab08d56a9f977d64018755268:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxY2I2MjlkNmZiMWM3OWM1ZDFlMDdiMDFkODlhZDQ0ZDUwOGFhNTNkMTU2YWU1MDEwMDBhMjRmYmNmODFiNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDQ4Zjg1MGFmNzkzNDk5YzBlZTlkYzQxMzQ2NGI1NGM2M2RhZjZkMjQxMTY2MDBkMmI2MzM4MGVmNGZmOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmMzUwYjkxMjU0MWYwZmFiNjVjNjE0YjZjZTRhNDMzY2Q3MTMyNDU0YjBiODVjYTMxNjBjNWNhYzZmMjhkNWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzOGM1MjA5OTMwZWViMmMxYTk3ZmJmYTJhYjkxOTk5MjY5MDY1N2ZhNTk5MjAwYjg5NzZmYjU1MjgyNmQzZjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0364cbc2b6f646c0a298279b3a205112",
+      "statement": "engine.classify() only computes decision-support flags (needs_fix, conflict, stale, needs_decision, overdue_todo, overdue_graduate, due_parse_error) and a closed set of allowed_actions derived from the document's current state; it never mutates or moves files itself.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/engine.py#L24-L82",
+          "version": "repo-lines-v1:sha256:a4b83a6d35ff8238ed3655f77f28277001938440e9a7f7712482b12a02d05709:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0NjZhMzdiNzk1ZGM5ODI2MGZiODRlZjVlMzM1NWI3MTEwYzU1ZDdlODZiNzI2YjRiZTlhMjE3ODk0NjAyMzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYjcwMjU3NTkzZGEwNmY2ODJhM2RkZGE1NGE5ZDI2MGQ0ZmM1MTRmNjQ1MjM3ZjVjYTc0YjA4ZjhkYTYxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjMmE0OGFkNWQ0ODg5NThiMTViNDYxNzMwNGIyODFlZmRiOTJjMzExYTkyNjc4MDRlYTQ1NmQyYzY4ODg4YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1OWQ2NDM3ZjNmMjAxZTVkMGYwZjEwODNlZDllYTg3N2Q0NDI2MjBkNmI5MjZiYmEyMjNiNzAyZDY2ZjFmNTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a3676a79ebf94e0f947bd8abaafe7b41",
+      "statement": "auto_sweep (the --auto/sweep batch mover) only operates on documents whose state is already done or discarded (auto_movable records); the watching state is excluded from any automatic archive path and only becomes eligible via the explicitly invoked promote --due-expired flow.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/engine.py#L1-L6",
+          "version": "repo-lines-v1:sha256:0718a9c1f4c7e5d361f44a25f0a3a8699801ba563bef7d6bc16e5d70b26f4d50:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzg1NjBhMzBhNTQ4MDA0MjNiOWM5Y2NiZmZkOTdiZjhhZmI4YjU3NTY5YWFhMjA4NWVjNGNiZTIzNDc1Nzg3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDc1ZDQ1ODllOTFjYzhjYjk3NDg4OWRhYjAxZGUxNWRiMTU3NGNhMTBlZWM3MjkwYTEwOWJmNTg4Yzk0ZTAxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzQzMGEwOGY5OWU3M2M5NTA2MTQxZTJjYjBkZjZjZGQ5MzY1ZWRkYTlmNDBjYjBlZTBjYjNhN2NkZGFhMWEyMiJ9"
+        },
+        {
+          "resource": "repo://docsweep/engine.py#L261-L295",
+          "version": "repo-lines-v1:sha256:a2e53f849cd8ee26dc3da374e541af96970e24cd63ed577a5ac30e154098630c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyMzBmNjQ1NjBkNGNhODVkMjllMDBkOWViMzIxZmI5ZjE1NmZjN2JlNzE5MTRmN2JjOTI1ZTNmNTRiYmQ3MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYjcwMjU3NTkzZGEwNmY2ODJhM2RkZGE1NGE5ZDI2MGQ0ZmM1MTRmNjQ1MjM3ZjVjYTc0YjA4ZjhkYTYxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1Mjk5OGQ2ODdmYWI0ZjUxMWY1NjA3NzhkZGQzZmI3NDg3ZWY1MmRjMDI5YWI1NDJmOWJkYjc4ZjU1YTQwNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4ZDVmMjc3NmFiZjM4ODViOTE4YjQwODU3ZWJhMDgxYjA1ODllZDI4MGQxNTlkZjJkMmQ0NDRkMjIxYjIwYmMifQ"
+        },
+        {
+          "resource": "repo://docsweep/engine.py#L314-L365",
+          "version": "repo-lines-v1:sha256:06ee56d04ba72f00b562368627948f992e7b4af34e54d306fcb8c1d377263225:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1Mzg1NDU0NzZmZDkyMDBiZGQyYzcyYTJlOWE3ZjM4NGE1Y2ZhOWU1NDY1ZDBiZDUwOWEwNWQxY2JhNGUxN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYjcwMjU3NTkzZGEwNmY2ODJhM2RkZGE1NGE5ZDI2MGQ0ZmM1MTRmNjQ1MjM3ZjVjYTc0YjA4ZjhkYTYxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhiOTc0ZGE0MDg2MzJhNGFhN2UyYWU4MGI4NjAzOTFhM2RjZDgyMTFjNzllY2FkN2NhOGU5NTEyOGIwMDE4MzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YzZlYzQ5MmRiNzY5ZjkwOTE1ODRhODlmZWI2MzU1ZjY2Yjc3OGUwNjAzMzNiYWRhMGNlYmMyOWNlYTM0ZTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_75cc9a0853494745b83b903f7f93e817",
+      "statement": "archive_file() reserves its destination filename atomically using os.O_CREAT|os.O_EXCL before calling shutil.move, closing a check-then-move race where two concurrent archive operations could otherwise both target the same destination path.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/archive.py#L38-L57",
+          "version": "repo-lines-v1:sha256:13dbb50a4fbb4c0dd693ab681ec6620e3d7b5e58afb2534317e94d0c355adbd5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmYzdhODIyNmRjMTU2YTI2ZWFmY2VkNzI0YWE2NGQzMzE4NjhlOWExOGE0YWE5MmU4Njg0OTg1YWNhMzUwMjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhNzgwOTAzNGFiMjk2Y2Y3NDVlNTU0NzE5NjUxZjM3MGY5NDE1M2I0MTNjNzBjYjBiYzczODgwNDlkNGUyNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5Mjg2N2I2Njk3MzcyNWZmMGZiNzNhM2QzMTAwNjQwYjRiMjVjYzhmZjJjODljNDFlNzlkNjQ3M2ZiNGQwMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2ZjZlYzdlZDU1ZDhlNmM4OTMyZjI3YTc2OTFlMjY1M2Y4ZDNiMmY2MzJlNTA4NmIxZmMwNzNiZWM4OWEyYjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b81126ddc4c14647a1a24e207e01be53",
+      "statement": "Configuration is resolved in a fixed three-layer precedence: CLI flags override a project's .docsweep.yaml, which overrides the global ~/.docsweep/config.yaml, so a user who only maintains the global file experiences a single effective configuration layer.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/config.py#L1-L5",
+          "version": "repo-lines-v1:sha256:157d4bfee92b5bae91cbae1d2683c749f37d6a831f6a2be21ba6e09cf181ab86:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWM2Njg4ODE4NjIyZjQzYzhhOTE4Zjc3MzNkMmQ4ZWZkMjFkYTQzMDVkNWU3ZmQ1OWU5ZGU0MDNmY2RkY2EyZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDc1ZDQ1ODllOTFjYzhjYjk3NDg4OWRhYjAxZGUxNWRiMTU3NGNhMTBlZWM3MjkwYTEwOWJmNTg4Yzk0ZTAxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzQzMGEwOGY5OWU3M2M5NTA2MTQxZTJjYjBkZjZjZGQ5MzY1ZWRkYTlmNDBjYjBlZTBjYjNhN2NkZGFhMWEyMiJ9"
+        },
+        {
+          "resource": "repo://docsweep/config.py#L18-L19",
+          "version": "repo-lines-v1:sha256:971ad14a8a294a32fde032e716b66ab41efbfd64ee9da0b422e01296075ec1a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzBlNzA3ZmY4ZTNjY2E1MjBiNzRkNjRiZmQ3YjAzZGMzOGVkZjY5Y2Y2ZTA5NmVlODEzNThmMTIzNjUzZTlkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTBhNWIwNDA0YWQxMGI3NmMzYzQxYzRlMzk2NmVkZWI4YjIyNDA5Y2VmZWYyOWE0MTYzMWYxYmQ1NmNiODNlOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWY3MjA2ZjMzYzNlODMwYjBlZmUwMjcyODkyZWFhNzJlY2ZlMWIxNTQ3OTI5YzA5OTc4MTM3Y2Q0ODkzOGMwOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjdjZjg4ZDE0NTYyYWRhMjg0MGY4NGE0MDRhZGI5ZjJiNGU1M2YzMTdiZTA5MGQ3NjIyMzk3NTdkNTk5MTBlZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c170cc9a850040f885f97961c1c84c62",
+      "statement": "Project boundaries are detected by walking upward from a matched file to the nearest ancestor directory containing one of the configurable project markers (.git, .docsweep.yaml, package.json, pyproject.toml by default), not by assuming a fixed folder depth under a configured scan root.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/config.py#L21-L23",
+          "version": "repo-lines-v1:sha256:4a5f36fecdda5f60588e9d9ddc59cc55d0b6db61ca2fbb0929cca3038afd8c25:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTZjOWMxOGVkNzZiNWM2YzYzMjU0MjYyNzQxMGRkZjZiZGUwNDU0YjYxOWQyMmQ2NDNhYWQyNTJjMTE0NTQzNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTQ2NjcyZGNlY2QxOTJhNmVjNTIyYjNkZTMzMzVhZjEyYTZiNzM2MjM5NGE1MDMxZDk2NGU5NzE3OTRkNDcwNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzJiYTVmZDg1MWJjN2M3MTRkOWYwMjU2YjhiYTBjM2IwMjVhODY5MGIyNDY4ODYyYjg1MWM5ZTEyMTcyMGE2ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGZlOTBkYjNkMWFlZmFiMjE4N2Q5NTM1NzM1NGM0YmE5NzlmM2FjNWQxMDQzMmZjN2VmMmRmNjE5MzcxNDIyZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f6f742f2f8194754bf2662499c06f912",
+      "statement": "run_scan() composes scan() and classify(), then filters results through the global exclude list; if the exclude configuration cannot be validated it fails closed by returning zero documents with an explicit error, deliberately avoiding a fail-open path that would show unfiltered results.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/engine.py#L126-L142",
+          "version": "repo-lines-v1:sha256:be01320ef4a5758824bc325de6dd37913a6c0fc44ffaf4c2eeb450a1786eeb08:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmZDI1YjdiYjkzNzQxNTA4NTdjMzg4MmM0ODY0NGNjMjU0OTIzYWJhOWU1MDBmYmEzNzMzYzY3ZWE3ZjY2YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZjU0OWU4NzZmMzMwZTdiYzRkYjhjNTA2ODEzOTFiYzkzYjFlNTdkZWM0OWU1Zjg4YWY2MWNmYmQ4ZTFhZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ5ZDFlMTExMDM4NTFiNWE4OGNhNzRlNTAzM2YwNjNjZjQ5OTI3ZTBmZGMzYzljN2M3NTJmMjdhNWU0NjFhN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5MzE1NDZjZGYzYjYyZWEzOTBkMGJhYWFiNzNhOWNjNDAwMTMxZWQ1MDgwODkxYzFhN2ZlNDQ4ZGU0YWU1NGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd8607dbffe441899213da220b666da7",
+      "statement": "scan_records() first tries to satisfy read-heavy queries from the optional SQLite index at ~/.docsweep/index.db, scopes any returned records to the currently configured roots, treats an index that resolves to zero in-scope records as a cache miss, and falls back to a full run_scan() in that case or on any exception.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/engine.py#L189-L232",
+          "version": "repo-lines-v1:sha256:9eb234aaa3670b2a013b0adb47847e8cebd888a5815474208fb0c294d0ae6735:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNmYyZWYwZGI4ZThhNzA3ZjQ3OWJjNGFkMTAwOTkzZmJiNTI0MDRkZTI0MzdmZmY2N2U3MzljNWFjOWVkOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjYzA0MWRjZmEyZWVlNzRkOWIxOGVmMzE0OTRiYjkzMzQxZjIzZjYyZTczODhmOGRjNDQ3ODE5NzdmMjFlM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5MzQyYTVjNTg5ZjcyNjVkMTUwZTllZjRjOTdiMjM2MmZiMTdiMWRiMTQ4YzI2MzZlZjcyNGRkMjJkMjQ3YmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjOTViMzc5ZGJmYzVjN2Y5OGNiN2ExOTMxYjU0MmZkMWU0ZGQ1YzYxMWE2ZTNlZmYwOGQ4MzgwOTE3MTg4MGEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

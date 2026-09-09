@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3922010b6747184f6575042958b444c16cc50b040128a777011de1d30944892c",
+  "claims": [
+    {
+      "id": "claim_da5faed7c68f45a18196528098923e86",
+      "statement": "_add_scope_args() in docsweep/cli/parser.py is a shared helper adding positional paths, --root, --profile, --config, --project-dir, --lang, --work-dir, --work-policy, --secret-policy, and --allow-sensitive to every scanning/reporting subcommand that uses it (scan, triage, apply, sweep, serve, promote, index, export, and others).",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L11-L21",
+          "version": "repo-lines-v1:sha256:c50fc86230e75771e44616ab88a4df28d898289cb215b0eb971a05054aad413c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyY2ZiOWVhNDk1NGUyMjk0YWUwY2VkZWUwNDFjNThhYmRmNWM0ZjUyZjQwM2Y4NmQwOTA1NzFmZDIxZTE5YmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0ODdlYWU4NzU4Mjg5OTI0Mjc2ZmEwODMwMzNhYTJiNGIzMjZlNmY3MjJlOGYzYjdiZDIzNjUyOWNiMjcxMjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNiZjI2NDZkMjBlYzIxY2Y5NDY5NzhjNzE4Yzk5OWM1YWQxNjU3MTA4ZjMwYjVkN2Y0ZTJkZTg3ZjYwYTIxYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1MGMzZTIwOTRiMmEyNGU3ZGQ2OGYxNGQ5Y2Y3NmM5MTQ3Zjg4Y2UyNDdhYzFmYzczODYwZGRlODNlZWNiY2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a86c2aa3b44444f4890dca632814d66d",
+      "statement": "_build_config() in parser.py is the single function that merges parsed CLI flags (roots/paths, profile, config path, project-dir, lang, work-dir, work-policy, secret-policy) into a Config object, implementing the CLI-flag layer of docsweep's configuration precedence.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L35-L56",
+          "version": "repo-lines-v1:sha256:84fafba5a246103e0e599eb037eebc5133330f76e1bad523ff4dd6bc2195bd48:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2YjBmM2JiNGRmNjkzZjYyNTc0NGQ5MDU3MTljNGI5YTU4Y2I1YjRiNjMyNDYyYjE2NDEwYzVlYWFhY2JkNmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllNDA1YzQ4MWZjMDU4MzMwYTQzY2M0ZTM5NGFjYmViOTZkODVmMmY1MmZjNjM1MjcyNDMyNmY5ODk2ZjQxODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyODY3NjE4NjI2ZDgxZTZkMzM2NTg0ZmE0ZDYxOThmY2NmYjRkMzk1MmFlNzRhNGI2ZGFjNmQ1NTQzYTI0YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzZjRhOGY0MWU3Zjc5MGU4ZmU5ZmE3MmJhNjViNTVkMjYzODViZGE0NjkxMjY0MzlhY2ZjMGQ5ODYyMTBiODEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5f52f311ed584bddb5c84b6cc346b1ac",
+      "statement": "The apply subcommand requires --path and --action, accepts --to for the relabel target, --watching-days N (validated as a non-negative integer) usable only with relabel --to watching, and --dry-run to preview without writing.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L91-L100",
+          "version": "repo-lines-v1:sha256:201a865cb4180ce03c01476820c8ddb630ba301698c70a4f6be16f6b1af149da:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhM2I3YjQxMjkwMGQ1MGIzZjBkNjdlN2QwMTFmMjQ2NDU1MGRjZjg0MWMyOTYyM2M0ZGE2N2U1OGIwZDRjMjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhMzU5MmU3Yjg2NGVkYmNmZjY4NjI2MDBmYjc4NWViNmI2NDg1ZDIyMjQ5YWE2OGZhZDBlNDc3NWJmZmM0MTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxNDM5ODZmNTkyNTM3YmY4YjU3NTU2ZmE5Y2ZjNTFmNzk5NTFiZTg0NmFhYzY1OWZkYWIyOGJhMTJjZjNhNTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4Y2FjZThhZGNlNDU5MTg0NjMzMmVlN2I2ODFjOTk5NzczZTM2NWU4NjQ1MjQwYmYxMGJmZGI1ZTM5NTJhMTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ed59dbd83a8548fab81a61fa1222e837",
+      "statement": "The promote subcommand defaults --state to watching and --to to done, supports --due-expired to restrict to watching documents whose graduation due date has arrived, --project to scope by project, --yes to accept the bulk-confirmation prompt, and --dry-run/--json.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L122-L136",
+          "version": "repo-lines-v1:sha256:e49eb4bca226734803d9748b0ef0067ad9c710f0dfd828f75fa34dc3822d3bf9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZmMyMWQ4NzI4YTkwNmFiM2VkYmRhZTJjM2U4Yzk2ZDM1MmMwYzYwN2I1MmMzOTk1ZTZkYzM1NDZmZmRhN2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2NDRlZWQ2YTY3MWJkZjhkNjIzMzRkOGE4YjY0NjlmZDU3NjIwZjIzODhjNTA2ZmQ1YTU2NGMzNjk3NGQ0N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxYThkMjI5NTU2NDllZmU3NDNiM2VhMTg5NTFhYTMyNzk2NDQxMDQ2OTZiMWNlYzAwNzIxMDA1NmY4OTY5NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5ZGRmOGRhM2E1NzY2OGMwMTRlN2E3Mjk4ZTgxZDQwNWM1ODFiNjdhMjFjZmMyYWI2MDVhYzBiZTg4YWNjY2QifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3d2e494ccfb5456386ac6a68071bd41f",
+      "statement": "The new subcommand takes a required type (plan/bugfix/pending) and topic, and supports --due/--no-due, --project-dir (auto-detected from cwd via project markers when omitted), --split N with --titles A,B,C to generate a parent plan plus N named child plans, --delegate to mark docsweep_delegation: external and scaffold the C-details section, and a full set of --ai-agent/--ai-runtime/--ai-provider/--ai-model-id/--ai-model-display/--ai-reasoning/--ai-model-source/--actor-key/--ai-session-log provenance override flags.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L291-L344",
+          "version": "repo-lines-v1:sha256:8b188b9a00619993bd7ee53d361c7c2afff3a2d78764680077470eb4a64e4316:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxYjE1ZTBjZGQ4NDY3NDNjMTNjZDQ4NzAxZjlmODhmYTA3N2Y4MjQwZWNlNzkwYTBmYzJlMGRjNjk0OTM1ZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiNmU3OTliZDkwYWM1ZDg5NWQ4NDcwYmRlNjExYmFkOTAxY2ZiOTU3ZWY1YjEyNjhkMGM5NWUyZGNiZTc0NjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiMTc2ZGFhNGU4ZTNiMGY2MGRiOWM1NGNmNzhhZTFhNzMzNGYwNzhkNDllYzNkY2U1OTZlMGQ0Y2U5NTE1ZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NGJjMGE3OTRlM2U3ZWVhYjAwMzU2NjJiZmU4YzdlZmFhNDFlMzJkMzY1MDVjYzk0M2YyMGI4OWQ2ZDcwZDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f1b5dbe2c14c46aa9fcf2784c38c6a95",
+      "statement": "The provenance subcommand has four required sub-subcommands (init, start, finish, check per the surrounding parser structure), each accepting --project-dir, --config, and --json, with start/init additionally accepting --agent/--runtime/--provider/--model-id/--model-display/--reasoning/--model-source/--actor-key metadata flags matching those on new.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L346-L365",
+          "version": "repo-lines-v1:sha256:b69babf643d3b0c070f95fd269c5a460291e5f486778cff2e523e4abe8b276d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllNDNjYzYzNTA5OTIxZWE1NjZkMGMwYjJkYjEzNmQ1N2IyOGY1NmI5NjBlMTliYzFjMDdhNjRhZWVhOTI2MmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ZDdlYjI3YzA4OTUxZmY1YWRjNGIzMjdkMWYwM2U2MWJiOTA1ZTllYmQxZDMwYTM4MjdmM2I3ZGY5ZTdjZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhNjg5Y2Y0ZmM1ZWY2YTc3OTdkZGRkNGY4NmU1MGJjY2RiNGQyMDMyNTU5ZjVlYTI2MTE3OGZiMTRmZTU1MGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3MWJlNzcyNzAwNzJmNGQxOTE3MzhmZjY2ZGU4MzcxODBlNjEzOTdlZDU0MWU0ZTdiOGVkOTM5NGRkNDFmY2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c6789a3883ec41b0993daa75df62e5b9",
+      "statement": "The export subcommand's --okf flag selects OKF format (currently the only supported export format), with --out for output path, --project to scope, --include-archive to include archived documents (excluded by default), and --okf-version/--okf-profile/--okf-profile-sha256 to select or pin the profile used.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L562-L586",
+          "version": "repo-lines-v1:sha256:201588ed4142e5fc873b55f736e5928f5e65e13a36f6bda9175d740cd730f8bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5YmUxNmFhOWRhNzZiMzQzZDQwNDBlMzQ1YWM1OGM3MGJkMTdlOGQyYzUzYzg1Nzg4ZjM3ODgwNDIyYjJjMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4MGE0ZTk2OGM1MGQxOTJhMzViODU3NGJkODQ0YWQ4YzVlNWQzOTAzYTU3MDAzYTBlMGUxN2E5YzZlMzFiNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4NzE1ZTMwOGU4MzhiYzJkZjdjYWRmZDYxMDIyYTI5MzliZWIzNTA2MTM4YWY3YzVlY2EyZGI4N2RjOTEzYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlZTZkZTY0MGRjYzAxYmM4YTNlOTAxOGE0YmZhZjZjZWIxZDczNzM0MDRiMDUwMzdmMWM5NzkzZDM4MDQzMjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ad03273f61384cdd942b906946989f1e",
+      "statement": "okf-check takes a required bundle argument (a directory or zip) and the same --okf-version/--okf-profile/--okf-profile-sha256/--json options as export, and is documented as read-only, not rejecting unknown types or broken links.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L588-L596",
+          "version": "repo-lines-v1:sha256:d9bb0ad737fd426ba026a56d2e5bd3259983a1e213071bbe97631eebe9dcf3ca:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQ3NGFlMzg5MDcwNWJjYjM4ZDc5MjQ5YWJmZTYxNDU2ZTAwMWM0MDIxNDYwYWQ1NzRjMTg1ZGRiMmI0YjA5MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWRlMDk4NGU4YjcwNTE4YWNjYjEzNDBkNWY2NjU3MTBiMzEyZmUxMTIxNDRkOGU1MWI1ODBjNGYzZGU2MThlOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmM4YjY0YTlkZTFhNDY1Yzc1YTUwYzFlMTFiNzJjODRkOWEzM2YzNTgzNTIxZWVkZDhhNmZkYjI1ZDBhZWI0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWViYzQxOGM3ZDcwNjM2ZjZlZWJiMGI5YWU1YmJlZGRlYzcxODJiNTI1ZGIxNTI3ODA3ZmQxMDAyOWMzOTJiYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f6edf8a0d0624c038864160a2aedb2b2",
+      "statement": "closeout-check requires --path (the parent plan to check) and accepts --to (watching or done, default watching), --project-dir, and --json, and is documented as a read-only check of parent/child plan closeout conditions.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/parser.py#L603-L616",
+          "version": "repo-lines-v1:sha256:173eb6efc39727c7ba68100b0203a67cd7835feba834121e809e766e62c08e39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlNjA3ZmQ4OGVkMjk3ZjMyNzE1YmFlZDMyMmFiZTc4NGQ4MzRmZTU3NjU1ZTlmNWIxZjdjOTgzNGMyOTBmODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2ZDhmMDJjMDExMzYwMjBlZjdiNGRhODk1NzcxYzYzMTM5MzMwYTcxYWI0MjAwY2I0ZWFjM2ZkNzlhNWU2M2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3ODMxMjcwYTc0NDgzMmQ2NGU3ZTFkYzQ2NGMzNDM4ODVlNWFiMmU4Y2FkODBjZGRlMGU0YjExOWU0YWEyMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1ZTNjZWNmOGUzMmQ5YzZlY2QyNGExMmQ3MWEzY2Y0NDM2MTE4ZGRkZmRjOGJjYzdlMWZjZWVmZmZkMjliM2YifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

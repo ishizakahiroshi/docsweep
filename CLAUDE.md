@@ -126,3 +126,11 @@ git config core.hooksPath .githooks
   （作者環境ではグローバル AI 設定の `release` skill を起動し、Python パッケージなので
   `pypi-publish` のタグ前チェックリストも通す）。release md にはそのリリース固有の引数・事情だけを書き、
   **共通の前提チェックを md へ写経しない**（写経すると正本が 2 つになり、片方だけ古くなる）。
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+See [AGENTS.md](AGENTS.md) for OpenWiki agent instructions.
+
+<!-- OPENWIKI:END -->

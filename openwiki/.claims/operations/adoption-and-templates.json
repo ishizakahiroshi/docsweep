@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:f65a617466230817827bb0fc9b91e40a92497e6c8666cb5ed6dabe4908b2860b",
+  "claims": [
+    {
+      "id": "claim_a806b85634c24c0bbb272e9e3d465b4d",
+      "statement": "docsweep inject writes at most two things into a target project: .docsweep.yaml only if it does not already exist (an existing file is left untouched and reported as skipped), and a managed block delimited by literal docsweep:managed:start/end HTML comment markers inside CLAUDE.md (and inside AGENTS.md only if that file already exists).",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/inject/api.py#L1-L9",
+          "version": "repo-lines-v1:sha256:f2474c54952f2cf00c7f8e200b8fe18393e8d1d4eefae7f324960d05cc2afc93:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWQ2M2M4ZWY2MDA5ZWI1MWUxMjBmOWMxOTRkNmExNmUzZWU1MTMxZmExMzBkNjllNDI3YmExMGUyYTA0YWY0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDUwMzNmMzI1ZTMyZjkyMzlkZGQ3NWM1NzQwYWZmNGI4ZjQ0MjAxZmMyMjY2MzY2ODE4OTVlMDVlZjU3MTY5YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWFhZjc2MzdjYjZlN2U1ZGI4NWQ2MzQyNzQ2MDE0ZGYwNDFjY2Q1NThhOTIwYjI5ZWI2YWM3MTlkN2JhZjVjMiJ9"
+        },
+        {
+          "resource": "repo://docsweep/inject/api.py#L748-L769",
+          "version": "repo-lines-v1:sha256:e0ac45bfc61dddf343409f97dcdcc2f372df73639e0cc4278d56b2e915fa4851:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MzZmZmViMmFkNmQ0ZTAwOWM3NzRhZTE3NTAxNjBmNTEzYWM3ZWI5YTE3MGRiZmFiNThiNDczNTVhNjU4MTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5YmFiMzE0YTExNjhmNzc3YzZjZDNmNDBiNDQ2NmNlM2QxNWU5ZDc5ZTNkZDI4MmRjMDU1YTFiYTU0MmI2OGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzMzAxMzdjM2U4YzFhNjg1YjA0NDkzN2NmYzBlYWU4ODUyMzNlYWYzZTU2NDAzMGI2ZTYxOTlkYWY4MjZhYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxZmNhOTdlMTA0N2IxZTNhMzYzOGFkYTg2ZDZlYmQyNGRmMzFiYzkyMjU0YTJjZWRhOWNhNGI0ODNlYjUyMzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f904a2c632934287b40020d61fa4260d",
+      "statement": "CLAUDE.md always receives the full label block plus, unless include_guidance=False, the full guidance block; AGENTS.md never duplicates that content and instead receives only a short pointer sentence back to CLAUDE.md's managed block, keeping the ruleset text single-sourced.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/inject/api.py#L605-L636",
+          "version": "repo-lines-v1:sha256:f3caf50be8f3f8311abc9564741f2f266dbfeae6e65253cb7be99ed6821b03ac:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjNGU0NWZiOGFmZDZhODdiZjg0NmViZGJhMmVhMGQ2OTczYTM0NWRiMzBmZjU0MDBiMGJhNzdmNjlmY2M1MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNGMzZmMxOTNhNjMzNmJlMTVlYzUyNzFmYTcyYWZhNThhOGM5NTk1MWUxOWQxYzM1OGQwNGQyZjliNTJhMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjMTkxY2FmODllZThmZGI3OWM5MDg1MWNhMDJkYzhjMjU4NzJjOGI2YzQ0ZGRmNjA4OWFjNzE4NmVjYWU0NWMifQ"
+        },
+        {
+          "resource": "repo://docsweep/inject/api.py#L736-L747",
+          "version": "repo-lines-v1:sha256:a006f7e055f8fdf1be8d780f93e5846be07c55ccdba215be80a36cf1f4e36bc3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5OTY0ZWNiYzAxM2E3ZTczYTMzYmEzYTY5YWZiOGMzNzcwNmUyYWQ5OTAyODIxYTI1NTkxOTA1MzlmZTMxMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhNmZhN2YzYmZjMzk1ZDMyMTViYWE4ZDEzMzVhZDRkY2M4M2RlZGM3NGFkOGQ4ZGNjZWVhNTNkZTBjNDBhMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0NzVhOTQwYTI2ZThjMGM4MjlmNTNmZTZhODJhMTc0MzEyZDBmMjI5ZjgzMDRkZDdhMGYwOWM4NGUwZTRjZGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_46efb7812307453e9d18fc7455dca827",
+      "statement": "_write_managed_file() compares the current managed block's content hash against the hash recorded from the last inject run in the manifest, and if the block was hand-edited in between (hash mismatch), it logs a warning and writes a private backup of the entire file into docsweep's own manifest directory (inject-backups/, outside the project) before overwriting, rather than silently discarding the hand edit.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/inject/api.py#L653-L697",
+          "version": "repo-lines-v1:sha256:96c92ed8b2f1b75ce6575fe9713b0c4e568d36981c8810615df20e867378c368:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NGM3MjBlMjg2NWY0NTA4ZTViOWYwNjlkZDNkNDY2MzIzMDM2ZDJkODk2NGFkZTZjOGQwODgyNTExNjQ2Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5N2I0N2JiODFjZTkzY2JhNjdhZmMwODY5OGE4MGNmYTA5M2E4NjY3ZTljOWY5NjUzMzc4MThkNjU3OGQxODUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZWRlNTY3ZmMzYTNkYjY4MTQzOTFjNzI3MWE3NjAxMmU4N2NhYmRhYTgzZWMwMGI0Y2U2YWU2Zjk5YWU3MTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5NjUzOWRjY2RhYTc5NTI0YzQyZmVlM2U3NGZhY2FmMmUxYjZmZmMwZWU1ZjVkMWYwZjhjMzJkYWM5NWViYzYifQ"
+        },
+        {
+          "resource": "repo://docsweep/inject/blocks.py#L52-L65",
+          "version": "repo-lines-v1:sha256:a5aa5514b6eeb21b79811ffefc0e82d5c42024e221fd5aad9b0f8b9c32eed519:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxZTY4ZTMyYWI0ZGE3MDdjOTg3ODZmOWYzMWQ3MWYyNWYwMDg0MmYwMjViYjE2MzFiYjg2ODk2NWE5ZTU4MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjNDU5NjZhNDMxZDgzZmNmMWZlYmNkNzMzODNiMTU0MGZkNThiODM2ZTFkN2M2NjEwN2YxZmM3YzFkNmY1ODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjY2NiMWQwODVhMjZiNWJjNWMxMmQwYzE4NjIzYzZlYzk2NzM0Y2ZhZWUwZmQ0NGJlZjkyOGEyODdmNjVmN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlZjhiMmQzOTkwYjQ5NmE5Zjc3YmJkNzYwMDY0NGY3OTM5ODA5ZGZhZmUyNDkyZWU4YzFmNTc0NjEwYTM1NzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dc327912eab042fea5343482715abd21",
+      "statement": "If a target file contains more than one managed block, inject collapses them into a single block at the first occurrence's position; text outside the managed markers is preserved byte-for-byte including the file's original newline convention (\\r\\n vs \\n), which is detected and matched before writing.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/inject/api.py#L660-L699",
+          "version": "repo-lines-v1:sha256:ee66b10d238b23335bbba7d0a84b7a6ecdb8257661afc573118a7216d32ce693:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMzQ5NTlhZWVlZmQ0ZjY0OTEyMTI0OTEzZDNhMmQ0YmQwYzQxYzliMDgyYTY3YTQzMWIxMzU0MDcwZmYyNjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyM2MxZDBlNjA3Mzg1MzA1NzJmOTE5MjY2OWVhN2QxN2RiNTc3YzhlYTZiMzk4NmQ5YzZhODI0OGVkZDNmNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiNDU4MDRhZTI0MTMxMjEyMWQ5NjMzNDkxNDZkNjExZDA2Mzc0MTA3ZjM4ZjFhYTY1MmYxMmVhOTQ2ZjgzOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2YzhhNWM0ZjQ0ZDZhNjJkZjhlNWM5ZTI2MTEzMjE0M2RhMTdlOWRjNmVjNDA0NDIwYmE4MmNkZjhhMGYwNzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f911fc0f57a14f3d9e696d453ff13c96",
+      "statement": "eject() strips every managed block using the same hand-edit-detection and private-backup logic inject uses, deletes .docsweep.yaml only when --purge is passed, and refuses to purge .docsweep.yaml in the same run if any target file failed a UTF-8 decode during block stripping, rather than partially completing an operation whose safety it could not verify.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/inject/api.py#L889-L918",
+          "version": "repo-lines-v1:sha256:9d089ff7bc106889cc5d04e8f97520d190c58b8441be003fdbfe1d017b3e411e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNjNjNTYxNTkwZTc1MjZkMjMzYjFjZmIxYzgzNDQzNTViOGEwNWM1NWM1MzRkNzYzZDYxYjFhYjRkZTNlY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhMTFjMDU2N2QwYTVmOWU5YjEzNWY2NWNkMjUzNzJkZmQ2Mjg3NzVmN2MxZWQyNTNmOGJhZDQyZGQyZDY2NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkNWRlZDEzMjIwY2U5YjQzMDM3YzU2NmMwNWEwM2EwOTNkMTc5YTFjMTk4Njk1ZjIwZWRhNmVlMmM5NTFhZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3MmIwNGY0ZjBiM2RkMGEzNTAwZDEyMTA2YjI5NTk4ZTU2NDc1NTUwMDVhYTI3ZTRjYThiOWNiMDNhZDg2ZjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6f65fcf286d64e028b889bc51c3a2559",
+      "statement": "docsweep/presets.py defines exactly two official presets, claude-jp (Japanese, H1-label-only, the default) and frontmatter (English, H1 labels plus a mirrored status: frontmatter field), both built on the same DEFAULT_STATES state model, differing only in language and detection surface; each Preset carries its own version string recorded in the inject manifest.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/inject/api.py#L733-L734",
+          "version": "repo-lines-v1:sha256:4068b1e4080551171400f71ec57c89776a13301b3eb05c7e1439c39c2e079a55:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjUyYzk2OWZiYzlhM2YxNjExN2FmODRhY2I3Y2Q5MzBjNGZmY2U2OGQ4OWY4MWM1NmY4NjY0MGMyMjcwNzE0OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzliOGZhOTBmYmE1OGIyMDY4YjM1ODhlNGFjYTQzMThlNjk1OGVkNmM5M2Y2MzQ3MDljNGExMDc4M2Q2YTZjNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWEyY2Q0OTI4MzU1OWI5YzYyNmJmMTJjNDU3YWVjMTE5YTg0YzdiYzQ4YjgyN2E3N2JmZWFhNGM4MDM5MDVhMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTc2MTJlNTEwMDQ4MTUwNDUwMzI4MzFjZDllZDYwNTBhMjgwYTU2YzAyZThmOGI2NjNkZmYwZGI2YWM2NWZmNyJ9"
+        },
+        {
+          "resource": "repo://docsweep/presets.py#L1-L47",
+          "version": "repo-lines-v1:sha256:eda53e75a5bfde4e6292d8586a7a088416b41b0cd0262d4a53f6d7e782db0c55:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkYjI3ODUwYTYxYTRkZGUxMDMwY2E1YmYxN2I3NzAxYTU2YWU5YWQ3Njc4OTA4ZmE3YmEwN2M5ZGJhOGJiNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyMmZhYTUzNWJkMmVhM2Q1MmU3NDFlZDQ1NDQzNWI3ZmU0OWU4MzU4NmU5NDNkOThkODJiYmZiMjRkMWY1YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3NmEwZWM1MjQyYjA3YjYwZDhiMzE2ZjA5NWNjMWY5ZjMyNzg0Y2UzNzFlNGVkNGNjNzkzOTNiMjcyOGNhOWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e84aeeefd5b343cba438bd3712414ee6",
+      "statement": "inject_global writes the entire guidance block to a docsweep-owned central file at ~/.docsweep/guidance.md only for agent=claude, hooking it in via a single @~/.docsweep/guidance.md import line, while other agents such as codex (which lack that import mechanism) get the entire guidance block inlined directly into their own config file instead; eject_global only deletes the shared guidance.md once no remaining global injection for an import-capable agent still references it.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/inject/api.py#L638-L646",
+          "version": "repo-lines-v1:sha256:de5cc4915a00a221c194c5da5e253153de83279c12b14315cb7bf718f33df7d5:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTAzNGI4Mzc3OTljYmI2NWEzNzYzNDA1NjUwM2I4ZjAxNzlmOWE2NTY4MGI0NmFjMjk4YzFlNDg5YTA2YzFmOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzgxOTBjMzUzOWJlODE0Nzk4ZTdhMzk0OTRlMDg0Y2VmOGQwYWE3ZWIwNzU4YTU3OGZjOTBiNzI4MDhkOTUxNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2M3NGY0NGM5ZWM5ZWQzZWJlMjc4OGE5YzJkMjVkM2I2ODE3MTNiYTRjYWVjZWE0NWM3NmFmZTkzYjViNGIxZiJ9"
+        },
+        {
+          "resource": "repo://docsweep/inject/api.py#L921-L936",
+          "version": "repo-lines-v1:sha256:6001a257244170c8bacb4a64a5281024dbeae78cd7748bbd7ac72b732658602d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxNjdhMTMwMDUyYjhhOWRlZjdiMTMzYjQ2ZTE1Nzk1M2YxYmUxMzM4YzVlNGZmYWJkYTMyNjUzZjEzNjlmNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkYjdlZjMyMDVmZjZmODk0ZTQ1NjljMmZkMTU4MGE2YjFjMzdmOWFmMmFkZGE5MWFiNjU2OGI4MWI1ZmExMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MjIzMTA2ZmQ4NzQyYjcwZWEyMzNmOWRjMzU5ZjRiMDJiYmIwNjliNzI4M2VlZjc2MjQ5OTUxNmJkN2I5YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3MmQ0MjMyODIxYTRiODUxNTcwZDBiMGNhZTU3ZGY4ZWIwNmM4N2Y2NTI4OGMwNmZmMWUxNWNkNzEzMzViNTkifQ"
+        },
+        {
+          "resource": "repo://docsweep/inject/api.py#L970-L993",
+          "version": "repo-lines-v1:sha256:943de27f395ec8e0180d92ef62e93ed05ac0a6a077b1ad268ed3fc28b83d98d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MmE4YWE2NGEyZWU2YjcyMjQ5MTIxOGRhZTU1ZjcwM2QyN2VmMGE5YjQwNzFkZWY2ODk5YTRjZDE3ODA5NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhYWZkM2NhMDVmYjc1Njk2ODI4Y2M4ZDUxN2VkNWU1MGNjMjQ0OWU1Mzg5NGUzM2M0ZWViODFkYzYzMDJhN2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MjIzMTA2ZmQ4NzQyYjcwZWEyMzNmOWRjMzU5ZjRiMDJiYmIwNjliNzI4M2VlZjc2MjQ5OTUxNmJkN2I5YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3MjIzMTA2ZmQ4NzQyYjcwZWEyMzNmOWRjMzU5ZjRiMDJiYmIwNjliNzI4M2VlZjc2MjQ5OTUxNmJkN2I5YzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0520144cbc274ae7b19363958782d37c",
+      "statement": "inject --global creates a scaffold ~/.docsweep/config.yaml only if one does not already exist, pre-populated with commented-out work_dir/work_policy/secret_policy and due.default_offset_days blocks whose values exactly mirror the built-in defaults, so uncommenting a line alone changes no behavior until a value is actually edited.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/inject/api.py#L778-L812",
+          "version": "repo-lines-v1:sha256:571c2db252fc79e08e8626c7ab85f9ce96ba7d5df7791c53714ddea6c3d1965e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwNjczOTg4ZDhiM2ZmMTBlMmU3YTVmZTY3OTNlNTgyMWFkNzhkZWVlYmQ2NWMyNTljN2VmZDhhY2QzY2VmMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MjIzMTA2ZmQ4NzQyYjcwZWEyMzNmOWRjMzU5ZjRiMDJiYmIwNjliNzI4M2VlZjc2MjQ5OTUxNmJkN2I5YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMjMxMjY3ODVjM2RlOTAwOGE1YzdmZGRiZjgwNWUyYjc0MTNmMjAyMzNkN2EwMDIyMjI2YmU5ODRiZTZhYTUifQ"
+        },
+        {
+          "resource": "repo://docsweep/inject/api.py#L815-L847",
+          "version": "repo-lines-v1:sha256:653b55d322e4347f74ed93513c02bcbaa1543d0ac3eeae5c458dc2c78d67d572:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMzUxYjQ4YTU1ZTc5OGZmMGE2MGI5Yzk0Y2QwZWIzOGM2OGFiNDU3N2FiNjM0YTE0YTNlNGNiZjc2NGEyNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNzBiYjg4NWNiOTJiMWQxMGJlYTVmYTExNWU1ZWYxNzgxZmQ5Y2ZjOWY3NjE4M2ZlM2FhMTg0ZTllMmIxMmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNWMxNGI1ZWUyNzdjN2VlNWM0MjA3MjcyMmUyNGJjZmM5MzhiNzU0ZjZkNGZiOTlmZDM3ZGIyZWJmYzg3YzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3181006afabe4f9db8af9a6ca9ef2e64",
+      "statement": "config_for_project()/project_work_settings() implement per-key partial override of work_dir/work_policy/secret_policy: a project's own .docsweep.yaml values take precedence over the already-loaded global Config, falling back to the global Config's values (and finally to built-in defaults) only for keys the project file does not set.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/config.py#L323-L364",
+          "version": "repo-lines-v1:sha256:58078fda3bbde5cb284071001de4740a48ef9c6acc88b2733c77987d82f6c4ba:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwNThlODk4ZmIxNTY1MjdjODBiZGJiYmM1ZDQzOWU4MTZjOWMwY2EwMGJmZmExZjkxZTMyYjI0MzEyMzFhY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MjIwNGM2NWY1MDJkYzE2NDU0YjYyNDA4NTZhOWFiN2FkZTAwM2E4ZTlmODYzMzNlYzBiN2M5ZTQwOTQ5MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwNTAyNGVmYTQ3NDViYWRmMTc5NmY0YTE1ZDc1ZmExMGE4MTMzMWQxMzNlZDQ5YjU5OTg5NTU3NGQxOGI2OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNDY5N2IzYjgyOTM4Yjc3NWFlMDAxYmI3YmI5NzhhNTY0ZGFhZmZiNmQ5MGE0ZDY3Y2UxNGEzZDY2YTllZWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1631274d291c4d2e8673a531b779fd3e",
+      "statement": "resolve_work_dir() rejects a work_dir value that would resolve outside the project directory, including a Windows drive-qualified relative path like 'C:foo' which plain pathlib does not flag as absolute (because it lacks a leading separator) but which is still drive-qualified and would otherwise resolve against the process's current drive instead of the intended project.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/config.py#L294-L314",
+          "version": "repo-lines-v1:sha256:166712cdf36ffcc7ce41b318571f4be66971b5dfbde32ef42d265c5cbbfcd9c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTVkMjAzNjNlMTBkYTRlYWY4NmFkOTVkMTNiZjY5ZWIwZDY2YjJiOTczMDg2NGJiMDE3NzEzNTQ3OWRiZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiYmU0MjcxMDgxYWQ0ZGYxZTBmZThiOTNiZjMxMGE0YTU1OTk3MjZjMjgyYTViYjA1YjU1NzI3MWJlNjYzNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0ZGM3MzcwOTc5ZDk2NTFhNzFjODU3OWYwZGQzNmYyM2ZkMDRmMWQ0NmJmZGU1ZWIwZTgzYzM4MGI1NDQ4ZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3YmQ1MWI3NTA2MDQzZmZkY2Y1NTg2OTk4ZDZkNThkZTU0MDg0ODZhZWRmMjBiOGUyYzMxMTFhYjg5OGExMTcifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

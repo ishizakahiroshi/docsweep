@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:998ad02caddb117317300113442440afb891d706f34a401f9ab43ddb1351565e",
+  "claims": [
+    {
+      "id": "claim_3e8213943c7242669d395873dbb1a48a",
+      "statement": "initialize_document() assigns a new document a work_id, writes an authoring-role row to the provenance ledger, and patches the document's frontmatter with work_id, ai_provenance_version, the ai_author_* fields, and ai_execution_refs; if a work_id and complete ai_author_* fields already exist, a second call is a no-op unless update=True is passed.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/provenance.py#L551-L577",
+          "version": "repo-lines-v1:sha256:dfd0d96cdfc0f497ced8e965b8e8b7cf7801cb2841dd85c63f285e03b5714cb0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjNDA1ZWUzZmU5MTQ3Y2U4MjViZDc1NTQ4ZjlhYzc2M2NmYTg5NWU2MDg2MGRiZjVhZmQwOTVmZGZhYTliMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmYmVhNmMwZmUwZWQ3MTc3MDMwYjllZGVjOTg4YmQ5YTA1Mzk5M2UyZjY1MzFlYmQ4NmRhODdjYjgzYmIyM2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MzdmYjA3OGMyODFhN2I5NDNhZTNhNzE2YmNjNjNjYjRlZWQ2ZGNiY2E3NTZkNTc2ODNiMWNlMjA4ODUzNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2MTc3ZmZlOTgzODUwNWE2Yzc5NThjZjBlMDk0NzA0NDczM2ZlNWQ5MTQ2ZTAwZmQ5NjU1YzQ3YWFjMTQwYTQifQ"
+        },
+        {
+          "resource": "repo://docsweep/provenance.py#L604-L633",
+          "version": "repo-lines-v1:sha256:aa8010173f453d4683b86f2a566d11b22962f8a10464323fa745b9fc9250c20a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzM2VkYTZlNDc0ZTVkZGM3NGY4M2JiYjBjMzg0NmFkMTcxMDE4N2Y2NDdmYTlmYTI3YzQ2NGIyOTY3MTIwM2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MTlhNmRjYzA0ZTIxM2EzYzdhNzdhNDU2YjAxZTc2ZDFlZjc4Y2QwMGJiZWMxZDhmODE0NThmZTkzZWRjNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxNzc0M2E5MTUxNmE1ODE3NjVhYTFhOWFhMmIzODU5YTRmYjZkODQ2OWFjZTNkNzFlYjhjODdlNDhiYmE5NDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlMmUzODE1MDI4NTg0ZmY5MGE3NTIzZTFhZWRhMjYzM2RkNjI0N2U5NWQxM2M2ZTE2OGFjZGU2NzI2YzdhZGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d97bfc8a138340fa85ec3491552dd39c",
+      "statement": "_update_authoring_metadata() corrects an existing authoring ledger row and the document's ai_author_* frontmatter in place, but never changes execution_id, work_id, role, or work_path, and appends an ai-metadata-corrected marker to the row's notes column rather than silently rewriting history, reflecting the ledger's append-only design.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/provenance.py#L477-L523",
+          "version": "repo-lines-v1:sha256:8678a87e99527d46812df309063294ac626718f812d97967715d4bad2ccdbcda:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0MDZmYzY5YjIyMzQwZDBmYjUzOTk3NzMzYTcwMmUzOWIwOWE1Njc3OTQ0YTQzNTE2ZDdiOWY1MWU2OWE2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1Y2EyZjA2OGUwYWZkYWRiYjVmZmQyYThmMDZiZDUyYWQ0ZDQwNmU5NWM4NzQxOWRiYjhiODA2MzI0ZGZjZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiZjEyOTljOTcxZWE1YTU2YWFkMTVjM2ZjYjUzNWE1M2JkODlhMDEyOGViN2RiZGM5Y2EyYjk5ZTFhMTM4YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmNDliY2Q2MDNjNTIxYTU5Nzg5NGI4YWRhYjJkOWZmYjlhYzhkNGEzYmNiYjczMGYzMTU2NWEyN2U4MWM0NWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ce5efabfd50245308dacd458edb3b64a",
+      "statement": "start_execution() requires each context id to match ^C[1-9][0-9]*$ or be the sole value not-applicable, and calls _append_context_execution() to validate every requested context exists as a row in the document's ## context配分 table before a new ledger row is appended, specifically to avoid leaving an orphaned execution when a bad context id is requested; finish_execution() can only close a row still in the started result state and rejects finishing an already-finished execution.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/provenance.py#L664-L738",
+          "version": "repo-lines-v1:sha256:181df2d15dab42fc8e2bb1e769a71ba9cdb33e1ba1429ea88126617f38caed2f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiNDBhZjJmZGQyZmRjZWI3MDhkM2FhMjc0ODUyOGRhNGQ0MmJmNWI2NmFlOTJjZGRkYWYzNjBjMDk2ZmM4NzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MjIwNGM2NWY1MDJkYzE2NDU0YjYyNDA4NTZhOWFiN2FkZTAwM2E4ZTlmODYzMzNlYzBiN2M5ZTQwOTQ5MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmN2E4YmJiMzhiOGUwYjQ0NjRkODhhMDE5Zjk2YWVhYTcwMmNmZDhmZmVjZTgwNDIxMjFmZTRiNDZhZWQzOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4NTY4Njg2YjQ4ODNiNDUzMzk5ZmQxM2FkZmY2OWU4MjY0OTVkYmRkMGI0ZDkwZjFjYTE2MmNmNjVjNjZkYTIifQ"
+        },
+        {
+          "resource": "repo://docsweep/provenance.py#L777-L797",
+          "version": "repo-lines-v1:sha256:ae88596695ed571ebf2d70b7d176eeef6ede30df7e88050040810a68c00c3969:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkZGQ2Zjg5MjVmZjRhNWE1NjNmOGUxZWYxMTljMjY0ZjU2YjNhNjNmODgzNjgxYmUwMzY3YWNlZmNjNzQ3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4YTQyZGU0NDVkN2VhN2RjMTU2OTNkZWRiMDI3YTZlYmQ1MDg0YzFiYmI4NWU2YTYxNjRhMDU2YjQ3NDUyMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MzdmYjA3OGMyODFhN2I5NDNhZTNhNzE2YmNjNjNjYjRlZWQ2ZGNiY2E3NTZkNTc2ODNiMWNlMjA4ODUzNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlYzBkMDdjMjc5OWQ0MTE4ZGI0NjQ3YjBkOTc3MWYxY2RjNWQ0OTA0N2NkMGI4ODZjMGQzM2VjYTAxMzExNTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d1db51e6d0c24cf0bcad06d7462c6cb6",
+      "statement": "The provenance ledger is written under a file-based lock using O_CREAT|O_EXCL with a 120-second stale-lock timeout and a 5-second acquisition timeout, _read_ledger() raises ProvenanceError if the CSV header does not exactly match the current LEDGER_FIELDS schema, and _append_row() raises ProvenanceError on a duplicate execution_id.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/provenance.py#L213-L273",
+          "version": "repo-lines-v1:sha256:38a02b5d00f59ab462811d51320de4b84d32701fe6cd7638a6f170526b38a0e5:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5MzI0NThhYmVjMTk4MDUxZDE3ZGE0OTNhZjEzYjM0OGRmYWRjNzU0ZDgwODJiOWZjYWY1ZDczNzNkYWMzODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkZTRkYjQ1YTIwOTVlZDI5MDFkY2YxNmI0NDEyNzBkN2U0MzE4YjM0MTg1NmE5ZDIxNWY3ZDgyYTcyNzc5NDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyZTA2MzAyMTQ4ZWNiODU5MzU4NzEzOWZjMjZkOTM1YTc1YWM3NDkyOTJlNjIzZTg4NjVjMGY3MmJmMGM3OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4NWYxNThmZjMzZTQzMTcwMDA4NWZiZWZkMTA0N2RjYWYyMzBiMTQzMjYyNWE1NTc3MDUwN2ExY2Y5YTVkYTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_86f3219a2756448f962270864afd6d1e",
+      "statement": "check_document() marks a document invalid if any ai_execution_refs entry fails to resolve to a ledger row with a matching work_id, if no authoring row exists, or if an execution id appears in the context配分 table's AI実行 column but not in ai_execution_refs (or vice versa for non-authoring rows); a ledger work_path that no longer matches the document's current path is only a warning, not an error.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/provenance.py#L815-L873",
+          "version": "repo-lines-v1:sha256:7466e0f106109a8a7cc696a7fa97b09bda4f6842eec1aa0102ce67bebeabb5c4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhODYwZWUxNDQ1NzgxYzRlM2Q2NzQ1OWQ1MTNhOTEwZmFhM2U4MGY0NDA0MGQ4OGFiNjlhY2M4YTkzODQzMDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MTlhNmRjYzA0ZTIxM2EzYzdhNzdhNDU2YjAxZTc2ZDFlZjc4Y2QwMGJiZWMxZDhmODE0NThmZTkzZWRjNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MzdmYjA3OGMyODFhN2I5NDNhZTNhNzE2YmNjNjNjYjRlZWQ2ZGNiY2E3NTZkNTc2ODNiMWNlMjA4ODUzNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5NjYxYTJjNDU2Yzg4MWNiMTRlNWU5NzZkMGRjNjNjMmI2MTc0MjNiOWU4ZWNhOWQwNmI0ZWFlMjk2ZDY2OTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bf57d40b81ad4cc9b27a2a18d2306097",
+      "statement": "AIMetadata.resolve() defaults unresolved fields to the literal string unknown and defaults model_source specifically to unavailable, and if model_source resolves to unavailable it forces model_id and model_display back to unknown even if a value was otherwise supplied for them, ensuring an unconfirmed model name is never recorded without an explicitly unavailable source.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/provenance.py#L131-L144",
+          "version": "repo-lines-v1:sha256:b0250a895599df4681dc0a47a4b5606e2b2f6379df8921a842e2fce810a528bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmYWY3YmIyYjU2Y2Y0YzgzYWExMzc2YmRlM2IyMWVhZjExNmRkZTBmZGEyMGQ5Njg2ZmY2ZTUwMzQwNGY0YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkZmY4YjA4ZDljNjE1MDc1MDg5MWU1OGFjM2M0MWQyYzMxM2M0NzUyYTA5YTYxOGEwYTYxMWZlNDhlODA4MTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzZDdhM2Q5NGU0NzE4MThmMzNjMTBkMWE0ODE4ODMxMTM4NGM5YzU3MWFjZDhiM2U4ODJiOTAyOTI2MjNlOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhMWVlZDQ0OGYzYTI2ZGFjYjI5MjI4NGQ2OTg3MjM5YTk0NDM0MGU5ZjQ1ZTdlODI0OWI0NjExYTY4OGNiYmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6cd0449b11ee4c879a1b322089af1700",
+      "statement": "session_logs.py's _only() helper treats zero candidate sessions and two-or-more candidate sessions identically by returning None, deliberately refusing to pick one of several equally-plausible sessions because a path pointing at the wrong session would look just as authoritative as a correct one.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/session_logs.py#L191-L201",
+          "version": "repo-lines-v1:sha256:fd432790cbc859ea2eb0a394c6e503e3024b4c5f293f519f18eb89cf0b62d5dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNzM4MWI5ZTBhYjdiZmQyNmNlZGM3M2ZhYTg0NmU4ZmFkMmFkOGU0NTk4YTg0MTcwMzU3ODU0ZjcwNzdlODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxODMwOWYwYWYzZmE5ODMwODUzZjJiZWEwZTIzNTQ0MzFjMWNmODIxZGU0Yjg0ZmMzNWQwZjQ1ODNiZThkNjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxYTJjNzEzNjE4YTUyN2FhN2FlOGY1MTRiNTQzNGYzYjMxODY2OTc0NDJhZmQ1MjVkMGJlNGQ5YmM2ZDJhY2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1ODhiMzg2ZTJiNTYxMzhmNjkyZTNmZDZmNWY4NWNiMWRmMDZmNDA4ZTQyMDVhZDFiYTNlNzMzNTFjZjY1ZjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3be198ba9239437a9980625605ac4483",
+      "statement": "Claude Code's session transcript is resolved directly via the CLAUDE_CODE_SESSION_ID environment variable glob-matched against a jsonl filename, needing no narrowing, while Codex/Grok/Copilot/Cursor sessions are matched by both an exact recorded working-directory match and a 10-minute freshness window (FRESH_WINDOW) since the session's own last write, and opencode is unsupported because it stores every session in one shared SQLite database with no way to isolate a single session.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/session_logs.py#L1-L23",
+          "version": "repo-lines-v1:sha256:74aaf6f245c85389b7516f6f1d4442a9813f2985a2c11aa4b639eb195a7a1ff1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2MTgyMmIzMjk4NDUzODJmMDAzNzA0NmJiZDljNzI2MWFlMzQyZmMzYjAyNTkyOTJkZTBlNTllNzc4ODE3NTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NWQ0NTg5ZTkxY2M4Y2I5NzQ4ODlkYWIwMWRlMTVkYjE1NzRjYTEwZWVjNzI5MGExMDliZjU4OGM5NGUwMWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0MzBhMDhmOTllNzNjOTUwNjE0MWUyY2IwZGY2Y2RkOTM2NWVkZGE5ZjQwY2IwZWUwY2IzYTdjZGRhYTFhMjIifQ"
+        },
+        {
+          "resource": "repo://docsweep/session_logs.py#L259-L271",
+          "version": "repo-lines-v1:sha256:7ef97f0d811c2b8bf7258b29baaadc3906e6cff51fa0ec72c51142ae1425bb22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZWM5N2ExMjJhZGY0YzlhYTg3ZDVkYTM5NmIzNjhkYjllMzc4YjM5YTE1N2U4OTY4ZGFiNWJkOWM2NjM2YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5YjljZTFkODQ0ODU0Y2M5OTkzMTI2Y2NhMWU3NjI3MTVjOWEwYjZkZmM1NTFiOWFmYjNhNmFiZTg2ZTljYjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyZTA2MzAyMTQ4ZWNiODU5MzU4NzEzOWZjMjZkOTM1YTc1YWM3NDkyOTJlNjIzZTg4NjVjMGY3MmJmMGM3OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3NGUyNDE3OTNlMmNkZGY4ZTI3MDZjZGNlYmMwNDIwNTg0NGZjYjQ0YjA4NTQxOTJiNDc4MGNjY2Y4NmI2MGEifQ"
+        },
+        {
+          "resource": "repo://docsweep/session_logs.py#L77-L106",
+          "version": "repo-lines-v1:sha256:0087b6887082b1565a1427a23e600059bf6d3bb666419b78575f6f3233e9db69:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNDUyY2MxMzdkMTdkM2YwMjczNzk5MDhiMTQ3ZTkwZjRiOTVlMTRhMjQzMTYzODRmMjViMmExN2I2NmUwMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExMzA2ODlmNjk1ZTA1MjhmNzRkNmIyYjZkNjE5NTY2M2U2MDg0OWViM2Q3MGVjYTEzMjU3Zjk4NmNjZGNmOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyZTA2MzAyMTQ4ZWNiODU5MzU4NzEzOWZjMjZkOTM1YTc1YWM3NDkyOTJlNjIzZTg4NjVjMGY3MmJmMGM3OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiMTM4YWY0MzJkNGU0ZDk0OWNmMDI1OTMyOGE1MzFmN2EyYmY3N2M1MDY5N2Y2ODAzODBlMGNiNGQ0ZjBmNGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_262cffc26d9d4e79959c62a945597d1c",
+      "statement": "_session_log_lines() only writes the ai_session_logs frontmatter field when the target document's work queue is work_policy: private and privacy_enforced(config) holds, because an absolute session-log path embeds the OS username; a shared/public work queue never receives this field.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/provenance.py#L288-L307",
+          "version": "repo-lines-v1:sha256:1b5536629f5b2de985fa826568361b95ba31dbd04c25baf7ed8c33c3f4ef1f8d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4ZTZjYzMxOWNhMmNiYjhjMDliZjQyZjg1MzNiYzJmOGY2M2QxZDVlNGMyZDg0YWIzNGYyYmUyNjhlNjJjYzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMzk3ZmUyZmVkMGMwMjRmMWM1ZmM4NzdiMjBkZjBmNzFjNzQwMDE4OWY1NTAxYjEyNTM1YzY3YWE1MGU2NmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzNzk2MDdiODY0YmY0ZTM4ODdmOGIwMDAxMTAwNmQ5YTAzOGE0YTZiYmIyM2IxZTM5ZThkZGFhMDExOTBmNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjllZGJhNzMyODA4NDhkOGEwOWViNmE3N2UwMjdkMDM2MTA2MzA3YjhiZGMwNTUyZmFiYzNiOTE3YjJiNmVlNTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_683328f7e0fd43029b2b5f951f9d6e75",
+      "statement": "Every provenance entry point calls _delegated(config) first: manager='repo' short-circuits to a delegated response without touching the generic ledger at all, provenance disabled or manager='disabled' raises ProvenanceError instead of silently no-op'ing, and only manager='docsweep' actually writes to the generic per-user CSV ledger.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/provenance.py#L198-L210",
+          "version": "repo-lines-v1:sha256:861784bacaae9a9e224ead4c4302fe01683dbd57eef68324d467b1ff4d1de743:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmMDc0MDRjYTUxMTM3MjMzNGJkOTU0MzYxMTlmN2E0YWIxNzZiNWM5ZTA0MmM3NzI0ZDZkZTcyMWIwZDkzOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExMzA2ODlmNjk1ZTA1MjhmNzRkNmIyYjZkNjE5NTY2M2U2MDg0OWViM2Q3MGVjYTEzMjU3Zjk4NmNjZGNmOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlZTEzNmZlODEzNzI4YzZjNzkxNjc2YzE3YmU2MWI5MDA5ZTU3ODljYzVmNjM0NjY5ZWEzYTQ0OWE1OTYzZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5MTc3M2M5MzU0YzMzNjczZWRhMmUwYTE5YzVlYmIyMTlhY2JhMjkwYzdlOWY0YjkyZmFkNjIzN2FkNjlkOTYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

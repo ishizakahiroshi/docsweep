@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:24db12e329c025ea8a2d4a184feb89cf17cfaa8498c0778216fdbaf6d524a74c",
+  "claims": [
+    {
+      "id": "claim_be2d4a8c8160404385e6da6a1f9b999a",
+      "statement": "docsweep/server/security.py's module docstring establishes the security posture: the server binds to 127.0.0.1 only, a token is required, and any path the server lets a client view/preview/open must resolve under a configured scan root after realpath resolution.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/server/security.py#L1-L7",
+          "version": "repo-lines-v1:sha256:7a6f7650b932c5d79db8116035c139ddbbd89e4423a646261de8e936a07d790e:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQ1MjQ2NjM2YjQ3YmQwNzdhOWEzZWU0ZjJmYjQ4NTcyZWNhZGYzMDUzMTY1ZTNiYjI1NGI2ZWU1N2NkM2Q0NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDc1ZDQ1ODllOTFjYzhjYjk3NDg4OWRhYjAxZGUxNWRiMTU3NGNhMTBlZWM3MjkwYTEwOWJmNTg4Yzk0ZTAxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzQzMGEwOGY5OWU3M2M5NTA2MTQxZTJjYjBkZjZjZGQ5MzY1ZWRkYTlmNDBjYjBlZTBjYjNhN2NkZGFhMWEyMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_994a718f2b5244c6842eb3f3984f3b5e",
+      "statement": "check_token() accepts a token from an HttpOnly cookie, an X-Docsweep-Token header, or a query parameter, comparing each with secrets.compare_digest, and app.py's _token_cookie_exchange middleware exchanges a valid first-visit ?token= query parameter for a SameSite=Strict HttpOnly cookie via a 302 redirect for GET/HEAD, but answers POST requests in place instead of redirecting because redirecting a POST would downgrade many clients to GET.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/server/app.py#L128-L157",
+          "version": "repo-lines-v1:sha256:c94eb616a81b1f11cf062387336d028c65826911df214dea550f2c709450b420:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZjAzMDJkNTA4ZDhmMWZjMGMxZGU0YTYxNDFiNzIzZmVjZmZhOGJkZGIwYzgzZjM3YTY0ZmFhYzhlMThlNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmZjU3ZDlhNzRlMjdhNWQyN2JjYTEwOTYwMDBhYTNlYmM2OWQyOGNlMDE1MDkzNDZlZTRmMDdiZTAxMWVkZWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwZTRjMjMwMTNmZTY5OWViYmJiMjQ3MGRjNGI0NzMxMDA5ZDYyZGMxODE2ZTQ5OTZhYjViZjZhZThkNjI0MGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NDU2ZjRkMGJmZGY3MGQ3MzA5MGNlOWQ1MWUzOTdhYzc3OWY2ODg1MDYyMzBiZDI2NDBhNDI1ZDE1OWFlOWYifQ"
+        },
+        {
+          "resource": "repo://docsweep/server/security.py#L22-L45",
+          "version": "repo-lines-v1:sha256:9a9df6600c1d99467e1eef373c7081f5af365faae9e3f806d83038ca57e99968:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1YTNlMTA1OWIyYzZiMWQ0MDBiMjFmNGVmM2JmMDE2OGI3NDE1MTBhNDcwNDIwYWJjYzEyMDE0MjAxMzNkNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ZTY2ZjU5NzBmMzZmNWFhMDI3NjIyZTNmZGE0Mzg4MTJjMDNiODU5OGNlYjM2MDBkYWUyMjA5ZWQ0ZDIwYjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxZTgwYTM3OThlZjZmYmQ1NTA0N2M5ODNjZTU4YjUwZjY4NTk4ZmM1ZWZmMmQwZTFjMDI1NjE2YjFmNzY2NGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NjhjODRiNWJlNzQ4ZTdlOGQ2YWUzYmQ2OTgxOTkyNTQxMTE4ZTZlYTBhMzc5NDc1OTg1ZmRmNTM2M2I1OTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b12fb79e24f844fc942cd4e7545c9d46",
+      "statement": "A server started with --read-only runs a _read_only_guard middleware that returns 403 for any POST/PUT/PATCH/DELETE request except /api/shutdown, regardless of what token is presented.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/server/app.py#L159-L171",
+          "version": "repo-lines-v1:sha256:d0eece9e89bf0838f3fdbc72e107f1bf9e19b2f6d4b85cdb57d4363e5e4e58d5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZjAzMDJkNTA4ZDhmMWZjMGMxZGU0YTYxNDFiNzIzZmVjZmZhOGJkZGIwYzgzZjM3YTY0ZmFhYzhlMThlNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmZjU3ZDlhNzRlMjdhNWQyN2JjYTEwOTYwMDBhYTNlYmM2OWQyOGNlMDE1MDkzNDZlZTRmMDdiZTAxMWVkZWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkMWYyMjg3NjNjYjYxYzEyMDcwY2JhYzQ3NDA1NjY5MDcwYTBjYmMwYzdmZTk4ZjM1ZTNhZjFhMzY1YWUwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzMmNhMWNjMmUzMzRjMmJmZDdlNmQ3NDkwZWZjOTFmOTY3OTIwYzFiZjFjMzdmOTVkZDAwMDEyZjMxYTUzMzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6e6aa614a36b438eb6b0a60b7adeaf1b",
+      "statement": "resolve_under_roots() resolves a client-supplied path with os.path.realpath, rejects any path whose suffix is not .md, and accepts it only if it falls under one of the configured roots using case-insensitive comparison via os.path.normcase; every file-touching route (preview, apply, open, reveal) rejects with 403 path outside scan roots when this check fails.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/server/app.py#L213-L218",
+          "version": "repo-lines-v1:sha256:1060285d889e8e4dd37bbc761151d4ae051fd2024428bc4c1330425a64b3324d:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWRhOTZmNjNhNmQ0MjNhNTExNjJhNmNhYzEwNWUwOWU1Y2VkNjQyZmQzMzRkNGY5ZjI1YjY1Njg5MGYwMjBiMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTBlYmRkMjg2ZDVhNTVmZmE1NWY3Yzg3MTFiZGM3ZDY2Yzk2YjRhNDI2NzI4NDJmYmRlNDViMzRkNDEyZTA1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTBiZjE1MWJmMDMyNjk5NTNkMGZkZjdlNGVjNjRjYzA0NTMxZDRmOGIyMjkxODUxNTAyZmM4YWU3YzZlZmNjYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWI5NDkyMjY4OGM3ZmJjODc1YmNmMzg2NTkzZTYzZWIyZjVjNDk0OWZmMDQyM2QxOTM3ODY5MWQ0MWNiODc3ZSJ9"
+        },
+        {
+          "resource": "repo://docsweep/server/app.py#L254-L257",
+          "version": "repo-lines-v1:sha256:3846ee81db48ecf2ce6ee82b798960dcbd62b855cc49176250e34778c4446792:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWRhOTZmNjNhNmQ0MjNhNTExNjJhNmNhYzEwNWUwOWU1Y2VkNjQyZmQzMzRkNGY5ZjI1YjY1Njg5MGYwMjBiMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYThhMTVkNjEzMjAwYjI4YzY2ZDk1OWJhNjIzNmUwOTE4NDNkMTdiYWMzNzcxM2MxZThhNTIwZTQxYTQ3ODRiZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmYzMGEzZjhlZGRlNTBhYWU3MDY1M2YyYzc1NDI3ZWI2YzEzYjgxYzZmMGQ0YjE0YmU1NDM2MTU2ZTIwOTBiMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDU5Zjc2N2Q0YzMxNDRmMWRjMDhkM2FlOWNjN2JhMmYxMTE2ZWE3OTkzMDBmNWI3MzhhYzk1YzI1OWIxM2I0MyJ9"
+        },
+        {
+          "resource": "repo://docsweep/server/security.py#L56-L80",
+          "version": "repo-lines-v1:sha256:3942c20e2d25e7eee73038d547e81d4d0e79e9f1c882b27bd4e0fbbd630658d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0NTJlZTgwODI0OTMzNzI1MDUyZjYxNTYwZTNiNmEzYzBjMTM4ZWY5OTVkMzUwNzkzYzIzY2NkZTZkNWNhZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExMzA2ODlmNjk1ZTA1MjhmNzRkNmIyYjZkNjE5NTY2M2U2MDg0OWViM2Q3MGVjYTEzMjU3Zjk4NmNjZGNmOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkYzVhZjBlNDMzNDc2MDZkNTIwY2M5ZWU5NzliMjI0YjUxMjhmYzM4NWVhMzk1ZWUyNjJmMDdlZDljMWZjMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_294faa0053164884bd56de457bb583c4",
+      "statement": "The /api/config/roots add operation is refused entirely unless the server was started with --allow-root-mutation, and separately rejects adding the OS home directory, its immediate parent, or a filesystem/drive root as a scan root via _is_protected_root_target, since such a root would expose far more of the filesystem than a normal project root.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/server/app.py#L317-L335",
+          "version": "repo-lines-v1:sha256:8b38163497d19eef4110c3a5a616e189f0f790c2ec7b380b02b3d9b7a6bd245c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNGFhZWJmZjk2MGQ1OGE4MWM3ZTA5NGZjNzIwNGE5NzlkMDc0MDRlZmZlYzQ2Yjk0Njk4YTVhY2VkODFlZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkMDAwNzg3NWRlOGY5MmQ5MmI3ODdhMDE4YzE2YzAwMDQxOGJkNWY5NDk5MjNiOTBmNGQ2M2M3ZWMxNmQ4M2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMjE1MjZkMzRjNmU5Y2VmZTg3ZjRkNDczYTgxYjM5MTE5OTYyZGZlYTg2NWUzNmVhMmJlYzAxZDBmMGVlZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0YjIyMjFmODQ3N2JkM2EyODYzM2Q2M2IwZTIzZjI0N2U3YWRjNmRiOWJjNWUxM2QzNDFjNzk1N2NmMDk0NzgifQ"
+        },
+        {
+          "resource": "repo://docsweep/server/app.py#L73-L93",
+          "version": "repo-lines-v1:sha256:725ccafa77862ec423d828f5aef895c2b340a059835dbe7a078d8eba51d587a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyOGI0MmI5NTFkYTM1ZWUyNWFkOTRlNmQ0YjZhNTBlZGIxMTg1MDFjZjY3Y2FlNDg0MzA5ODU0OWE2NGZmNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MjIwNGM2NWY1MDJkYzE2NDU0YjYyNDA4NTZhOWFiN2FkZTAwM2E4ZTlmODYzMzNlYzBiN2M5ZTQwOTQ5MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxMTBjM2QyYjRlMWI1ZWE1MmQ5NzE0ZWUwZWIzNmVjYmI0MDg5NzkzYzAxYmUzMzY3ZTkxZTAzNDE4OGNmNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1NTVlYjBjOTZlMmQwOTM3YWRhN2Q5OGIwN2ViZWRkODA5YWZmZTMxZTk5ZTc0NGVjNjRiNTVjM2I1MDU3MzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_52e13ec86e9845e0b46b7c35f0d50bc8",
+      "statement": "_render_markdown() pipes every rendered Markdown preview through sanitize_html(), which uses the nh3 (Rust/ammonia) library with an explicit tag/attribute allowlist that never permits on* event-handler attributes or inline style for any tag, restricts href/src URL schemes to http/https/mailto, and lets nh3's own exceptions propagate rather than silently falling back to unsanitized output.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/server/app.py#L53-L65",
+          "version": "repo-lines-v1:sha256:7cba9c2a194ccf6a001035c39a3d90c108796ed183ddc6cd4e474f03f3fa846b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzZGI4ODYxNDVlNDc5NzgyZmI5MmQzYzhkMjQ4MjFhNGYzNjk2OGRjZjA5OTE1NzhiOWMxOTEyOWQ5MTZjMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyZTE3ZGY4M2U1NjBmZjk4ZmEzZWFhMWIzZWFhNjk0MjQ3ZmFiYjk1YTc0OWI1NWE5OWRjNjZhNGJkMDUxZDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxY2ZkMjFjYzMwNGFmODI4NGE4NWY4NWZjYjM0ODYxMTFmMDY2YTEwZTY3ZjNmNTNmOTRiNmVlODE3ZGJmZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5MDUyNGY1OGI5YTYyOTJmZjUyZTZmZTE1YTFjZDAyNTZiYThlYWYzYzk1NTg4ODBjYTYyZDA4YzE1MTFlZjQifQ"
+        },
+        {
+          "resource": "repo://docsweep/server/sanitize.py#L1-L55",
+          "version": "repo-lines-v1:sha256:b387468183c50f038824ef752dd798e11154527aa38942718628d607aab7784b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwZDI3YTdlMjlmNzA5ZjFiY2Y1NDZlM2Y5ZTBmMzM5OTBmY2Q2OTkwMjRkMWFiZDdjMDNmNjM4ZWZjMDcxMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MjIwNGM2NWY1MDJkYzE2NDU0YjYyNDA4NTZhOWFiN2FkZTAwM2E4ZTlmODYzMzNlYzBiN2M5ZTQwOTQ5MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_30285e8bcc474e568fa51119e5f1c1b8",
+      "statement": "Every server response carries a Content-Security-Policy of script-src 'self' with no 'unsafe-inline' (plus Referrer-Policy: no-referrer and X-Content-Type-Options: nosniff), set by an _security_headers middleware, so that a hypothetical script payload that evaded sanitization still cannot execute in the browser; style-src does allow 'unsafe-inline' as a narrower, lower-risk exception for the board's inline health-bar width styling.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/server/app.py#L173-L189",
+          "version": "repo-lines-v1:sha256:31ca1b3910304e1071a839117f2ffb2f2d21ab978a3940176fa2df3ba0ab8909:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZjAzMDJkNTA4ZDhmMWZjMGMxZGU0YTYxNDFiNzIzZmVjZmZhOGJkZGIwYzgzZjM3YTY0ZmFhYzhlMThlNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjOTZlYTEzZmFmYjU5YjAyM2I1MjU1OTQ3N2M1M2NkNGE2NDlkNmI5ZmY3Zjg2YjgyYWYyNGNjMDRhZDU3NzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMzM1OWU2NmMxYzBkZjVjMzQ4YTkxMjNlNzk5ZmRmMzA1ODU5MDUxNWVjMzczOGU5MGYyOWZiNDRjODkyODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1ZTI3YWJlMTIyMDBlNjA3NzRjYjYyYjEzNGNlYjEzMmU3MzY5MzZjYjUwNzkyMWUyYzg2MWM2NGZkMzU2YWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e861e18066334a559dee53b23bf2c248",
+      "statement": "tests/test_offline_assets.py's test_templates_have_no_inline_script scans every template under docsweep/server/templates/ for a non-empty <script> body lacking src= or type=application/json, and for any onclick/onchange/onsubmit/etc. attribute, failing the test suite if found; its docstring records that the graph, brief, and capture pages were found silently broken this way just before the v0.4.0 release because the CSP causes the browser to drop inline scripts/handlers with no visible error.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_offline_assets.py#L46-L76",
+          "version": "repo-lines-v1:sha256:ec659ec3d94f80341f6af959fd1c73babe5870521ed79961dccab3ae65332ac3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyNWYxNmE3NGMyOGM1NmU5YmY3ODdjNTA5MmYyYjU1OTY2ZWExYjZhODdhMTQ4YjA4NmM3NDhkZmMxOGFjYWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MjIwNGM2NWY1MDJkYzE2NDU0YjYyNDA4NTZhOWFiN2FkZTAwM2E4ZTlmODYzMzNlYzBiN2M5ZTQwOTQ5MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkYjcyMjU2YmZkNzBiMWY4Zjg5MzQ3ZTlkZmE4ZTY0ZmM3NmNiMTIzYjFlNGY2NWQwYmViNzk5NjJiZTdlMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzODNkOTRmNGE2ODJmYWYyY2MxZTM3MDkxYzBmZmI3ZDFhNTI4MDU5MTJhNTVmZDdkNmM0MGQ1M2RmYWJhNTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d04a61e04dfe4bdb8a7b39cab9c9febd",
+      "statement": "tests/test_offline_assets.py's test_templates_have_no_external_script_or_stylesheet fails the build if any template references an external http(s):// script or stylesheet, enforcing that the Web UI works fully offline; its docstring records that the graph page fetched cytoscape.js from unpkg until v0.4.0, when it was vendored into docsweep/server/static/cytoscape.min.js.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_offline_assets.py#L1-L37",
+          "version": "repo-lines-v1:sha256:94d08c3e508a47d243d1c585fc89fe07cd3063c82ffd449a91ce7afec94e9dbc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkNDg3ZDkxOGFlYWQ1NDgyM2Y2MzAyN2QxYmU1YzFmYThkYmUyOThkMWM5YzIzYmM3MWI0OWYwNzllODk5ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MjIwNGM2NWY1MDJkYzE2NDU0YjYyNDA4NTZhOWFiN2FkZTAwM2E4ZTlmODYzMzNlYzBiN2M5ZTQwOTQ5MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0YmQ2YWY1NDhmYWI2YzA1MDg2NjA5OGE2YTZjZGFmZTA0YTZhOTg0MTgxNjdiOTliOWRlMzRjMTI5YmM2YjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1f15c9a15bc243e6905a55078ce0ec28",
+      "statement": "create_app() mounts seven APIRouters from docsweep/server/routes/ (board, cards, brief, capture, cross, graph, resurrect) in addition to routes defined directly in app.py, and an inline comment notes that an older dashboard stack (routes /, /list, /fragment) was retired and physically removed once the kanban board consolidated that functionality, with / now purely redirecting to /board.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/server/app.py#L195-L204",
+          "version": "repo-lines-v1:sha256:981ab4d7a80f66b143a70399749e6be24f3959a6acd99154b504ed5fdc8bd7f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0NmQwNzc2Y2NkMWJkOGQ1ZjMwMjdjOWU2NzQ2NGUwZjdmMjhjYTAyMzc3ZTY1YzhhM2FmMDIwNGFiNjhhZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MWQ3N2I2ZmFiOTQ2YTU0OWQ4ZjQzNjIzZGU3ZDQ5OWRmNTMzM2I4ZWU1MmUxMjExNzE0ZjI5YTRlNzQwOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3YzIyNjc3YjQ5YjJiYmRlNGQ4OWFiN2JkZTVjNmNhYWUwYmRiZDBiYzJiOTQ1NTg3OWYzZGVkOTE2YjBjZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4NGM4MTQ2NzRjYTg2NjEyZjAwZTg2YmRhMzZjMzdiNjY0MTc3N2FkMDRkNTdiMTdkZWE5MGRkYmFkYmI4NTUifQ"
+        },
+        {
+          "resource": "repo://docsweep/server/app.py#L447-L453",
+          "version": "repo-lines-v1:sha256:b1bd6b857b914111dcd45dfc1a480a19d0247a9ad4ec7be796b78055c37860b9:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjIyMmJkNDc4YWMwMmFiZTIyMjRmMGExOWEwMzQ4MWVkNmE0ZDY1ZDI1NjRiZmU0YzdhYmFmMzZhNjQzNTA2YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjIwNzJhMDk3Nzc0NWQ4ODI4YTBjODE2YjQ2Y2IxMmRmOTE0YTdlOGZhODZmMWIwOThhOGVlNWJkZmFhOTRmOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODEwMDkyM2NmOGNlM2ZiNDcyYzE2MjVkNDJjZmFhN2UzNjg3N2NhMTI4OWExZGQ5YjkwM2IxMDJhNDhkOGExMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGZjMjdkYjA1OTNmM2YzMzQ0ODFhM2NlODJkOWY5NzAxYTI2NDQzOGIzOWM4Y2NjNGMyN2QxNjA1NGI4ZWJkYiJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}
