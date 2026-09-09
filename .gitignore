@@ -90,8 +90,17 @@ docs/local/
 /docs/obsidian/
 
 # docsweep 実行時の生成物（スキャン結果・履歴）
-INDEX.md
-INDEX.json
+#
+# 先頭の `/` はリポジトリ直下だけに限定するためで、これが無いと**あらゆる深さの
+# `index.md` が黙って落ちる**。Windows と macOS は既定で core.ignorecase=true なので
+# `INDEX.md` が `index.md` に一致し、スラッシュを含まないパターンは任意の階層へ届く。
+# 2026-09-09、OpenWiki が生成した `openwiki/**/index.md` 6 本がこれで脱落しているのを
+# 発見した（17 本のうち 11 本だけがコミットされ、ページを繋ぐ目次だけが全部消えていた）。
+#
+# 実体は `aggregate_index.py` がスキャンルート直下の `.docsweep/` へ書くので、
+# 下の `.docsweep/` だけで既に覆えている。この 2 行は旧レイアウトの名残り。
+/INDEX.md
+/INDEX.json
 .docsweep/
 
 # テスト用 fixture / golden は上の無視パターンより優先して追跡する。
