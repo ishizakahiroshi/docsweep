@@ -25,6 +25,11 @@
   - OKF v0.2 との対応と Bundle の構造 → [docs/okf-mapping.md](docs/okf-mapping.md) /
     [docs/okf-export-format.md](docs/okf-export-format.md)
   - 一直線の状態モデル図と CLI の使い方 → [README.md](README.md)
+  - **どのファイルが何をして、どのテーブルを読み書きするか**（探す前にここ） → `.omitnix/index.json`。
+    全ファイルの索引とテーブル逆引き。**解析できなかったファイルも名前と理由付きで載る**ので
+    「索引に無い」と「読めなかった」を取り違えない。参照 0 件は「未使用」ではない。
+    **`generated.commit` が HEAD と違えば索引はその commit 時点のもの**なので、古いまま断定せず
+    `omitnix` で作り直すか、古いことを添えて答える
 
 > 個人/グローバルな AI ルール（言語・確認フォーマット・スクリーンショット規約・
 > ターン終端の出力ルール等）は **このリポジトリには置かない**。各利用者が使う AI ツールの
