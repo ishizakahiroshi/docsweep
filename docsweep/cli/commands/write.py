@@ -220,7 +220,11 @@ def cmd_promote(args: argparse.Namespace) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         if not moved:
-            if due_expired_only:
+            # 失敗が 1 件でもあるときに「対象なし」と言ってはいけない。対象はあったが
+            # 全部落ちた状態と、そもそも対象が無い状態は、利用者にとって意味が違う。
+            if moved.failed:
+                print(f"昇格できたファイルなし（対象 {len(moved.failed)} 件がすべて失敗。詳細は下記）")
+            elif due_expired_only:
                 print(f"昇格対象なし（{args.state} の due 到来ファイルが無い）")
             else:
                 print(f"昇格対象なし（{args.state} のファイルが無い）")

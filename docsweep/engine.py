@@ -18,7 +18,7 @@ from .config import Config, archive_dir_for_project, archive_route_for_project
 from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from .models import Action, Flag, FileRecord, MoveLogEntry
 from .scan import ScannedDoc, _build_doc, detect_project_root, scan
-from .services.status import update_status
+from .services.status import update_status, validate_state_transition
 
 
 def classify(doc: ScannedDoc, config: Config) -> None:
@@ -347,6 +347,10 @@ def promote_state(
             continue
         try:
             project_dir, root = _project_dir_for(doc, config)
+            # 種別と状態の組み合わせは dry-run でも検証する。ここを本実行だけに置くと、
+            # 下見が「移送できる」と予告した文書を本実行が拒否し、予告と結果が食い違う
+            # （2026-09-11 実測: 予告 9 件に対し実移送 7 件。pending 種別は done へ遷移できない）。
+            validate_state_transition(rec.type, to_state)
             if not dry_run:
                 _update_doc_state(doc, to_state, config)
             dst = archive_file(

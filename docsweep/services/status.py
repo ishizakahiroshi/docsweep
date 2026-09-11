@@ -85,8 +85,14 @@ def _current_h1(text: str) -> tuple[str | None, str | None]:
     return lm.group(1).strip(), (lm.group(2).strip() or None)
 
 
-def _validate_for_type(file_type: str | None, new_state_key: str) -> None:
-    """ファイル種別と new_state_key の組み合わせを検証する。"""
+def validate_state_transition(file_type: str | None, new_state_key: str) -> None:
+    """ファイル種別と new_state_key の組み合わせを検証する。
+
+    書き込みを伴わない下見（``promote --dry-run`` 等）からも呼べるように公開している。
+    dry-run がこの検証を通らないと、**本実行では拒否される文書を移送予定として予告**し、
+    予告と結果が食い違う（2026-09-11 に実測: 予告 9 件 / 実移送 7 件）。
+    判定の正本は ``_ALLOWED_BY_TYPE`` ただ 1 つにする。
+    """
     if file_type is None:
         return  # type 不明なら緩く通す
     allowed = _ALLOWED_BY_TYPE.get(file_type)
@@ -149,7 +155,7 @@ def update_status(
         raise StatusValidationError(f"未知の state key: {new_state_key}")
     if watching_days is not None and new_state_key != "watching":
         raise StatusValidationError("watching_days は様子見への遷移と組み合わせてください")
-    _validate_for_type(file_type, new_state_key)
+    validate_state_transition(file_type, new_state_key)
 
     new_label_token = target.label(config.lang)
     new_label = f"[{new_label_token}]"
