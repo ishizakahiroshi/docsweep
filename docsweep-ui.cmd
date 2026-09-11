@@ -15,7 +15,7 @@ rem If a folder was dropped onto this .cmd, use it
 if not "%~1"=="" set "ROOT=%~1"
 
 rem docsweep repository (works even without pip install)
-set "REPO=D:\dev\github\public\docsweep"
+set "REPO=D:\dev\github\public\docsweep" & rem secrets-scan: allow
 
 rem Port and fixed access token (URL stays the same every time)
 set "PORT=8765"

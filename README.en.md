@@ -87,9 +87,9 @@ No separate binary is produced; launching with `python -m docsweep ...` is the s
 
 | Item | Location |
 |---|---|
-| Python itself (standard per-user install) | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` |
-| docsweep package (after pip install) | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` |
-| docsweep config and state | `C:\Users\<you>\.docsweep\` (= `%USERPROFILE%\.docsweep\` = `~/.docsweep`) |
+| Python itself (standard per-user install) | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` <!-- secrets-scan: allow --> |
+| docsweep package (after pip install) | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` <!-- secrets-scan: allow --> |
+| docsweep config and state | `C:\Users\<you>\.docsweep\` (= `%USERPROFILE%\.docsweep\` = `~/.docsweep`) <!-- secrets-scan: allow --> |
 | `docsweep` launcher | `...\Python3XX\Scripts\docsweep.exe` (runs as plain `docsweep` if Scripts is on PATH) |
 
 > **Avoid the Microsoft Store version of Python**. With the Store build behind
@@ -181,7 +181,7 @@ python3 -m docsweep mcp
 # {
 #   "mcpServers": {
 #     "docsweep": {
-#       "command": "/home/you/.venvs/docsweep/bin/python",
+#       "command": "/home/you/.venvs/docsweep/bin/python", secrets-scan: allow
 #       "args": ["-m", "docsweep", "mcp"]
 #     }
 #   }

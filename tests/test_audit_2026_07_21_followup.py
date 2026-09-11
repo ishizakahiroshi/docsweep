@@ -35,7 +35,7 @@ def test_removed_root_does_not_survive_a_comment_inside_the_list(tmp_path: Path)
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
         "roots:\n"
-        "  - D:/dev\n"
+        "  - D:/dev\n"  # secrets-scan: allow
         "  # ここは開発ルート\n"
         "  - D:/work\n"
         "ignore:\n"
@@ -52,7 +52,7 @@ def test_comment_inside_the_roots_block_is_not_lost(tmp_path: Path) -> None:
     """ブロックごと差し替えても、中にあったコメントは残す（本 module の不変条件）。"""
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        "roots:\n  - D:/dev\n  # ここは開発ルート\n  - D:/work\nignore:\n  - docs/obsidian\n",
+        "roots:\n  - D:/dev\n  # ここは開発ルート\n  - D:/work\nignore:\n  - docs/obsidian\n",  # secrets-scan: allow
         encoding="utf-8",
     )
 
@@ -66,7 +66,7 @@ def test_other_keys_and_top_level_comments_are_untouched(tmp_path: Path) -> None
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
         "roots:\n"
-        "  - D:/dev\n"
+        "  - D:/dev\n"  # secrets-scan: allow
         "# これはトップレベルの注釈\n"
         "ignore:\n"
         "  - docs/obsidian\n"

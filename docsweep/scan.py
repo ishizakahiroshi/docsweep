@@ -645,7 +645,7 @@ def _rel_for_index(abs_path: str, root: Path) -> str:
 
     ``FileRecord.path`` は ``fpath.resolve()`` 済みなので、root 配下に junction /
     symlink があるとリンク先の実体パス（root の外）に解決される。例えば
-    ``D:/dev/kb`` が別ドライブ配下への junction だと ``relative_to(D:/dev)`` は
+    ``D:/dev/kb`` が別ドライブ配下への junction だと ``relative_to(D:/dev)`` は (secrets-scan: allow)
     ValueError になり、以前は sync_index がその場で落ちて索引が不完全なまま
     残っていた。
 
@@ -697,7 +697,7 @@ def sync_index(
        ``r.project == project`` が同じ意味論になる。以前は前者がスキャンルート単位
        だったため、索引が有効だと ``--project <リポ名>`` がエラーも警告も無く 0 件を
        返していた（「残作業なし」と誤読する事故）。
-    2. basename が同じスキャンルート（``D:/dev`` と ``C:/Users/x/dev``）が同じ
+    2. basename が同じスキャンルート（``D:/dev`` と ``C:/Users/x/dev``）が同じ (secrets-scan: allow)
        project_id に潰れ、``known_files`` → 未検出分削除の流れで互いの登録を消し合う
        事故が消える（差分同期が毎回全件書き直しになり、処理順次第で索引が空になり得た）。
 

@@ -452,7 +452,7 @@ def test_inject_global_dry_run_preserves_files_and_mtime(tmp_path, manifest, mon
     gpath.parent.mkdir(parents=True)
     gpath.write_text("既存 guidance。\n", encoding="utf-8")
     I.GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    I.GLOBAL_CONFIG_PATH.write_text("roots:\n  - D:/dev\n", encoding="utf-8")
+    I.GLOBAL_CONFIG_PATH.write_text("roots:\n  - D:/dev\n", encoding="utf-8")  # secrets-scan: allow
 
     paths = (target, gpath, I.GLOBAL_CONFIG_PATH, I.MANIFEST_PATH)
     before = {path: _snapshot(path) for path in paths}
@@ -604,11 +604,11 @@ def test_inject_global_keeps_existing_docsweep_config(tmp_path, manifest, monkey
     target.parent.mkdir(parents=True)
     # ユーザーが既に config を持っている状態を作る
     I.GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    I.GLOBAL_CONFIG_PATH.write_text("roots:\n  - D:/dev\n", encoding="utf-8")
+    I.GLOBAL_CONFIG_PATH.write_text("roots:\n  - D:/dev\n", encoding="utf-8")  # secrets-scan: allow
 
     r = I.inject_global(agent="claude", target=target)
     body = I.GLOBAL_CONFIG_PATH.read_text(encoding="utf-8")
-    assert body == "roots:\n  - D:/dev\n"  # 完全に温存
+    assert body == "roots:\n  - D:/dev\n"  # 完全に温存 secrets-scan: allow
     assert not any("config.yaml" in w for w in r.warnings)  # 通知も出さない
 
 

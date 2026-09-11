@@ -9,7 +9,7 @@
 # API キーは要らない。CI にはそのサブスクリプションが無いので、CI で自動化しようと
 # すると必ず API キーの話になる。だからここでは自動化しない。
 #
-# 置き石は `D:\dev\tools\openwiki-prep.ps1` が書く。
+# 置き石は `D:\dev\tools\openwiki-prep.ps1` が書く。作者環境の例示。secrets-scan: allow
 
 name: OpenWiki Update (disabled)
 

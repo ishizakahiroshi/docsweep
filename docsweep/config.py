@@ -151,7 +151,7 @@ class Config:
     user_name: str | None = None
     user_email: str | None = None
     # C1 (wings): SQLite 索引が再帰走査するルート群のグロブパターン。
-    # 例: ["D:/dev/github/public/*", "D:/dev/github/private/*"]
+    # 例: ["D:/dev/github/public/*", "D:/dev/github/private/*"]  # secrets-scan: allow
     # 未設定の場合は索引機能は ``roots`` をフォールバック走査する。
     search_paths: list[str] = field(default_factory=list)
     search_exclude: list[str] = field(default_factory=lambda: list(DEFAULT_SEARCH_EXCLUDE))
@@ -160,7 +160,7 @@ class Config:
     capture_llm_provider: str = "mock"
     capture_llm_model: str | None = None  # 将来用（モデル ID 指定）
     # AI execution provenance。既定は opt-in で、個人の global config から有効化する。
-    # manager=repo は cpni のようにリポ固有台帳・validatorを正典にする明示的な委譲モード。
+    # manager=repo はリポ固有台帳・validator を正典にする明示的な委譲モード。
     provenance_enabled: bool = False
     provenance_manager: str = "disabled"
     provenance_ledger: Path = field(

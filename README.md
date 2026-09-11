@@ -83,9 +83,9 @@ MCP クライアントへ登録する場合も、`docsweep mcp` ではなく `py
 
 | 項目 | 場所 |
 |---|---|
-| Python 実体（per-user 標準インストール） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` |
-| docsweep 本体（pip install 後） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` |
-| docsweep 設定・状態 | `C:\Users\<you>\.docsweep\`（= `%USERPROFILE%\.docsweep\` = `~/.docsweep`） |
+| Python 実体（per-user 標準インストール） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` <!-- secrets-scan: allow --> |
+| docsweep 本体（pip install 後） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` <!-- secrets-scan: allow --> |
+| docsweep 設定・状態 | `C:\Users\<you>\.docsweep\`（= `%USERPROFILE%\.docsweep\` = `~/.docsweep`） <!-- secrets-scan: allow --> |
 | `docsweep` ショートカット | `...\Python3XX\Scripts\docsweep.exe`（PATH 通っていれば `docsweep` 直で起動可） |
 
 > **Windows ストア版 Python は避けることを推奨**。`%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe`
@@ -175,7 +175,7 @@ python3 -m docsweep mcp
 # {
 #   "mcpServers": {
 #     "docsweep": {
-#       "command": "/home/you/.venvs/docsweep/bin/python",
+#       "command": "/home/you/.venvs/docsweep/bin/python", secrets-scan: allow
 #       "args": ["-m", "docsweep", "mcp"]
 #     }
 #   }
@@ -554,10 +554,10 @@ MCP 経由でも同じく引数で絞れます。例: `triage(project="many-ai-c
 python -m docsweep project list
 
 # 除外リストへ入れて board / scan から外す
-python -m docsweep project disable D:/dev/github/public/foo
+python -m docsweep project disable D:/dev/github/public/foo  # secrets-scan: allow
 
 # 除外を解除
-python -m docsweep project enable D:/dev/github/public/foo
+python -m docsweep project enable D:/dev/github/public/foo  # secrets-scan: allow
 ```
 
 除外は `~/.docsweep/excluded.json` に root の絶対パスとして記録され、**ファイルは一切動かしません**

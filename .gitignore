@@ -64,6 +64,7 @@ id_ed25519
 secrets.*
 *secret*
 !docsweep/secrets_guard.py
+!scripts/secrets-scan.mjs
 *credential*
 *token*
 .netrc

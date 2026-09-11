@@ -36,9 +36,9 @@
 # プロジェクト .docsweep.yaml で上書きするケースは稀。
 # projects:
 #   search_paths:
-#     - D:/dev/github/public/*
-#     - D:/dev/github/private/*
-#     - D:/dev/work/*
+#     - D:/dev/github/public/*  # secrets-scan: allow
+#     - D:/dev/github/private/*  # secrets-scan: allow
+#     - D:/dev/work/*  # secrets-scan: allow
 #   exclude:
 #     - "**/node_modules/**"
 #     - "**/archive-vault/**"

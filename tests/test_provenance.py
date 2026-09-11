@@ -342,7 +342,7 @@ def test_repo_manager_delegates_without_creating_generic_ledger(tmp_path: Path):
     (project / ".docsweep.yaml").write_text(
         "provenance:\n"
         "  manager: repo\n"
-        "  delegate_skill: cpni-doc\n",
+        "  delegate_skill: acme-doc\n",
         encoding="utf-8",
     )
     config = load_config(project_dir=project, global_path=tmp_path / "home" / "config.yaml")
@@ -355,7 +355,7 @@ def test_repo_manager_delegates_without_creating_generic_ledger(tmp_path: Path):
         metadata=_metadata(),
     )
     assert result["status"] == "delegated"
-    assert result["delegate_skill"] == "cpni-doc"
+    assert result["delegate_skill"] == "acme-doc"
     assert not config.provenance_ledger.exists()
     assert "ai_author_agent" not in (read_frontmatter(doc.path) or {})
 
