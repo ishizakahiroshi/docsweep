@@ -6,6 +6,20 @@ topics: ["docsweep", "okf", "ai", "claude", "codex"]
 published: false
 ---
 
+> **[取りやめ] 2026-09-11・この下書きは公開しない。**
+>
+> 内容が現行の docsweep と食い違っているため。中心主題である frontmatter の形が
+> 変わっており、本文の例は `status: planned` のように **docsweep の状態値を OKF の
+> `status` 欄に入れる旧形式**のまま。現行は OKF ライフサイクルの `status: draft` と
+> docsweep 作業状態の `docsweep_state: planned` に分かれている。
+> 直すには例と説明をほぼ全面的に書き直すことになり、それは別記事を書くのと同じ。
+>
+> `docsweep export --okf` と pre-commit hook は現在も存在する（2026-09-11 確認）。
+> 機能が消えたのではなく、**記事の説明が追いつかなくなった**という状態。
+>
+> 消さずに残すのは、当時どう考えていたかの記録として意味があるため。
+> 再開するなら新しい下書きから起こす。この md は更新しない。
+
 ## TL;DR
 
 - AI コーディングツール（Claude Code / Codex 等）が生成する `plan_*.md` / `bugfix_*.md` /
