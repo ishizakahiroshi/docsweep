@@ -535,6 +535,138 @@ def test_present_tense_failure_still_blocks(line: str) -> None:
     assert _classify_verification("検証", line) == "failed"
 
 
+# 失敗語を含むだけで「失敗した」とは言っていない文。仕様説明の名詞としての「エラー」。
+# 2026-08-27 と 2026-09-07 に実際に blocker になった 2 例をそのまま入れてある。
+_FAILURE_WORD_WITHOUT_ASSERTION = [
+    "`<TODO>` が残っているとき hook がエラーを返す。",
+    "エラー文面での再実行禁止・復帰通知案内への改修、単体テスト TestX を追加。",
+    "エラー時のリトライ回数を 3 回に変更した",
+    "失敗時のロールバック手順を README へ書いた",
+]
+
+# 実際に失敗したと主張している文。ここは blocker のまま維持する。
+_ASSERTED_FAILURES = [
+    "pytest: 3 failed",
+    "テストが失敗した",
+    "ビルドがエラーになった",
+    "失敗 2 件が残っている",
+    "CI が落ちた",
+    "failed: connection refused",
+]
+
+
+@pytest.mark.parametrize("line", _FAILURE_WORD_WITHOUT_ASSERTION)
+def test_failure_word_without_assertion_is_not_asserted(line: str) -> None:
+    """語の出現だけでは失敗の主張とみなさない。"""
+    from docsweep.closeout import _is_asserted_failure
+
+    assert _is_asserted_failure(line) is False
+
+
+@pytest.mark.parametrize("line", _ASSERTED_FAILURES)
+def test_asserted_failure_is_still_detected(line: str) -> None:
+    """確信度の導入で、本物の失敗報告を取りこぼさない。"""
+    from docsweep.closeout import _is_asserted_failure
+
+    assert _is_asserted_failure(line) is True
+
+
+def test_todo_inside_a_code_span_is_treated_as_a_quotation() -> None:
+    """バッククォート内の TODO は期待挙動の引用であって未完了の印ではない。"""
+    from docsweep.closeout import _is_quoted_todo
+
+    assert _is_quoted_todo("`<TODO>` が残っているとき hook がエラーを返す。") is True
+
+
+def test_bare_todo_is_not_a_quotation() -> None:
+    """裸の TODO は引用ではない。blocker のまま維持する。"""
+    from docsweep.closeout import _is_quoted_todo
+
+    assert _is_quoted_todo("<TODO: 未調査>") is False
+    assert _is_quoted_todo("`docsweep new` の TODO を埋める") is False
+
+
+def test_spec_prose_does_not_block_closeout(tmp_path: Path) -> None:
+    """仕様説明の語を含む plan が not_ready にならず、人の確認には残る。"""
+    project = tmp_path / "proj"
+    queue = project / "docs" / "local"
+    queue.mkdir(parents=True)
+    (project / ".git").mkdir()
+    plan = queue / "plan_spec_prose.md"
+    plan.write_text(
+        "---\ntype: plan\ndocsweep_state: watching\n---\n"
+        "# [様子見] 仕様説明の語を含む plan\n\n"
+        "## 完了条件\n\n"
+        "- `<TODO>` が残っているとき hook がエラーを返す。\n\n"
+        "## 検証\n\n"
+        "- エラー文面での再実行禁止への改修を入れ、pytest 12 件が通過した。\n",
+        encoding="utf-8",
+    )
+
+    result = check_closeout(plan, project_dir=project, config=_cfg(project))
+
+    assert result.verdict != "not_ready"
+    reasons = {check["reason"] for check in result.manual_checks}
+    assert "todo_inside_code_span" in reasons
+
+
+def test_archived_parent_is_resolved_by_basename_with_a_warning(tmp_path: Path) -> None:
+    """親を archive へ移しても子の docsweep_parent が旧パスのままなら救済する。
+
+    2026-09-11 に docsweep 自身で 6 本発生した。親子とも archive/v0.5.x へ揃って
+    入っているのに、子の参照だけが移送前の docs/local を指したままで、
+    closeout-check が unresolved_parent を立て続けていた。
+
+    解決はするが、参照が古い事実は警告として残す（黙って直しもしない）。
+    """
+    project = tmp_path / "repo"
+    (project / ".git").mkdir(parents=True)
+    archive = project / "docs" / "local" / "archive" / "v0.5.x"
+    parent = _write(archive / "plan_alpha.md", _body("alpha"))
+    _write(
+        archive / "plan_alpha_c1_backend.md",
+        _body("child", related="[]") .replace(
+            "---\n", "---\ndocsweep_parent: docs/local/plan_alpha.md\n", 1
+        ),
+    )
+
+    result = check_closeout(parent, project_dir=project, config=_cfg(project))
+
+    assert not [b for b in result.blockers if b["code"] == "unresolved_parent"]
+    moved = [w for w in result.warnings if w["code"] == "parent_moved"]
+    assert len(moved) == 1
+    assert "plan_alpha.md" in moved[0]["message"]
+
+
+def test_ambiguous_basename_is_not_guessed(tmp_path: Path) -> None:
+    """走査対象の中に同じ basename が 2 件あるときは推測で 1 件に絞らない。
+
+    救済は「ちょうど 1 件のときだけ」。2 件以上なら候補をそのまま返し、
+    呼び出し側の ambiguous_parent へ倒す。
+
+    なお救済が見るのは **その実行で走査された文書だけ** である。archive の別バージョンの
+    ように走査対象から外れたディレクトリにある同名文書は候補に入らない。
+    救済範囲が走査範囲に従属する点は仕様として受け入れている。
+    """
+    project = tmp_path / "repo"
+    (project / ".git").mkdir(parents=True)
+    anchor = project / "docs" / "local" / "archive" / "v0.5.x"
+    parent = _write(anchor / "plan_alpha.md", _body("alpha"))
+    _write(anchor / "nested" / "plan_alpha.md", _body("alpha duplicate"))
+    _write(
+        anchor / "plan_alpha_c1_backend.md",
+        _body("child", related="[]").replace(
+            "---\n", "---\ndocsweep_parent: docs/local/plan_alpha.md\n", 1
+        ),
+    )
+
+    result = check_closeout(parent, project_dir=project, config=_cfg(project))
+
+    # 1 件に絞れないので救済しない。
+    assert not [w for w in result.warnings if w["code"] == "parent_moved"]
+    assert [b["code"] for b in result.blockers if b["code"] == "ambiguous_parent"]
+
+
 def test_failure_word_inside_an_identifier_is_not_a_failure() -> None:
     """``continue-on-error`` のような識別子の一部を失敗と読まない。"""
     from docsweep.closeout import _classify_verification
