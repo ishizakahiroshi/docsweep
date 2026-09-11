@@ -65,6 +65,7 @@ secrets.*
 *secret*
 !docsweep/secrets_guard.py
 !scripts/secrets-scan.mjs
+!.github/workflows/secrets-scan.yml
 *credential*
 *token*
 .netrc
