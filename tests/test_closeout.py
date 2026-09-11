@@ -487,6 +487,54 @@ def test_zero_failure_prose_outside_a_verification_section_is_not_auto_passed() 
     assert _classify_verification("備忘", "pytest: 0 failed") == "claimed"
 
 
+# 失敗の「不在」を述べた散文。助詞が ``は`` 以外でも、語尾が「〜ない」系でも救済する。
+# 2026-09-11 に docsweep 自身の plan_promote-expired-watching.md で、これらが
+# ``failed`` と分類されて closeout を止めた。正直に「エラーが無い」と書くほど
+# 締められなくなるため、記録品質を下げる方向へ圧力がかかっていた。
+_ABSENCE_PROSE = [
+    "「移送対象に起因する警告やエラーが無い」→ 条件を満たす",
+    "dry-run の時点ではエラーは出ておらず、予告と結果の食い違いは実行して初めて判明した。",
+    "エラーが無かった",
+    "エラーも無い",
+    "失敗が無い",
+    "失敗は生じていない",
+    "エラーは出ていない",
+    "エラーが出なかった",
+]
+
+
+@pytest.mark.parametrize("line", _ABSENCE_PROSE)
+def test_absence_of_failure_is_not_classified_as_failure(line: str) -> None:
+    """失敗の不在を述べた文を失敗の明示として扱わない。"""
+    from docsweep.closeout import _classify_verification
+
+    assert _classify_verification("検証", line) != "failed"
+
+
+@pytest.mark.parametrize("line", _ABSENCE_PROSE)
+def test_absence_prose_is_not_auto_promoted_to_passed(line: str) -> None:
+    """救済しても自動 pass へは昇格させない。人が読む manual review に落とす。"""
+    from docsweep.closeout import _classify_verification
+
+    assert _classify_verification("検証", line) == "claimed"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "エラーが出た",
+        "エラーが発生している",
+        "失敗が 2 件残っている",
+        "移送でエラーになった",
+    ],
+)
+def test_present_tense_failure_still_blocks(line: str) -> None:
+    """否定形の救済を広げても、実際に失敗したと述べた文は失敗のままにする。"""
+    from docsweep.closeout import _classify_verification
+
+    assert _classify_verification("検証", line) == "failed"
+
+
 def test_failure_word_inside_an_identifier_is_not_a_failure() -> None:
     """``continue-on-error`` のような識別子の一部を失敗と読まない。"""
     from docsweep.closeout import _classify_verification
