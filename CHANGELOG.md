@@ -3,7 +3,7 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
-## [Unreleased]
+## [0.6.0] - 2026-09-11
 
 ### Changed
 
@@ -30,6 +30,32 @@
   owner を各人の安定 key に揃えたいことがあり、グローバル 1 個の値を全リポジトリへ
   押し付けると、そこだけ生成のたびにずれ続ける。`capture` 経由の下書きにも同じ owner を
   載せるので、**md の生まれ方（`new` / `capture`）で owner が変わらない。**
+- **`doctor` が `.docsweep/` の Git ignore 漏れを検出するようになった。** `.docsweep/state.json`
+  は実行時ファイルだが、採用側の `.gitignore` にその記述が無いことがある（実地調査した 8 リポ中
+  3 リポが該当）。ignore 漏れは WARN、追跡済み（tracked）は ERROR として報告する。`.docsweep/`
+  が無いリポには何も言わない。**既存利用者は次回の `doctor` 実行で新しい WARN が増えることがある。**
+  `templates/.docsweep.yaml` と `templates/CLAUDE.md` にも該当の記述を追記した。
+
+### Fixed
+
+- **`closeout-check` が「失敗が無い」という記述そのものを失敗の言及として扱い、plan を
+  閉じられなくしていた。** `エラーが無い` `エラーは出ておらず` のように助詞が `は` 以外の
+  否定形が救済されず、`not_ready` の blocker になっていた。検証結果を正直に書くほど
+  closeout できない状態だった。
+- **`closeout-check` が仕様説明の語や引用中の TODO を未完了として誤検出していた。**
+  `エラー文面での改修` のような名詞としての失敗語や、バッククォート内の `` `<TODO>` ``
+  を blocker として扱っていた。確信の持てない検出は blocker ではなく人の確認
+  （manual check）へ落とすようにした。**検出そのものは 1 つも減っていない。** verdict は
+  `not_ready` ではなく `manual_review_required` になる。あわせて archive へ移送済みの
+  親 plan を basename で解決し、`parent_moved` の警告を出すようにした。
+- **`promote --dry-run` が本実行では移送できない文書まで移送できると予告していた。**
+  種別と状態の検証が本実行側にしか無く、下見が実態と食い違っていた（実測で予告 9 件に
+  対し実移送 7 件。`pending` 種別は `done` へ遷移できないのが原因）。失敗があるときの
+  要約行が「対象なし」と表示される不具合もあわせて直した。
+- **pre-commit hook が archive 移送後の `related` ファイル名参照を「存在しない」と誤って
+  落としていた。** `related` の正本はファイル名だが、hook に basename 探索が無かった。
+  規約どおり書くと移送のたびに落ちる食い違いがあった。あわせて `templates/CLAUDE.md` と
+  `docs/conventions.md` へ参照表記の正本を明記した。
 
 ## [0.5.0] - 2026-09-04
 
