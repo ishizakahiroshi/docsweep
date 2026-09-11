@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:a6bbbf3bbc51194919787c85147da09a3b98e9e99f986a682fd5f507e4817928",
+  "claims": [
+    {
+      "id": "claim_071967d6823e4c5aa50ce278e94e1342",
+      "statement": "tests/conftest.py's isolate_index_db autouse fixture redirects DOCSWEEP_INDEX_DB to a tmp_path-scoped file for every test; its docstring records that on 2026-07-26, the mere existence of a developer's real ~/.docsweep/index.db (independent of its contents) caused 22 test failures by making scan_records() read the developer's real project index instead of the test's isolated workspace, and all 653 tests passed once the index was moved aside, a failure mode invisible in CI because CI has no such index file.",
+      "evidence": [
+        {
+          "resource": "repo://tests/conftest.py#L1-L36",
+          "version": "repo-lines-v1:sha256:81ff76dde2a6bd106ba85578319f8a5010c06348fed4b4502bcb6997d7eebca4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDZlMmZmMmMzOGNhOGViNTY4YzhhYjVmZDM1NDljN2Y0MGQ3Yzc2MzE3YjllZjFkNmIxYTNiNTlhYmZmMWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiYmU0MjcxMDgxYWQ0ZGYxZTBmZThiOTNiZjMxMGE0YTU1OTk3MjZjMjgyYTViYjA1YjU1NzI3MWJlNjYzNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyMGJjZTMwYjljYmNjZGRjMDZmNjA1YWU1YzZhNzAyMzc0OWFiM2MzMzE4NDEwNTEzMjJmMzhmZGNhOWZmMTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_198156c4d37740df890e1cb75c227d47",
+      "statement": "tests/conftest.py's isolate_session_log_env autouse fixture clears CLAUDE_CODE_SESSION_ID, CLAUDE_CONFIG_DIR, DOCSWEEP_AI_SESSION_LOG, and CODEX_HOME and monkeypatches session_logs._home() to a nonexistent tmp_path directory, because several session resolvers match on the current working directory recorded in a session's own metadata file under the real home directory, which clearing environment variables alone would not isolate; only _home is patched rather than HOME/USERPROFILE wholesale to avoid perturbing unrelated tooling such as git config resolution.",
+      "evidence": [
+        {
+          "resource": "repo://tests/conftest.py#L39-L59",
+          "version": "repo-lines-v1:sha256:92e12a0a8a051b1451e1483b57237d4c3810cbceaf1f81bb0fa023a39d2ff9d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyYzFmMTAwYTk4YzJmYzk2M2I5YTMzMmJiZjU2YjhmZmZiM2U4M2JjMGU3Y2Y0ZjIwNzc5MDc4MTQwNjBkZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1YTc0NzNiZDU0MTMxZGQyZjZlOGVlMWNjZjBhODI5NWVlNGEyMDE1MDU1YjcwYTFkMDk3ZmQ2NTY3OGQyMWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlZmRiOGE3M2JiYzMyMzU4MTcyMGQ4ZmUxMjdkZmI0YTY0NDMxMDM3ODMwYWU0NjEyMjNkYWRhN2YyNzIxOWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlZjExYzliNzE2N2MwYWRjNDJmZWE4NTRhYjYzNDk5NzcwODE0YjBlNzE4MTAzYTllYzBmOWJlN2FmNjk5NzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ba9f7473f35847d7a92d340b04b270e8",
+      "statement": "resolve_writable_md() rejects any path containing a literal '..' path segment at the input stage before calling realpath, as a defense-in-depth measure distinct from realpath's own '..' resolution, and only accepts paths that resolve under a configured scan root and end in .md; on failure it raises PathScopeError with a generic message rather than listing the checked roots, so a failed resolution cannot be used to enumerate configured scan roots.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/security/path.py#L1-L65",
+          "version": "repo-lines-v1:sha256:5c739aee4bb0ce2ccf222ac20c0b25e632c379e0f002995645b7697822bfd9e1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmNzllYjNkOTM5YzQ3ZmNkZDIwMTFlZTQ4MmFlZTlmOGY0MDMxMzMzM2I4YzI5MDM2YTIzYzkxZTkxMjY5NjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExNDRiYjcxZWE0MGRlOTFlYzc1Y2Y2MTM3Y2E3ZTRlNTdkNDg3ZDQxNmU4YWEzMWFiOTEwZGY5ZDg0YmQ3OTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0dd7d4905c754a87aa12eaf2dfb20b92",
+      "statement": ".githooks/pre-push is enabled per-clone via git config core.hooksPath .githooks (never committed as automatically active), and its header comment cites a 2026-07-16 v0.3.0 release where pushing without running pytest locally first led to five consecutive CI failures once latent bugs surfaced remotely; the hook exits 0 (allowing the push) if python/python3 or pytest is unavailable, and blocks the push only on an actual pytest -q failure, with git push --no-verify remaining an explicit escape hatch.",
+      "evidence": [
+        {
+          "resource": "repo://.githooks/pre-push#L1-L44",
+          "version": "repo-lines-v1:sha256:a70d8944db942bc437d8fbb5f5a85e6def8d9b432f4868bd52f0894e98f41e27:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZDY5ZDZhMjM0MjVhYjI3ZDY3ZTYwYmNmMDQzNWJmZDllYjhmN2NhYzU4ZmEyNzVmNmI0ODlkY2ZlOWVjYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlMGU2MDc3MDY1NTk4ZTBiM2IyMGE1ZDhiZGEzY2YzZDY0MWVlMTAzOTc4MDQ2N2U0OWFiZWVkMDRiNjkwM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_82b9523078e441ef872b7b31dedde3bc",
+      "statement": "pyproject.toml's ruff lint config selects only rule groups E/F/I/UP/B and explicitly ignores E501, E402, F841, B008, UP035, and I001 within those, each with an inline rationale (E501: CJK line-width impracticality; E402: intentional lazy imports for startup time; B008: FastAPI's Query()/Body() default-argument idiom; I001: deferred to a future bulk ruff --fix pass) rather than a blanket suppression.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L92-L111",
+          "version": "repo-lines-v1:sha256:e4a2594dfebedd4a35c5dc40ce546060d9cf51070cae372804f8a989837ba259:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5YjVhNTRkYTQxYzdlODAzNzI2ZGEyMTk1YmVhMTU4MWNjMmEzZGY0OGIxOTJiMWYwMDYwY2ZjNzllYWVhN2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlNjRhZDM0NDViY2M1NzQyMTMyNDI0YzIyMWY0MjE2NTVlY2Y1ZjdjNmE2NTE3YTRjNzk4ZGI5NWZjNDYzYjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzOTA1YzFkMzQ4MTYxMGY5YjFiYWMyMmMyNTBmYWY0YTM1NWM5YTkyM2JmMDBhODI5YjA4NDQ0MmE4OGIyOTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmNTcxZTQ3YWUzZDNjODE0ZTc2NzA4ZWI4YTVlMjgzMjhkZjRjM2E3MDk0ODY3NzEyZThkMGZjNTFhNjNlODIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6e0d3da7fdb24dee858c7b0eefd9b580",
+      "statement": "pyproject.toml's mypy config stops short of strict mode and sets ignore_missing_imports = true specifically to tolerate optional dependencies (mcp, sentence_transformers) that ship without type stubs, reflecting a staged rather than complete type-checking adoption.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L113-L119",
+          "version": "repo-lines-v1:sha256:3d207d7980007e7fbb79cb0f244507646df0e2dfbec98a020644b93a0cbb1447:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzlhMDQ3ODE3YjI0MDk2YjdmYTNkNWFkYjg4NzI3MDA3NWI5ZjUzNGY2MmI0MzlmY2Q3Njg0MDRiZDZjMTM0MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWUwMzdkNjA5ZDJkMGQwNDM0Y2I5MDVlZDYwNGY4ODRiZTdhMzUxOTYwNWM3YzNhMDdhOTJmZGMyZTA1ZjU1YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2IzOTRkMTY3YTcxNTg2MmE0MDIxNTdkNGQxYzg2Nzk2MGExMDdkMzNmMzFmMDQwNDc2YTRlNWY4NWY1NDZiMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDViNmRmY2ViZDQzNzNjMGVlMmM5YTRkNDYwNmVkMTZlMWE4MzQ4MmZmM2RjYzhmNzdiN2EyNWUzNzhjYzFiNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_38dcaced4c5f4dcebef6e29eb050e43c",
+      "statement": "pytest.ini_options sets addopts = '-ra --strict-markers --strict-config', which fails a test run immediately on an undeclared pytest marker or malformed pytest configuration rather than silently accepting it.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L121-L125",
+          "version": "repo-lines-v1:sha256:71cefd42030a16d4750558c1d79bcb1d9dab817c3af16f6e6a99475b8ff95313:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTBiYjUyNzdiM2M1ZDgyOGQxM2UxMDg4M2E4NTE0NmNiMmZiOGEwYzJjMDAwZjBjNTRjYzk2YmEwZGY3MDA1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjBlOTFkODEwNzcwMmQ3NDZkOWJjMzZiM2M5YzZmODNhNTVmNWVlYTkxZGE4MmE3ZmVmMmM4YjkxZDU3YmZjNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDAyZjBhYTY3MTFlMGM1OTJiODQ0MTIzOGRlZDZjNGMzZTMzMTI1OGMzNGI3YWJiYTVkZjJkMDg5MTQ1YmE2OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

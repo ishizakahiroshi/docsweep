@@ -8,6 +8,9 @@ AI コーディングツール（Claude Code / Codex 等）が生成する `plan
 H1 ステータスラベル（`[完了]` / `[計画]` / `[廃止]` 等）を機械的に読み取り、完了を各プロジェクトの
 `archive/` へ自動移送し、陳腐化を「要判断」フラグで可視化し、複数プロジェクトを横断 INDEX で一望できます。
 
+**何が嬉しいのか・どう使うのかを画面付きで見る**:
+[docsweep の使い方](https://ishizakahiroshi.com/articles/docsweep/usage.html)
+
 ## OKF（Open Knowledge Format）v0.2 対応
 
 docsweep は [OKF v0.2 の公式仕様](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)

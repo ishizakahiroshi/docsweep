@@ -26,6 +26,24 @@ _FENCE_TOKEN_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 _HTML_META_RE = re.compile(r"<!--\s*docsweep-meta\s*\n(.*?)\n\s*-->", re.DOTALL)
 
 
+_INLINE_CODE_RE = re.compile(r"`+[^`\n]*?`+")
+
+
+def mask_inline_code(text: str) -> str:
+    """行内コードスパン（バッククォート囲み）を同じ長さの空白へ置換する。
+
+    ``mask_code_fences`` と同じく長さを保つので、マスク後に得たマッチ位置を
+    原文にそのまま流用できる。
+
+    用途は「その語が主張なのか引用なのか」を分けること。バッククォートで囲まれた
+    トークンは、**未完了の印ではなく引用**であることが多い。
+    ただし失敗報告もバッククォートに入れて書かれる（``pytest: 3 failed``）ため、
+    **マスクした結果だけで判定しない**。呼び出し側は原文とマスク版の差を見て
+    確信度を下げる（blocker から人の確認へ落とす）用途で使う。
+    """
+    return _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), text)
+
+
 def mask_code_fences(text: str) -> str:
     """fenced code block の中身を同じ長さの空白へ置換する（改行・全体長は保存）。
 

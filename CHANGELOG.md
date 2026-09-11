@@ -3,9 +3,59 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
-## [Unreleased]
+## [0.6.0] - 2026-09-11
 
-（次の版の変更をここへ書く）
+### Changed
+
+- **`docsweep new` が `owner` を空ではなく実効値で埋めるようにした。** 解決順は
+  `~/.docsweep/config.yaml` の `user.name` → `git config user.name` で、どちらも無ければ
+  従来どおり空で出す。**OS ログイン名と `"unknown"` へは落とさない**（端末アカウント名は
+  人の名前ではなく、owner に入ると表記ゆれの種になる。claim 用の `current_owner` は
+  従来の解決順のまま）。`inject --global` が生成する導線にも解決済みの値を埋め込むので、
+  AI が手書きする経路でも同じ値になる（`GUIDANCE_VERSION` を 12 へ）。
+  空で出していた頃は、値を決めるのが人か AI の判断になり、リポジトリ単位で別表記へ
+  分岐していた（同一人物に対して GitHub login / 短縮形 / 日本語氏名 / OS ログイン名の
+  4 表記が並存し、近くのファイルを写して伝播していた実測がある）。
+
+### Added
+
+- **`docsweep config user.name --from-github`。** `gh api user --jq .login` で GitHub の
+  ログインアカウント名を 1 回だけ解決し、`~/.docsweep/config.yaml` へ凍結する。
+  GitHub アカウントはリポジトリ単位で上書きできる `git config user.name` より識別子として
+  安定しているが、**md 生成のたびに `gh` は呼ばない**（未導入・未ログイン・オフラインで
+  生成結果が変わらないようにするため）。取得に失敗したときは何も書かずに終了する。
+- **owner の既定値をプロジェクトの `.docsweep.yaml` の `user.name` で上書きできるようにした。**
+  設定の合成自体は以前からあり（グローバル → プロジェクトの順）、owner の解決だけが
+  グローバルを直接読んでいたのを合成結果に合わせた。複数人の登録簿を持つリポジトリでは
+  owner を各人の安定 key に揃えたいことがあり、グローバル 1 個の値を全リポジトリへ
+  押し付けると、そこだけ生成のたびにずれ続ける。`capture` 経由の下書きにも同じ owner を
+  載せるので、**md の生まれ方（`new` / `capture`）で owner が変わらない。**
+- **`doctor` が `.docsweep/` の Git ignore 漏れを検出するようになった。** `.docsweep/state.json`
+  は実行時ファイルだが、採用側の `.gitignore` にその記述が無いことがある（実地調査した 8 リポ中
+  3 リポが該当）。ignore 漏れは WARN、追跡済み（tracked）は ERROR として報告する。`.docsweep/`
+  が無いリポには何も言わない。**既存利用者は次回の `doctor` 実行で新しい WARN が増えることがある。**
+  `templates/.docsweep.yaml` と `templates/CLAUDE.md` にも該当の記述を追記した。
+
+### Fixed
+
+- **`closeout-check` が「失敗が無い」という記述そのものを失敗の言及として扱い、plan を
+  閉じられなくしていた。** `エラーが無い` `エラーは出ておらず` のように助詞が `は` 以外の
+  否定形が救済されず、`not_ready` の blocker になっていた。検証結果を正直に書くほど
+  closeout できない状態だった。
+- **`closeout-check` が仕様説明の語や引用中の TODO を未完了として誤検出していた。**
+  `エラー文面での改修` のような名詞としての失敗語や、バッククォート内の `` `<TODO>` ``
+  を blocker として扱っていた。確信の持てない検出は blocker ではなく人の確認
+  （manual check）へ落とすようにした。**検出そのものは 1 つも減っていない。** verdict は
+  `not_ready` ではなく `manual_review_required` になる。あわせて archive へ移送済みの
+  親 plan を basename で解決し、`parent_moved` の警告を出すようにした。
+- **`promote --dry-run` が本実行では移送できない文書まで移送できると予告していた。**
+  種別と状態の検証が本実行側にしか無く、下見が実態と食い違っていた（実測で予告 9 件に
+  対し実移送 7 件。`pending` 種別は `done` へ遷移できないのが原因）。失敗があるときの
+  要約行が「対象なし」と表示される不具合もあわせて直した。
+- **pre-commit hook が archive 移送後の `related` ファイル名参照を「存在しない」と誤って
+  落としていた。** `related` の正本はファイル名だが、hook に basename 探索が無かった。
+  規約どおり書くと移送のたびに落ちる食い違いがあった。あわせて `templates/CLAUDE.md` と
+  `docs/conventions.md` へ参照表記の正本を明記した。
 
 ## [0.5.0] - 2026-09-04
 

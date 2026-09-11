@@ -347,6 +347,47 @@ def test_promote_due_expired_only_moves_reached_watching(tmp_path: Path):
     assert (queue / "plan_never_archive.md").exists()
 
 
+def test_promote_dry_run_does_not_promise_an_invalid_type_transition(tmp_path: Path):
+    """dry-run は本実行と同じ結果を返す。移送できない文書を予告しない。
+
+    2026-09-11 実測: ``promote --due-expired --dry-run`` が 9 件を予告し、
+    本実行は 7 件しか動かなかった。落ちた 2 件は ``pending`` 種別が ``watching`` に居た
+    ケースで、``pending`` は ``done`` へ遷移できない。種別と状態の検証が
+    ``_update_doc_state()`` の中だけにあり、dry-run では丸ごと飛ばされていたため、
+    下見が「移送できる」と嘘をついていた。
+    """
+    root = tmp_path / "dev"
+    queue = root / "proj" / "docs" / "local"
+    past = (date.today() - timedelta(days=1)).isoformat()
+    # pending 種別は done へ遷移できない（許可は pending / planned / discarded）。
+    _write(
+        queue / "pending_stuck.md",
+        f"---\ntype: pending\ndocsweep_state: watching\ndue: {past}\n---\n"
+        "# [様子見] pending_stuck.md\n\n## 概要\n\n確認中。\n",
+    )
+    # 同条件で移送できる plan も置き、絞り込みが効きすぎていないことを見る。
+    _write(
+        queue / "plan_ok.md",
+        f"---\ntype: plan\ndocsweep_state: watching\ndue: {past}\n---\n"
+        "# [様子見] plan_ok.md\n\n## 概要\n\n確認中。\n",
+    )
+    cfg = _cfg(root)
+
+    preview = promote_state(cfg, due_expired_only=True, dry_run=True)
+    moved = promote_state(cfg, due_expired_only=True, dry_run=False)
+
+    # 予告と結果が一致する。
+    assert {Path(m.src).name for m in preview} == {"plan_ok.md"}
+    assert {Path(m.src).name for m in moved} == {"plan_ok.md"}
+    # 予告の段階で失敗として報告される（黙って落とすのではない）。
+    assert [Path(f["path"]).name for f in preview.failed] == ["pending_stuck.md"]
+    assert "pending" in preview.failed[0]["error"]
+    assert [Path(f["path"]).name for f in moved.failed] == ["pending_stuck.md"]
+    # 移送できない文書は元の場所に残る。
+    assert (queue / "pending_stuck.md").exists()
+    assert (root / "proj" / "docs" / "local" / "archive" / "plan_ok.md").exists()
+
+
 def test_apply_rejects_disallowed_action(workspace: Path):
     cfg = _cfg(workspace)
     result = run_scan(cfg)

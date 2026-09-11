@@ -95,6 +95,44 @@ def test_hook_fails_on_missing_related(tmp_path: Path):
     assert "related" in r.stderr
 
 
+def test_hook_resolves_related_by_filename_after_archive_move(tmp_path: Path):
+    """archive へ移った参照先を、ファイル名だけの related で解決できる。
+
+    `related` の正本はファイル名でありパスではない（templates/CLAUDE.md）。
+    docsweep は完了した md を archive/ へ移送するのが仕事なので、パスで書いた参照は
+    移送のたびに切れる。hook 側に basename 探索が無かったため、規約どおり
+    ファイル名で書くと移送後に「存在しない」と言われる食い違いがあった。
+    """
+    local = tmp_path / "docs" / "local"
+    archive = local / "archive" / "v0.5.x"
+    archive.mkdir(parents=True)
+    (archive / "plan_moved.md").write_text("# [完了] moved\n", encoding="utf-8")
+
+    p = local / "plan_main.md"
+    p.write_text(
+        "---\ntype: plan\nstatus: planned\nrelated: [plan_moved.md]\n---\n"
+        "# [計画] main\n",
+        encoding="utf-8",
+    )
+    r = _run([p])
+    assert r.returncode == 0, r.stderr
+
+
+def test_hook_still_fails_when_the_filename_exists_nowhere(tmp_path: Path):
+    """basename 探索を足しても、どこにも無い参照は落とす。"""
+    local = tmp_path / "docs" / "local"
+    (local / "archive").mkdir(parents=True)
+    p = local / "plan_main.md"
+    p.write_text(
+        "---\ntype: plan\nstatus: planned\nrelated: [plan_never_existed.md]\n---\n"
+        "# [計画] main\n",
+        encoding="utf-8",
+    )
+    r = _run([p])
+    assert r.returncode == 1
+    assert "related" in r.stderr
+
+
 def test_hook_passes_with_existing_related(tmp_path: Path):
     other = tmp_path / "plan_other.md"
     other.write_text("# [計画] other\n", encoding="utf-8")

@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:6afefdd0d23cb7e22d8a3432fe16445048ec6fad2bab5dd2fd7b0c38636bb69e",
+  "claims": [
+    {
+      "id": "claim_ff4400c79ebe4365bcfc6250c7494241",
+      "statement": "python -m docsweep mcp lazily imports docsweep.mcp_server only when the mcp subcommand runs, and prints 'MCP には mcp extra が必要です: pip install docsweep[mcp]' with exit code 3 if the optional mcp dependency is not installed, rather than failing with an import traceback.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/cli/commands/mcp.py#L10-L22",
+          "version": "repo-lines-v1:sha256:4e80ce89d5c53ad518d3f3f26c71d558f92bceacbc20c3da7ca64910a34ac288:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkY2I0NDI3MzAxODIxMTc0Nzg5N2NiMDc1OWI0ODg2MTkxZDMyMDU2NzgwZTA2MDM2NmI0NTQwNzQ1NjE5MjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5MDc2NjE2OGFhYjk4MmQ0MDkwZmMwOTM2YTY0MzliZDAzMjM1MjkzYmUwMTNhZjhiYjM1MGJiMGExOGQwNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4MDVlYzMyZTdiNTIyNWM5MGYxNjg1Njc0YTkzNDA4YWE2MWJmMGZjYWE5NWQ1ZTA0YzEwMWU4NmNlOTRlZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0efb2b42aa2542b28b9a1425bafe70db",
+      "statement": "docsweep/mcp_server.py's module docstring states the design rule that MCP exposes each command as one tool at 1-command-to-1-tool granularity, and that write tools (update_status/update_due/update_content/archive_done) are implemented as wrappers over docsweep.services so the web UI and MCP call the identical underlying functions.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/mcp_server.py#L1-L13",
+          "version": "repo-lines-v1:sha256:5461558cc8554da9412924c9922a348eee9eddb1e85e6fc33b7db3f7c36ba170:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0ZjMzNDYzMmFmZDIzMWZjN2UyZmNjNDk0OGE4YzY0MTE5ZmQxZDMwZDllNGY4NTBlYjcwOTljZGVlNmQyMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NWQ0NTg5ZTkxY2M4Y2I5NzQ4ODlkYWIwMWRlMTVkYjE1NzRjYTEwZWVjNzI5MGExMDliZjU4OGM5NGUwMWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0MzBhMDhmOTllNzNjOTUwNjE0MWUyY2IwZGY2Y2RkOTM2NWVkZGE5ZjQwY2IwZWUwY2IzYTdjZGRhYTFhMjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d6b5e952cc4140409c4add58b16142ff",
+      "statement": "build_server() registers exactly 24 @mcp.tool() functions on a single FastMCP('docsweep') instance, with no per-tool enable/disable flag on the docsweep mcp command.",
+      "evidence": [
+        {
+          "resource": "repo://docs/ai-agent-integration.md#L11-L19",
+          "version": "repo-lines-v1:sha256:c10972bab4931c74ab4218f22743cdf3318a2435bb63d27077790c81ae54cf22:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGZhZTgyYjliMzMyMzQ3OThmNGVhN2U3ZDZkYmY0NWJjZGQwYmYyY2YxYTFmNGZhYjI3ZmUyZTAzOWExMTY1OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDExYmIxZTZhYTYxZDhjZDQwMzZhYjViY2ZhYmQyYjZhOWE2M2E5Y2VhOTEyNzk1MmVkNGNmZDE3YWEyODQzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmY0Yjc4NjllZmY5MmE3NjRjNzk4YzBlMTQyZDcyOTNjYmRjNjNmY2M4YjA4YjRiNWUwNzFlZWYxYjA1MTkzZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzc4NGJmY2UxM2IwNzlhODQxN2NjNzlmMWFkNDE1NjkzODYzMTY2MWU2MTFjMGIyNDdjMzExZmEzZDc3MzliNiJ9"
+        },
+        {
+          "resource": "repo://docsweep/mcp_server.py#L107-L120",
+          "version": "repo-lines-v1:sha256:7ae27179d7cd0d9d0500a7e9c8643b8f85e71f843a26d61eda353b04e3120648:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MTdjNzk2Y2NkNjlkNjllYTViODRkMWQxZWFhNjE2MzMwNjI4N2RjM2UzNWY5NzBkNmY1NDk4NTE1NTI3NzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNTQwM2IzNzVlNjMzMTZjNjQ4ZTNjZDFkMjY4MTg1MWVlYmMwZjAzYmYzZmY2NDcwOTkxNGRmMzc1MjQxYjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmOTkyNDAzZDI2YjgwNzlhNWViZDhhYjZiMDQ2ODQ1MmM0OWZjNTVjZWFiN2RlMGU4MWMwYmVlNWExZTAzYmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ODU4NTljZGMwODkxZTQ1NTg3MjVkYTQ5ZGY2M2FmMDBiNzU1ZWRkNTJhMzExNjc3MzU0NjU3NzI5MTBmNDkifQ"
+        },
+        {
+          "resource": "repo://docsweep/mcp_server.py#L611-L616",
+          "version": "repo-lines-v1:sha256:0dc7cf30cfff240f3075133df5b11733370409cbc61de930f1f935b76fec3fee:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGI3YjQ1YzNmNjU0Yjk3ODIxMzgwZWZiOWQwZjRiMGQ1ZjQxNDQ5YTc2ZWQ3NDhkMzg1MjQ4OWI5YjIxZjlhMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE3N2FkMDRiN2JhMWJkNDc2MmNhNmE2MTJmOTNkMGY0YmZiMTA5OWYwM2M1ZTVkZGM1MTcxMzJiYzczOTVmNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2MzYTcxZmNjYmZmNDEyMzcyNGM1ZTRkNjJmYjM4ZWUzNTU1ZmRmNGYwMzY0MjhhYjdiZDRiNjkzNGVjOGZmMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ffbaf8aa462412490b87d6a50b6e749",
+      "statement": "The update_status MCP tool internally calls archive_done when new_status resolves to done or discarded, completing the label-change-plus-archive-move in one MCP call under the premise that the MCP call itself represents the human-equivalent decision; no tool or code path in mcp_server.py deletes a file.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/mcp_server.py#L446-L503",
+          "version": "repo-lines-v1:sha256:cef6050763e8cdbf6697e9b2fd1f426611ab939b23fd5f3720eed6db7ce45eb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNTQwM2IzNzVlNjMzMTZjNjQ4ZTNjZDFkMjY4MTg1MWVlYmMwZjAzYmYzZmY2NDcwOTkxNGRmMzc1MjQxYjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNDljNGQ5ZmY4NTI3YjQwOTQzNDQwNjRlOWUzYTBhNmEzZjU3MTJmMDNlYzcyZGFjYzM3OGY0ZWVkODY2NDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMjQ3OWYyZjg5ZGU4YWJhMzY5ODA1OWM2NDBkNTgxZDc0OTk3OThlOGM0YjIzYzUzYjdiZWE5MTI5YjYyZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2NTVkYTVlMDI4ZmJlODY2NDIzM2UzNGI4MmIxZjgxMDM3MTUxNjA2ZmJiZDlhZmZmNTgwZWM3MGE5MWMzYTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6b3693eb31f94251a68493f0d9962847",
+      "statement": "Every MCP write tool that takes a path resolves it through resolve_writable_md() via a local _resolve_or_error() helper and returns a structured {error, kind: 'path_scope'} dict instead of raising when the path falls outside configured scan roots; a mismatched expected_mtime similarly returns a structured {kind: 'conflict', expected_mtime, actual_mtime} dict rather than a generic failure.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/mcp_server.py#L463-L489",
+          "version": "repo-lines-v1:sha256:b47852591cf49b92e3e6edd985d0c717b27e199d70e2c9ae87d44e1b3b9a0c5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiYmQ5NDFjMzIwOGNkYzY1MWJkMTJjZDcwYTJhN2YwYWViNTMxM2FhZDEwNDI2YTVmZGUyNTY3ZTNmNTVhYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5YTg1NzJiODg4YjA4Zjc5Nzk4YTE5YWNhZDFlZmRhZmVkMDI3MDQyNWEzZTFjMjJkODg4ZDEwNmQ2NTY4M2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxZjAzZmQ5MTAwNTgwNjczYTg0Nzk3NzUwZmE3MjRhYzAwMjZhNmFkOGQ3NjA4Zjc5Zjc5NThiYzhkYzM3MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjMTMwZGNkN2QxMzExOTM0YTNmNDNhYTQzYzBhMjIwMDIwMmQyNDgxZjQ3MjMwYThiMjc4YTg5ZjMxZTg3ZDIifQ"
+        },
+        {
+          "resource": "repo://docsweep/mcp_server.py#L98-L105",
+          "version": "repo-lines-v1:sha256:b8e3ee897565154585bec03916d846a4e4dd9de4c2804e116d1a475ed221517a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzk2MWUzZDkxZjM4OWI1ZjE4ODY3MjM1NjI5YTI0MmFhMDE4Y2M2MzExYzk3MTNlMWZiYTA1ZDg2MjhmZDY1YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ViNzAyNTc1OTNkYTA2ZjY4MmEzZGRkYTU0YTlkMjYwZDRmYzUxNGY2NDUyMzdmNWNhNzRiMDhmOGRhNjFhNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzJlMDYzMDIxNDhlY2I4NTkzNTg3MTM5ZmMyNmQ5MzVhNzVhYzc0OTI5MmU2MjNlODg2NWMwZjcyYmYwYzc5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDUxZjFhNGYxOTM2NmQzMmMwNDJlZWEwODgxMzQzNmNmNmQ5MTY3MjYyYWFkZjQxODVmOTcwOGQ5YTJmM2QxMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4fd2c35ad3fc42f683a123bed9a4bce2",
+      "statement": "The inject/eject MCP tools resolve their project argument through _valid_project_dir(), which accepts a target path only if it case-insensitively matches one of the project roots already discovered by a live run_scan(), rejecting arbitrary filesystem paths outside previously-scanned projects.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/mcp_server.py#L396-L418",
+          "version": "repo-lines-v1:sha256:f2f6ad0b953c98e42ce1d65e93e1a97039d4dab15544a4cc011f721b9f16542a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1ZDU4OWE3OWI2OTYzMzBhYjNkNmRjZTU2Mjk1MTg3YjIzMjRiNzg0NGQwMWEzOTNlZTNkZDE2NjM4ZjllYTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyYWVhMDEwZjNjZTZhN2I2MDBmNWM5MGEwYTYyOGYxZGY5MjgwMDdmYTQyM2NmYWVjMmI4MDI3ZTZlZmY4MTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1YWFkNmFjNWFhYzllZDY3NDhhODIzMWZmYTEzZDcwYWEwNTFmYmNkMDIwY2IxNjAyNWRiYTMyOTYzMGM4NzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0NmJiYjUzZjE1MjVjN2UyYzViY2E1NzMzOTI4MzI4ZDUyNDI4YjhiYmYxZDM5OTliNzA1NTcwMmFiNTc1ZjYifQ"
+        },
+        {
+          "resource": "repo://docsweep/mcp_server.py#L76-L95",
+          "version": "repo-lines-v1:sha256:f43ad4c9ae3b2f2e426ed054a5ac780773e2176e7987b3809609f38d3cb2df3b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0ZTkzM2QyNjU2ZTVmODcyOGFiZTgwNWJlN2M3MDEwNGQyZTMyZmUwNjRhYTBlMWUzZWJmZmYwZDM0MTQ0MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExMzA2ODlmNjk1ZTA1MjhmNzRkNmIyYjZkNjE5NTY2M2U2MDg0OWViM2Q3MGVjYTEzMjU3Zjk4NmNjZGNmOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1OTI0Mzk5NGM5ODJlOTM3ZGE3NTY4MWI5YzdiNmE4ZjdiOGQxODBlMzM0N2NlZTBjM2FiODExMjI3ZmVlMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1ZDUzOTNmYWJjYmMzNWM3MWQxZTg2ZGMwMmMwM2QyZGM5MjI3MzZjNzcyNTc2NDg2MDEwYWJlZjUzOWQ2MDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e82eafab2fdf4df6892776b37bc24131",
+      "statement": "docs/ai-agent-integration.md documents that the original design intent was to expose only the highest-value morning-entry-point tools (brief/cross/capture_*) over MCP and push the rest to direct CLI, but implementation grew incrementally to the current 24 MCP tools, and CLI-only commands such as linkcheck, auto-triage, resurrect, graph, show, find, claim, index-sync, index-rebuild, index-watch, and pending remain unexposed over MCP.",
+      "evidence": [
+        {
+          "resource": "repo://docs/ai-agent-integration.md#L1-L24",
+          "version": "repo-lines-v1:sha256:924eef71f44e708b7980c52654e8de266bf887bade6536658a71f8688979252b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmMDU5ZDVkMTc3MTUxNjc5ZWI3NTc3Y2EwYzRkMTRiZjI0YmU2YmI2NjQwNjdhNjAwYWY3YTk2ZjgxYjkxMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2NDA3NzM4Mjc5YjU1NjFmNDRlZDlkMDE4ZDNiZTU1MGUwY2NiYzljODE1YjRkMDlkYmZlYWZkYjYyM2ViZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzZTBkZWY4NzU1MDBhNGNkZDJmZjE5ZmY4NzE4ZWY3MjBlMWY3YjE0OWExNDRiNmJiMWQ3ZDI0MTZiZmUzODcifQ"
+        },
+        {
+          "resource": "repo://docs/ai-agent-integration.md#L37-L47",
+          "version": "repo-lines-v1:sha256:a18f1b0f603ebf804ae56a3932c08c64506afb9c42a586afeb415b1d5362839a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiOTdiYjZjN2I3NDEzYmMzNjQwNDE5NjhlNTM1ZDllMzYyNWY1M2QzYmJlOWZhMzExN2EzZWU4MTM4YjM2MzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczOGE2OWM0NDM4ZmRlNTY4OTA4Njc3NDUwZDNjOTk4NGZhYzM1MDVlMmUwNGRiOGY5OWNjZTAzYWUxNzliMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzYzFjOTNhYzRhNTUzZmRhZTE0MjZiZTBhOTZlOGJmMDdiZDU0NmFiMTNhZTQxMmRjNDZiYjllZWEyYTQ0ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlYTRkNWY4ODYyY2ZhMDgxNjgyNDc2ODc0YTc0MjIyYWZlNzBiYzY0OGU1ZTYyMjRiZGQ3M2ExYzRjNjc5NzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_718a2904150748d2bef0c8c8de195f7c",
+      "statement": "The CLI flag for restricting promote to watching documents whose due date has arrived is spelled --due-expired, while the equivalent MCP/apply argument is spelled due_expired_only; docs/ai-agent-integration.md instructs an integrating agent to always show a dry-run's candidate list to the user before running the real promotion, since omitting the due-expired restriction targets all watching documents rather than only due ones.",
+      "evidence": [
+        {
+          "resource": "repo://docs/ai-agent-integration.md#L66-L86",
+          "version": "repo-lines-v1:sha256:82e05e4bc884d7a43ae2b4cca5363b98aef2d3d64127f8b0248ed7c03e5a17c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4MzYwNGQyYTY1MDRkZGYxNGRjN2Q2NWUyODVmZWE5MzlmNzUwNzdjNDQ4ODczMjdlY2M5ZDZiMTg3YzMyMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3ODBkNDBlNWM4ZTU4YmU4NjFhYTAwMTgwYmRhNGI3OWI2MzU0MzJkNDQzYjliYWNkNTcwOTNlNDdlMDhhOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5YzQ4ZGQwYzVlZDI1NWNkMTY3NmNiZGQyYjI4YzczMmIwMDA2Y2EzNjY0M2VkOWEwMzBiZTJiMzk4OTJhMjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzZTBkZWY4NzU1MDBhNGNkZDJmZjE5ZmY4NzE4ZWY3MjBlMWY3YjE0OWExNDRiNmJiMWQ3ZDI0MTZiZmUzODcifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

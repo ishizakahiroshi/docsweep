@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:97557cae670672a00926a2264d882896dcc8e74c212deeb7e74af2e1639868f6",
+  "claims": [
+    {
+      "id": "claim_204fea10e8684e1d9b597b0b1b47a4a2",
+      "statement": "engine.apply_action() re-validates that the requested action is still in the target document's current allowed_actions before executing it, raising ValueError if not, so a decision that has gone stale between a triage read and the apply call is rejected rather than silently executed.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/engine.py#L446-L467",
+          "version": "repo-lines-v1:sha256:cf7362c5792208ef630fdab97fa85cdc15c5953bf2f4e523eac2bfe3a0b9d5df:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZTM4ZTUzMjEyYzIyMDFiYTE3YzBmNTdiYmE2ODhkZjM5ZWFkNTNlMWZjYWZhY2M4MzdhYTRlNzQ1MTg0NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMWNhNDZjZjAyZDIwYjUxOWYzNTYxYjg0NjdmNjFjNDFlOWEyZjEzMWQyYTdiNzgxNTA1OTcxNTVhOTMxM2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhYmEyZWRlZjkwNTI5ZWYxNGZkYzE2NTA0MzVmNmY3Y2RlYWU3NTM1YjU1NzcxMGViZWUyNzAxYzAwMWY4NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0YjMzZjkzMTI1MDA3OWY4NDVmNTA0NDkwOTE2ZjNmMzBhMTRiMzRkOThhZWI0OGI5NzViYTMwZDFjZWQwOTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ff086f349b5944f78fe3e30f17a117c8",
+      "statement": "apply_action's discard/promote branch raises ValueError instead of archiving when the target document carries docsweep_policy: never_archive, even for this explicit single-file action path.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/engine.py#L482-L489",
+          "version": "repo-lines-v1:sha256:94a6114157829fe925ae67dac639ef350e171e964e1b3fa534d6c566bd217109:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2I0ZGNmYzk1NWI3ZGUyMGFkOTFkNTc0NzgyNDA1Y2I4ZTJiOGI1NjA5MWQzMTIxNDg2MDNkZWEzNGQ3Mjc0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2YxMjViZDUxN2M4OTNhNzM1Nzc1NzhmZGJlZjZlMmQ2NTY1MzcyYTc1N2FjZWU2ZTRhNTI3Nzc2NmQwYzJkZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjNjZDIyNzlkM2Y0ZjU3NmZhYWEwYjVlYjk4MzlmNTczNzkyMTY0NzUxZTY0MmM1MDFiZDQ2ODFlOWE5YzMyNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDkwMTY3ZTNlNDY3MTMxZWQzNTAyN2UyOWQzZTY0MzBkZTczNmVkNzEyZjAyZGIwNTFiYWRkNDMxZTA4ZThhNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9d4fa2d8da7b43c889acf517398b6429",
+      "statement": "docsweep/bulk_confirm.py's evaluate() is a pure function computing whether a bulk operation needs a second confirmation step from its item count and the configured bulk_confirm_threshold (default 20, or 0 to always require it), and each operation (promote/bulk_archive/bulk_status) has its own distinct required confirmation phrase (PROMOTE/ARCHIVE/RELABEL) specifically so a habitual same confirmation input does not carry across different destructive operations.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/bulk_confirm.py#L1-L22",
+          "version": "repo-lines-v1:sha256:2c2e19c840211171ab357c20748f6ee4e02b234c704745ae71777f64644d67c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiNmVjZGVmMDg3NDBiMzQyYzJlNTE2Y2QxZGEzZGJjM2EyNGI0NjY4N2M2NmI1NjJiZTU0NzI4MzY3NzA5N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyMmZhYTUzNWJkMmVhM2Q1MmU3NDFlZDQ1NDQzNWI3ZmU0OWU4MzU4NmU5NDNkOThkODJiYmZiMjRkMWY1YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1MTVlOGMyMDY0ZTVlOTQ4N2YzOTNjMjM3YmRmZmIyODY4ZTUzMTEzOGNhZGEwZWY3ZGJhODIyNTRkNDE3YzgifQ"
+        },
+        {
+          "resource": "repo://docsweep/bulk_confirm.py#L61-L69",
+          "version": "repo-lines-v1:sha256:e81756a9bf40fee011a9a751b547dd07fa1c6c9b306b371a8b8e5cf9e3f8ad4d:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMThiNjM2YmNlZDE3NjQ4OWZiMThhMzM0MjNhYmJhYTU1MzkwYTdkYzQ3Yjc2ODNhYWMzZjViOWU0YzljNTdjZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzkyMjA0YzY1ZjUwMmRjMTY0NTRiNjI0MDg1NmE5YWI3YWRlMDAzYThlOWY4NjMzM2VjMGI3YzllNDA5NDkxZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTQ1YmJhZGRjZDE4MzNmNDZlNWQ3ZjJiNzQyNzdjYmJlZDUxNzhiYzFhYmJiN2M2ZWIzOTYwM2MzZTU4YmQ2NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmRmMGNkMWFhMjY3NjJjZWM5NzMzNTRmYmE4YWIxMmNhYzU0M2I1Yjc0MGVlZjE5NTRiMjdmMmI3MTQ1NmUzNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_160cc4fdc87d418385c0d5306b33f914",
+      "statement": "The CLI enforces bulk_confirm's second confirmation via a required --yes flag rather than an interactive prompt, identically whether or not a TTY is attached, because docsweep's non-interactive guarantee for cron/CI/AI-delegated runs is treated as a hard invariant that must not vary by invocation context.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/bulk_confirm.py#L1-L11",
+          "version": "repo-lines-v1:sha256:e0b2b1f9f97926ee7af6bf75ab9ce90bc7d8a934c731579511d0e6d504022e1f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiNmVjZGVmMDg3NDBiMzQyYzJlNTE2Y2QxZGEzZGJjM2EyNGI0NjY4N2M2NmI1NjJiZTU0NzI4MzY3NzA5N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NWQ0NTg5ZTkxY2M4Y2I5NzQ4ODlkYWIwMWRlMTVkYjE1NzRjYTEwZWVjNzI5MGExMDliZjU4OGM5NGUwMWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0MzBhMDhmOTllNzNjOTUwNjE0MWUyY2IwZGY2Y2RkOTM2NWVkZGE5ZjQwY2IwZWUwY2IzYTdjZGRhYTFhMjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_16b9ab212d774804bf89de598c4b7703",
+      "statement": "auto_triage._ruleset_decide() is a heuristic (non-LLM) decider that proposes: relabel to done for a plan whose linkcheck progress is 'implemented', discard for a needs_decision-flagged document older than 180 days, and promote for a watching document whose due has arrived (or, for a legacy watching document with no due at all, older than 14 days as a fallback); each suggestion carries a confidence score and reason, and only a separate --apply step executes any of them via the same apply_action() used elsewhere.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/auto_triage.py#L1-L10",
+          "version": "repo-lines-v1:sha256:a8ab66754848c0474775272f897f8455a0971f450de263726c836a917084c497:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1Njk4NzczMjI5MWZiMjhhZWI1NDUyMDM5YWFjOWFhOGZjYTgzYzMyNDMxM2MwZjEyN2ZmNjY3ZWI4NDU2M2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NWQ0NTg5ZTkxY2M4Y2I5NzQ4ODlkYWIwMWRlMTVkYjE1NzRjYTEwZWVjNzI5MGExMDliZjU4OGM5NGUwMWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0MzBhMDhmOTllNzNjOTUwNjE0MWUyY2IwZGY2Y2RkOTM2NWVkZGE5ZjQwY2IwZWUwY2IzYTdjZGRhYTFhMjIifQ"
+        },
+        {
+          "resource": "repo://docsweep/auto_triage.py#L46-L90",
+          "version": "repo-lines-v1:sha256:25d1d91d9e5126dc46a54ce66ec34a9b5835c2690545bf73b574d1a3bef80a0b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjMTEyNGU4Nzk1Y2M2OGVkYjZkZDVhMWI2MDZmMTAxMzU3MzdmYTMyMTdiYzkyOWJiM2RjNDdhNzNlYmQ4OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkN2IyYzM2YTg5ZTg1OGZjZTIzYjhiMDU2YjhlZGU1MjFjYWYwNWI5YjJhY2Y5MmRlYjVhYTYxOTdhODg2MDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YThjMTJiMTA1ZGU5NzFkNThkNmY3MmVlMDJiZjliMzlmOWQzMjJjOGY5ZjhmODQ0MmIzZTFhMDhmMWY2ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4MjNhZjg2ZTMyMTU0ZDhiZjg4NmQ5NmRkY2M2NDU3YzU5ODU4NjU4M2ExMzA4ZmFkOGZiMWY3ZGQwMGEyYmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e8d13a217ae047aa8eb548af66edd3a8",
+      "statement": "docsweep/related.py centralizes related: reference resolution (accepting either a bare filename or full path via resolve_ref) and reverse-reference lookup (backref_records) shared by CLI show/context/fix-related and the Web UI's card-detail backreference panel, rather than being reimplemented separately by each caller.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/related.py#L1-L47",
+          "version": "repo-lines-v1:sha256:0d89d98de01ac765964581fee67dd00d7e0730b5651a720d5e351ff86c195d8d:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1YzRjNDIzMmRmZjYwNjMzMWM2NGNmYjI1MGI2NTQxZTU4OGZmN2QyNGZmMzk4ZDMzODg3Y2FhNmNhMzE4MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxMDk2NmU2YjE5NWUzOGM3MzUxZDA2ODcyY2E4OTI5YjZhYmIzYjcwZTg2YWIzZTk1MzY5ZGMxYjFjN2RmYzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyNzY4ZWIyOWU5NTdkYjJkOTFlNTM3M2NlYWRkMzJlNmM5Y2IyOTI0OTQxMzcxYjFjZDJjMzg5NjEyNDIyYWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_65b4086e7acd42358f3a0432eddfeb1a",
+      "statement": "closeout.py infers a legacy (pre-docsweep_parent) parent/child plan relationship only when both the child's filename matches ^<parent-stem>_c\\d+(?:_|$) and the child's own related list names the parent; the parent's related list alone is deliberately not sufficient to establish the relationship.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/closeout.py#L73-L73",
+          "version": "repo-lines-v1:sha256:8cec538826eae5ace893fa01b22576f0e19481be2ae303ec03b35828debeb693:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlYzUzODgyNmVhZTVhY2U4OTNmYTAxYjIyNTc2ZjBlMTk0ODFiZTJhZTMwM2VjMDNiMzU4MjhkZWJlYjY5MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlYzUzODgyNmVhZTVhY2U4OTNmYTAxYjIyNTc2ZjBlMTk0ODFiZTJhZTMwM2VjMDNiMzU4MjhkZWJlYjY5MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjI4OTU3NzhiMzY3YThjZDE0NTYyYmIwZjA3MzM1YmUwMDc1MzJlMzg1Zjc2NjI0MjI3MjE1YmM1YjAwYmM4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzBjM2RiZjIxMDZiNjhkZmNjYjExM2IyM2QzZDVlYmUzYWRmYTYyZDljMTgwZjYyNjZlOWFhMzMwMmVlODMxMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7966dd74be8944ce87495cc146e05146",
+      "statement": "closeout.py's module docstring states the closeout service answers only which mechanical conditions and human gates remain before a parent/child plan may move to a requested state, and deliberately never calls any write or archive service itself.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/closeout.py#L1-L6",
+          "version": "repo-lines-v1:sha256:4f196f1de645422b248ce17c22e83710b33a5686fd2b0966e60f9d85e9754e18:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzMyMWUzYWQ3MGMzMjJhY2U1NmVlMWFhODViYTM4NmQ3ZmRhODhjY2EyOTMyODk3ZTUxNjUwODViZDM4YWY2ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDc1ZDQ1ODllOTFjYzhjYjk3NDg4OWRhYjAxZGUxNWRiMTU3NGNhMTBlZWM3MjkwYTEwOWJmNTg4Yzk0ZTAxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzQzMGEwOGY5OWU3M2M5NTA2MTQxZTJjYjBkZjZjZGQ5MzY1ZWRkYTlmNDBjYjBlZTBjYjNhN2NkZGFhMWEyMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c74050b007fc489a904270866cbb9ad2",
+      "statement": "check_closeout() computes verdict as not_ready if any blockers are present, else manual_review_required if any manual_checks remain, else ready.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/closeout.py#L1080-L1080",
+          "version": "repo-lines-v1:sha256:038c0bc4207d33448ae2958dca543e60274ec8c9464b1a9a854f1fdec6646a14:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDM4YzBiYzQyMDdkMzM0NDhhZTI5NThkY2E1NDNlNjAyNzRlYzhjOTQ2NGIxYTlhODU0ZjFmZGVjNjY0NmExNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDM4YzBiYzQyMDdkMzM0NDhhZTI5NThkY2E1NDNlNjAyNzRlYzhjOTQ2NGIxYTlhODU0ZjFmZGVjNjY0NmExNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODliYzY2NWRhOTFlNzUxMDFmM2Y1ZDFkYmJiNjA3MTczZTcxNDhjZDBiMGVjZDI5ZTU1NmQ5NmJmZTJmOWNiMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2UwMzlmNTM0YTZkMGFhYzhmODA0YTA5MDM5OTdlYTk4N2Y3Zjc0MWY4YjFjMTk2ZWRmOWYyNjZmNjNiODZiYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb89b651ceab4067bdcf0a479dffa5cc",
+      "statement": "closeout.py's regex-based verification classifier distinguishes automated evidence (pytest/ruff/mypy/CI/静的検査 mentions) from manual evidence (browser/実機/production/Obsidian/Google Drive mentions), and separately distinguishes a zero-failure claim from a nonzero-failure-count claim rather than treating any occurrence of the word 'failed' as itself a blocker.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/closeout.py#L33-L67",
+          "version": "repo-lines-v1:sha256:8ca36f9f3a06671bc2a81ded5d7b7d55ca361104b55a617508b0dc60a3173b53:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNjFlMTBiYjU3NmEzYzVkOWNlNDNhMjdlMTMxZjRkNTJiYmMzNTQ1YTE4MzkyYjFiZDc2ZTI3NDZlZDlmZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMzllMDIyZTBkODU0MTIwMDAzZDc5MGMyOGI3NTk2MmVkZDMwMzc1NmQ1MTMzM2RmNzQ1Y2ZiODZlYTExY2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1ZTE4ODMyNGFkMzA5YzFhZDIwNmQ0ZTJjYmQxZmM5N2I1NGJiODNmY2RkZGFhNTMxMWVmYzRmMjVlYTdhMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxOWI3NGM0MDE2MzA4NGYxMjY1NTZjZWYyOWFiZDFjNjQ4YzY5MmQ2M2YxNjA3MGE0ZjgxYmNjZDcyN2FlOTAifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

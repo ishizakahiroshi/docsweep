@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Config, DEFAULT_PROJECT_MARKERS, load_config
-from .detect import Detection, detect_status, mask_code_fences
+from .detect import Detection, detect_status, mask_code_fences, mask_inline_code
 from .linkcheck import _extract_files_from_section, _extract_section
 from .scan import ALWAYS_SKIP_DIRS, _is_ignored, _read_gitignore
 from .services.frontmatter import read_frontmatter_text
@@ -48,11 +48,41 @@ _FAILURE_COUNT_RE = re.compile(
 )
 # 件数を書かずに「無い」と言う形。``0 件`` 単独や ``未検出`` のような曖昧語は含めない
 # （それらは成功の証跡ではなく manual review へ回す）。
+#
+# 助詞は ``は`` だけでなく ``が`` ``も`` も受ける。2026-09-11 に
+# ``エラーが無い`` ``エラーは出ておらず`` が救済側に当たらず ``_FAILED_RE`` にだけ当たり、
+# **失敗の不在を述べた文が失敗の明示として blocker になった**（docsweep 自身の
+# plan_promote-expired-watching.md で発生）。助詞 1 文字で否定形の救済が切れていた。
+# 否定の語尾も「〜ない」系（``無かった`` / ``出ていない`` / ``出ておらず`` / ``生じていない``）まで広げる。
+# ここで救済されても ``passed`` に直行はせず、``_AUTO_RE`` と ``_SUCCESS_RE`` の判定を経るため、
+# 散文が自動 pass へ昇格することはない（``claimed`` = manual review に落ちる）。
 _ZERO_FAILURE_RE = re.compile(
     r"(?:"
-    r"(?:失敗|エラー)\s*(?:は)?\s*(?:なし|無し|ありません|無い)"
+    r"(?:失敗|エラー)\s*[はがも]?\s*(?:"
+    r"なし|無し|ありません|有りません|無い|ない|無かった|なかった"
+    r"|出ていません|出ていない|出ておらず|出なかった|出ず"
+    r"|生じていない|生じませんでした|生じなかった"
+    r")"
     r"|no\s+(?:failed|failures?|errors?)(?![-\w])"
     r"|(?<![-\w])(?:failed|failures?|errors?)(?![-\w])\s*[:=]?\s*none"
+    r")",
+    re.IGNORECASE,
+)
+# 失敗が「実際に起きた」と主張している形。単に失敗語を含むだけの文と区別する。
+# 2026-09-11 までに 3 例確認した誤検出のうち 2 例は、``エラー`` が
+# **仕様説明の名詞**として現れたものだった（``<TODO>`` が残っているとき hook が
+# エラーを返す / エラー文面での再実行禁止への改修）。語の出現だけで失敗と断定すると、
+# 期待挙動や改修内容を書いた plan ほど締められなくなる。
+#
+# ここに当たらない失敗語は blocker ではなく **人の確認（manual check）** へ落とす。
+# 検出を消すのではなく、機械が確信を持てないことを verdict に正直に反映する。
+_ASSERTED_FAILURE_RE = re.compile(
+    r"(?:"
+    r"失敗(?:した|している|しました|が残|があっ|がある|に終わ)"
+    r"|落ち(?:た|ている|ました)"
+    r"|エラー(?:になった|になっている|が発生|が出た|が出ている|が残|で停止|で中断|で落ち)"
+    r"|(?<![-\w])(?:failed|failing|errored)(?![-\w])\s*[:：]"
+    r"|did\s+not\s+pass|does\s+not\s+pass"
     r")",
     re.IGNORECASE,
 )
@@ -332,7 +362,27 @@ def _resolve_parent_ref(
     if not _is_under(candidate, project_root):
         return [], "outside_parent"
     doc = docs.get(_path_key(candidate))
-    return ([doc] if doc else []), None
+    if doc is not None:
+        return [doc], None
+
+    # 完全一致で見つからない。**参照先が archive へ移送された可能性**を先に疑う。
+    # 親 plan を archive へ移しても、子の docsweep_parent は書き換わらないので、
+    # 親子とも正しく揃っているのに参照だけが古い、という状態が普通に起きる
+    # （2026-09-11 に docsweep 自身で 6 本発生した）。
+    #
+    # 同じ basename の文書がプロジェクト内にちょうど 1 件だけあるなら、それを採用する。
+    # 2 件以上なら曖昧なので候補をそのまま返し、呼び出し側の ambiguous_parent に倒す。
+    # **推測で 1 件に絞らない。**
+    name = raw_path.name.strip().lower()
+    if not name:
+        return [], None
+    matches = [
+        other for other in docs.values()
+        if other.path.name.strip().lower() == name
+    ]
+    if len(matches) == 1:
+        return matches, "parent_moved"
+    return matches, None
 
 
 def _legacy_child_name(child: _CloseoutDoc, parent: _CloseoutDoc) -> bool:
@@ -458,6 +508,27 @@ def _verification_entry(path: Path, section: str, line: str) -> dict[str, str]:
     }
 
 
+def _is_asserted_failure(line: str) -> bool:
+    """その行が「失敗が実際に起きた」と主張しているかを返す。
+
+    件数が付いた失敗（``3 failed`` / ``失敗 2 件``）か、``_ASSERTED_FAILURE_RE`` に
+    当たる言い回しだけを主張とみなす。**失敗語を含むだけの文は主張ではない。**
+    """
+    if any(c > 0 for c in _failure_counts(line)):
+        return True
+    return bool(_ASSERTED_FAILURE_RE.search(line))
+
+
+def _is_quoted_todo(line: str) -> bool:
+    """TODO/TBD がバッククォートの中にしか無いか（＝引用か）を返す。
+
+    ``\u0060<TODO>\u0060 が残っているとき hook がエラーを返す`` のような
+    **期待挙動の記述**を、未完了の印と読まないための判定。
+    行内コードの外にも TODO があれば引用ではない（生の置き場所として残っている）。
+    """
+    return not bool(_TODO_RE.search(mask_inline_code(line)))
+
+
 def _manual_check(path: Path, section: str, line: str, *, reason: str) -> dict[str, str]:
     return {
         "path": path.as_posix(),
@@ -552,17 +623,30 @@ def _inspect_document(
                         "message": "未完了 checkbox が残っています",
                     })
                 if _TODO_RE.search(line):
-                    blockers.append({
-                        "code": "evidence_missing",
-                        "path": doc.path.as_posix(),
-                        "section": title,
-                        "evidence": line,
-                        "message": "完了条件または検証に TODO/TBD が残っています",
-                    })
+                    if _is_quoted_todo(line):
+                        # バッククォートの中にしか無い TODO は引用（期待挙動の記述）。
+                        # 検出は残したまま、判断を人へ渡す。
+                        manual.append(_manual_check(
+                            doc.path, title, line, reason="todo_inside_code_span",
+                        ))
+                    else:
+                        blockers.append({
+                            "code": "evidence_missing",
+                            "path": doc.path.as_posix(),
+                            "section": title,
+                            "evidence": line,
+                            "message": "完了条件または検証に TODO/TBD が残っています",
+                        })
                 if kind == "verification":
                     entry = _verification_entry(doc.path, title, line)
                     evidence.append(entry)
-                    if entry["status"] in {"failed", "not_run"}:
+                    if entry["status"] == "failed" and not _is_asserted_failure(line):
+                        # 失敗語を含むだけで、失敗したとは言っていない文
+                        # （仕様説明の名詞としての「エラー」等）。人の確認へ落とす。
+                        manual.append(_manual_check(
+                            doc.path, title, line, reason="failure_word_without_assertion",
+                        ))
+                    elif entry["status"] in {"failed", "not_run"}:
                         blockers.append({
                             "code": entry["status"],
                             "path": doc.path.as_posix(),
@@ -837,7 +921,19 @@ def check_closeout(
             refs[0], project_root=project, docs=docs
         )
         explicit_edges[doc.key] = resolved
-        if relation_error:
+        if relation_error == "parent_moved":
+            # 解決はできている。参照が古いだけなので blocker にはせず、
+            # 直すべき箇所として警告に残す（黙って直しもしない）。
+            warnings.append({
+                "code": "parent_moved",
+                "paths": [doc.path.as_posix()],
+                "message": (
+                    f"docsweep_parent の参照先が移動しています: {refs[0]} -> "
+                    f"{_relative(resolved[0].path, project)}"
+                    "（basename が一致する 1 件で解決しました。参照の更新を推奨）"
+                ),
+            })
+        elif relation_error:
             relation_errors.append({
                 "code": relation_error,
                 "path": doc.path.as_posix(),

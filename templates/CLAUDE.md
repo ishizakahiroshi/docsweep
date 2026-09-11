@@ -132,7 +132,7 @@ docsweep_state: planned          # docsweep 作業状態: planned | in-progress 
 tags: []                         # 自由 list（語彙統制なし）
 owner:                           # ユーザー名スカラ（claim コマンドで自動セット）
 review_status: draft             # draft | review | published（陳腐化前倒し検知用）
-related: []                      # 関連する md のファイル名 list（fix-related で双方向化）
+related: []                      # 関連する md の**ファイル名** list（パス不可・fix-related で双方向化）
 # docsweep_parent: docs/local/plan_parent.md  # child の repo-relative 親 path（related とは別の正本）
 last_reviewed: 2026-06-29        # YYYY-MM-DD（stale 判定に使用）
 due: 2026-07-06                  # 任意・期日（看板方式）
@@ -143,6 +143,11 @@ due: 2026-07-06                  # 任意・期日（看板方式）
 
 docsweep 固有の追加規約は次のとおりです:
 
+- **`.gitignore` へ 2 行要る**: `docs/local/`（作業ログを公開しない）と
+  `.docsweep/`（docsweep が状態を書く実行時ディレクトリ。`promote` / `relabel` / `sweep` の
+  たびに `state.json` が書き換わる）。**どちらの抜けも `docsweep doctor` が検出する。**
+  後者は配り漏れが起きやすく、2026-09-11 に 8 リポを調べて 3 リポで抜けていた。
+
 - **archive / due / triage の標準的な作業管理対象は `plan` / `bugfix` / `pending`**。
   `manual_release` は旧形式として読み取り互換を残すが、新規 release md は `plan_release-*` とする。
   `manual` / `reference` / `setup` などの未知 type や追加フィールドは壊さず保持し、`okf-check` では拒否しない。
@@ -151,6 +156,18 @@ docsweep 固有の追加規約は次のとおりです:
 - 親 plan を `python -m docsweep new plan <topic> --split N` で分割すると、各 child に
   `docsweep_parent: <repo-relative path>` が付く。`related` は汎用の関連資料用であり、親子の
   機械判定を単独で担わない。
+- **`related` にはファイル名だけを書く。パスを書かない。**
+  docsweep は完了した md を `archive/` へ移送するのが仕事なので、**パスで書いた参照は
+  移送のたびに切れる**。ファイル名なら移送に耐える。`archive/v0.5.x/plan_x.md` や
+  `../../plan_x.md` のような書き方は、その時点では解決できても次の移送で壊れる。
+  同名の md が複数あるときだけ、曖昧さを解くためにパスを併記してよい。
+- **`related` に他プロジェクトの md を書かない。** docsweep の参照解決はプロジェクト境界の
+  内側で完結する。他リポジトリの資料に触れたいときは本文へ書く。
+  境界を越える参照は `related` では表現できない。
+- `docsweep_parent` だけは repo-relative path が正本（親子は構造なので曖昧さを許さない）。
+  参照先が `archive/` へ移送された場合、`closeout-check` は同じファイル名の md が
+  走査対象にちょうど 1 件だけあればそれを採用し、`parent_moved` の警告を出す。
+  解決はするが黙って直しはしないので、警告が出たら参照を更新する。
 - **子 plan のファイル名は `plan_<親topic>_c<N>[_<short>].md`**（区切りはアンダースコア）。
   `<short>` は任意で、`--titles backend,frontend,migration` を渡すと入る。付けると
   ファイル名だけでどの子が何を担当するか読めるので、C が 3 本以上なら付けることを勧める。

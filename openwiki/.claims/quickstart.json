@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:a0d2166bd30edd6ccf9c431226760e44d2186e0aa7e479487d99eb9bad1922fa",
+  "claims": [
+    {
+      "id": "claim_70f3ca6ed4204179a06803e17995e299",
+      "statement": "docsweep is distributed as a single PyPI package with optional extras for its web UI, MCP server, interactive review mode, filesystem watching, and embedding-based archive search (web/review/mcp/watch/resurrect, plus an all/all-lite bundle), rather than as separate packages per feature.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L27-L69",
+          "version": "repo-lines-v1:sha256:bf793c815b70d86b8f4e41b0a2fa28387cb187ed37f3dd03e01baa02c631d9fc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyMGI4ZDUzYWM1ZTM3NmI4YmZlNmMzZWUwOTQ4MmNkNTk1ZDlmZTkyNmRhYzk1NmQyZjEyZTBiMWYwMzUwMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkM2I2YzViOTQ0MjJhN2MwNGYwMDkzMzgxYmY4ZDE3MDdlNmVjY2E2Zjc4NzMyMWE2Nzk0ZWEzZGYxNjQ1MmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmOTMxYWEyMjc3YzcyMjBkMGEzYzYyNGIyNjg2ZDRkMWYzYmI4ZDViMzIzZTcyMzM2MDgxYmNjOGI5ZWY5MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlNzk5YzZjMzVjMTMwMTdmN2E3OGM4ZTQ2MWExYTk4M2MxN2VkMWVkZTRkMGQ2ZjQ2N2VjMjk2YThjYWU0NzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d06442a210fd4bb39a9d689a3006360c",
+      "statement": "The repository's root CLAUDE.md explicitly warns readers not to confuse it with templates/CLAUDE.md: the root file is a maintainer-facing dev guide for building docsweep itself, while templates/CLAUDE.md is the shipped ruleset adopters copy into their own, unrelated projects.",
+      "evidence": [
+        {
+          "resource": "repo://CLAUDE.md#L1-L10",
+          "version": "repo-lines-v1:sha256:3a7e68bb80541fc005f82e33694ed65ba264d85a1ef5cec740d937682645e0da:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlYTg4YTZiMTBmOTdkZTdjZGE1OWRiZDdmOTQyZDdlYzZmMGE5OThmYTdjYWY0ODg2MTAzYWI5ZmQ1MTU1YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwMDY2YTY3MmJlNDM3ZjZhOGE0Mzg2MzVkM2FiZTYyMTNmYjY1NDM0ODBkMmNjMjI1MmQ4NDMzOTMwMDk1NTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyM2JjZWVhYzcwOGI3NjdjZDVjYjM3MjUzM2U0YWFkYjgxNDEzYmQ1ZjNmN2QyNzVkYjQxN2M0MTU2MWViY2EifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:90921c4d87a188b74b088383d559edc4a83016a637af10d62693534b8b394e5a",
+  "claims": [
+    {
+      "id": "claim_ba5c036f80ca493c944d49399c06c34e",
+      "statement": "docsweep separates OKF's status frontmatter field (a document lifecycle axis with v0.2 values draft/stable/deprecated) from its own docsweep_state field (the work-tracking axis: planned/in-progress/watching/done/discarded/pending), and detect.py's _detect_frontmatter() only treats a legacy top-level status value as a docsweep work state when that value is not one of the active profile's own OKF lifecycle values.",
+      "evidence": [
+        {
+          "resource": "repo://docs/okf-mapping.md#L12-L14",
+          "version": "repo-lines-v1:sha256:3376288755b641eadb36f1ea59773318335f98a361dac96d7b4c5ffb6dd455dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDgwZDkwZGIzYjhjMjIxYmIxOTRkMzJiZmRmMTYxNjU5NTY1NmYzMGQ3MWY0ZDc2ZTlhZDc1YWMyMzYwN2U5NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJhY2QzYzM2MTQ4YjMzY2JmZDRmZTdjYmQwNjA5ZDIyY2JmNDBlYjcyYWY2ODNhMzUxYzJlMjAzZjNjZWNmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzEwMjhmMmYyZjJhZmUxNzFkM2QzZjUwNDlhMjYwOWM5YjkyYjhjMGM2YTAzMDU1NjkzMmQ2NzIyZmVmZDRkYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmQ5ODkzYjI2YmExZmY3M2Y2MGY2ODM4MjE2NGVkZjc2N2M5ZTc5MmQwYjZhOTg0MDAxOTI3YjA1MzE3N2EyZSJ9"
+        },
+        {
+          "resource": "repo://docsweep/detect.py#L202-L219",
+          "version": "repo-lines-v1:sha256:fd838ea254aaacc361a730c3ac6ed06e0eef4687b7d8103a2d7d23a21ee25d4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYTdlNTQ5YzliYjkyNmM4NzM5MDM0ZWViNDUwNTNiOTI4MmRjNmZlNmFmYTMwOTI4ODJlYWQwODgzYWQ0MDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhNTgzNDU2YTkwOTNlYTc2NjUwYjNjYjBjMTNiZTUxYjRmMDMxZDEzNzc3ZjQ3ZmM4YTIyY2E3YmY0ZmZhNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MzdmYjA3OGMyODFhN2I5NDNhZTNhNzE2YmNjNjNjYjRlZWQ2ZGNiY2E3NTZkNTc2ODNiMWNlMjA4ODUzNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1YTI2MTViZjUwZDBmZGQ5YzMzY2ExYTUyYzM2ZWUwMzBmYzE2OWVhODlkZTBkY2M0OTJmZDQ0OTUwOTk4NjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e7c601223e8f42679c324f8348b6a240",
+      "statement": "docsweep treats OKF's type field as an open, non-enumerable vocabulary: okf-check does not reject unrecognized type values, and only plan/bugfix/pending are interpreted by docsweep's own archive/due/triage automation, while manual/reference/setup and other types pass OKF conformance checks untouched and are excluded from docsweep's automated work-state and due-date handling.",
+      "evidence": [
+        {
+          "resource": "repo://docs/okf-mapping.md#L63-L76",
+          "version": "repo-lines-v1:sha256:d5fb062dbc53f49c33fe2a9f36a9dcea670788b503f050730247220ab8813fbf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YmNjNzBhYTkyYjAxYWJjMTU5ZmUwZDBmODZhYzk1ZWYyNTFhMWUwNWUzNjkyMTliN2Y4ZTEwMzNiYWFlMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzOTRjZDRmMTU3MmRhNmU5YzI1YTI5MzQ0YWZiYmZmMjQ4YmU2NjFkYzNmNzAwNjkwNTRlN2JlOWQyZjQ1NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2NjRlMGI2NWZjMDc4Y2U1OGJmMmUzODQzYzhjMDRkY2RiYzZlYTBjYTgwZDdkNWRmY2JlN2Y3YzIyYjliNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiOTI0NDFhY2E1ODc1MDFlOWFjYTFjOTkyNzA1M2YzZGIzMjE3YjIzMTZlZTM3NmFhMjFkYjE5YzJlZWFiMDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b15cafe1ceac4554be181a9e49ae0dde",
+      "statement": "docsweep/okf.py loads the enforceable subset of the OKF specification from versioned JSON profile files under docsweep/okf_profiles/ (only 0.2.json is bundled) rather than hardcoding rules in Python, explicitly so a new OKF spec version can be adopted as a data update without a code change.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/okf.py#L1-L11",
+          "version": "repo-lines-v1:sha256:d44b17c216fada5ad31c0d65ec5d917504d10bc7ff83790f68b8dc195bbe1229:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZTI1ZjU3Nzk1MTkwNDFhMDg2ZDY4ZDE4OTdlMGIyNTczYWRkMjlkZTRmNGJhYTI5YjBmOGRlZjUzMmExZGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NWQ0NTg5ZTkxY2M4Y2I5NzQ4ODlkYWIwMWRlMTVkYjE1NzRjYTEwZWVjNzI5MGExMDliZjU4OGM5NGUwMWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0MzBhMDhmOTllNzNjOTUwNjE0MWUyY2IwZGY2Y2RkOTM2NWVkZGE5ZjQwY2IwZWUwY2IzYTdjZGRhYTFhMjIifQ"
+        },
+        {
+          "resource": "repo://docsweep/okf.py#L89-L101",
+          "version": "repo-lines-v1:sha256:c58e7db8478923223095972c259cbc3298842f2823e659f9e48b5a6537d2f6bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxODNjZjYzNDA2ZjUwNmQ3OWY0NzBkYTVhOWJhMjg0MGNjNGZmNDA2NTVhZmVmYjYzNDJkY2RhZmIwZGUxMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxMTFkNzdhYzdkMjQzMzQ2OWQzMTUxYzc0MDJiNjkzZjk3ZDU2YzA3Y2VhMGJjMDI1ZDdhYWQ0ZGIyMGU3NTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxZjlmZmQ5Nzg1N2Y1ZDE3MWYyNWJhZjQ0ZmVjMzg2MmQzYTU4NWE3NDliYzk0NGFjZjJlMjhhYjZhMWI2YWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlNDM4ZjNkN2JhMTY5YzIyYWI2MTU0ZmIyYWQ2N2U1NjBlZmQxNWFiZjUzYzY2NGQ5YTE1ZjJiMGNjYTRkOWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2186e45b64074a14a4410f9c3ea4fb16",
+      "statement": "_decode_profile() validates a loaded OKF profile at parse time and raises OkfProfileError for structural violations: required_frontmatter must include type, lifecycle_values must be non-empty and free of duplicates, lifecycle_default must be one of lifecycle_values, and every value in docsweep_status_map must itself be one of lifecycle_values.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/okf.py#L104-L153",
+          "version": "repo-lines-v1:sha256:f0e3550a03f7513360ed42060964e53d55b6dd0023a8ed3a47437e5b02c2dcb3:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwNTI1OTE3MGUyOWJmNWQ0NzJlNzYyZGE2ZGZlMzg0MWU3MjllN2JjNDg4OGNiZWRlZWE4ZmQzODZkM2Q1NGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhOWY4YzJiYzdhMTQxYTAyMmFmM2ZlYjhhYjUwMDhlYzI1NzU3ZWYyNGFjZDA0OWY1MDg5YTc0YjdjOWFlODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5MDkzZDU0NTM1NmIxZmFjM2JjNDkyODFlMDUzMDI4OGRlYmM4YjQ1N2FmNmMzOTJlODlmMWJiOGFhNzcyNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3NGJhNDMxM2EzM2EzZWQ0MTg1MWNiNGViNGYzNzhjY2FlNGE1M2Q3MzczOTYwNmU5YzgwY2IxMzZiYmYxNDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ac29fc30093f435889e1722680e1500d",
+      "statement": "load_okf_profile() is offline by default (no source, or source='bundled', reads only the packaged JSON with no network access); a remote http:// profile fetch prints a plain-text tamper warning to stderr, a fetch without a sha256 warns that a URL redefinition would go undetected, and a supplied sha256 is verified against the fetched bytes before the profile is accepted or cached, with OkfProfileError raised rather than silently falling back to a different profile on fetch failure or hash mismatch.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/okf.py#L182-L267",
+          "version": "repo-lines-v1:sha256:1e010a64e697f9edcd4eab11ca416dc180d40ce3644b109ec5cd4ffeebb1e70a:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0YmRiZDYwNGQxNzE5Zjk2Yjk4NjE4ZGQwMjdhOTQ4YmFmMjBlYzczYWIxMzc0YmU2NDI5ZWE4OTA2NjJhNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwYjE2YzQyMDk5NjNjNTcxMGUzYzlmOTgyNGI5ODk1YzA3YmM4YzlhMWYwNmNiZTAzYmIwZjIxMWNkNjVhMjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliNWRlMjcwNzI1YjY4YmEyYWQwZjg1OTdmYmViZjE5YTliMjQ2MGMzY2JhZGNkMTQ3YmM0N2E3OGNiY2QzMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4ZTI5OTQ2N2Q4YWMwYWZhYWY1ZWMxZmRkNTliY2Q5OGZhODk2NjE5NDg0ZmJlZDI4OWQ5ZDVmNzNmMjU0M2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8ac790281edb4c9a84da9e2824f595e6",
+      "statement": "docsweep/okf_check.py's OkfCheckResult.ok property is True whenever there are zero error-severity OkfIssue entries, independent of how many warning-severity issues exist, reflecting the checker's documented design of enforcing only OKF's normative requirements and treating unknown types, producer extensions, and broken links as warnings rather than hard failures.",
+      "evidence": [
+        {
+          "resource": "repo://docsweep/okf_check.py#L1-L7",
+          "version": "repo-lines-v1:sha256:4efbc64af3ef397eaf6c767baad9d7e3c1fed79a4d5e3ac86f7a8cb1da7b9cc8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY5NDRiNWIwNWM3ZmVjMzQ2MWRiNzRhNzU0NWJlMDgxMjQ3MTU2MDJhZDM1MzdjNzYyOTc4MWU4Mzg0N2NmNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDc1ZDQ1ODllOTFjYzhjYjk3NDg4OWRhYjAxZGUxNWRiMTU3NGNhMTBlZWM3MjkwYTEwOWJmNTg4Yzk0ZTAxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzQzMGEwOGY5OWU3M2M5NTA2MTQxZTJjYjBkZjZjZGQ5MzY1ZWRkYTlmNDBjYjBlZTBjYjNhN2NkZGFhMWEyMiJ9"
+        },
+        {
+          "resource": "repo://docsweep/okf_check.py#L46-L63",
+          "version": "repo-lines-v1:sha256:2527adfe9af2279d35e6040bf38d356bdf994f715ec455303b4f5a6478c5346e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkNzBiNmYxNjkzY2RiMzU5YmUzNDg4MTA1ZGZhOGI2ZmU1NmRlOTcyY2U1NDZjNGY3MWFhMzg1NGZlMTI1YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYmM1NTgyN2ExNGJlYzRiOGY3NGQ3ZTU2ZTEzYjU5YTM4N2M1NTFhNGU2YjM3MDJiNmE1ZTU0OWUwZmM1MzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxZjlmZmQ5Nzg1N2Y1ZDE3MWYyNWJhZjQ0ZmVjMzg2MmQzYTU4NWE3NDliYzk0NGFjZjJlMjhhYjZhMWI2YWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYmQ0YTkxYzExZmM5NGEzOTZkNTZiMjcwMDAxYTM0ZmFmY2VhODYzZTYyNGMyNmVlNDRmOGU1M2VjYWU2ZjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d1325da5b535428d9e9cd32614baaebf",
+      "statement": "export --okf writes an okf-manifest.json that is explicitly documented as a docsweep-specific auxiliary file, not part of the OKF standard itself, recording the profile used (spec_version/source/sha256), the full docsweep_state-to-OKF-status mapping applied, and per-file metadata including a normalized flag marking files whose original frontmatter was legacy or incomplete and was split/completed only inside the Bundle copy, leaving the source file on disk unmodified.",
+      "evidence": [
+        {
+          "resource": "repo://docs/okf-export-format.md#L1-L5",
+          "version": "repo-lines-v1:sha256:55e43cbe63d9d9bbd815c76c7d13474700d9d9f281f369e4ce9b4d7011e57451:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2I0OWEwZDExMzg4MDY3ODQwM2I0OTRhNzc0MWJiNWJkOTExYjIwNTJmN2IzMWJkODcyNWViY2YzMTZmMTY3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWQyYmM1MWZmZTllYTEyNWY2ZTkxZmM4MWQ4OThhYTVkMjk3MWMyZTlmYTY1NzFlNzc5MmM5YmRlNzU5YjcwMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjg1Mzg2NTJkNjUwNDA5M2QzNmI4ZGMzODA3ZjA0ZWNjNTA5Mjg0YWQ0NjEyNTA4OWQ2YzQwODc5MTlmNjg0ZCJ9"
+        },
+        {
+          "resource": "repo://docs/okf-export-format.md#L57-L97",
+          "version": "repo-lines-v1:sha256:6123658aa4d079668b6f1242ed8dd8a5c81f7d6f1741fb9cba38e7154328892c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljZmY1ZTQ2ZTBjOWQ5YmE1ZGNmNWVjZDY2OWE4ZjcwNDRkZTZkYzViZjQzYmQ4ZTg0MmVhZTVhODgzODViMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYzU2OGVhZGRjYzQ4NDAyNmYxZTMyYWYyMmM3NWYzODUzNjJjZjJjNWMxZGQ5NjhjMDU5MmY1NzE5NTgzMzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjZTE4ZjYzMGQ1YjRmYTAyYTcwZjU5NzA2M2ZlMWY2NzJjMzQ2MDQ4ZmFjMGRlYTRhNDgxOWIwNTY3YmJlODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4ODQxNzk2ZWUwYTM5YjhhNThjYTRkZDA3ZWRiNjExOTI4MzZiZDY4ZDgwZDc5OGY3OTcyMTk3ZGJjYzBmYjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d1add128b8374b0089fcb3fafb980c5f",
+      "statement": "An OKF export Bundle resolves a filename collision between two source files that would land at the same Bundle-relative path by appending a __1/__2 suffix, and the done/discarded/other docsweep states map to stable/deprecated/draft respectively in the bundled 0.2 profile, documented as docsweep's own operational approximation rather than a claim of semantic equivalence with OKF's lifecycle values.",
+      "evidence": [
+        {
+          "resource": "repo://docs/okf-export-format.md#L44-L55",
+          "version": "repo-lines-v1:sha256:7bf78c33f2ca417445a1698f055f0b961d5a88884124023e2ea4f406852e4db1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZDU3MGE5NDI1ODk4MmIzZmE0NjNkN2YyOGVhN2QzMTNkZDkyYTljMWM4N2ZlMDU2MTNkZTUxN2Y0YTQ2OTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxMDZlZjg1MTE2MmRiOGNhZTc2YzM1NmM2Y2RlNzM5NDJlMjQxZDBjYTM5M2FjMDNkMzY5MjFlYzg2YzE0NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4N2RmYTI5MWM3ZDZlMGQ3MjBlNmI3MmRkNzA4ZGUzNTY1YTY3YTVlYTM3YTU1OGRmNDRmOGU1MjkyNDczMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3NmZkYTczYjFjNmE4OWMyZmViYzc4Y2M3Y2QwZDk5MDlmYWJmMTJiYTkwMDc1NTEzZTcyOGZiZWYwOGUxYzgifQ"
+        },
+        {
+          "resource": "repo://docs/okf-mapping.md#L78-L93",
+          "version": "repo-lines-v1:sha256:ccaf17601879b5cebebe4a9b66e7dce6f07021e557caaa7c850f55b3a7a2c3f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0ZWZkYjkxNTYwOTlmYWFkYmFmNjFmYTM1OGFiZGRmOTJhOTIwZjJhNDA2ZDA1NjY3ZDExYWQyZjM2MTJlY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1MmMyOTQyNGYxOTIwZjhiYWY1M2QzY2U4NTk5NzQ3NGQ3ZDQ5OGVkYTljZThmOTE5Zjc3YjdkMTY3ZDE4NmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyZDZjODMzMjdhODYzYTdmNDhlNjVlY2Q1ODg5MzUwMzZkY2QyZGZhMTdhNTBjOTY4YjZlOWViNDNlMjg4Y2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2N2U2NDExN2E5OGZmOWQ0YWIyZjg0MzQ1NWM0YTU0Y2ViZjFmOTYwNTg2MzBjZTY4MTVjYmI0ODZiMjhmMTEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-08T12:41:37.379Z"
+  }
+}

@@ -8,6 +8,14 @@
 # roots:
 #   - .
 
+# --- .gitignore へ 2 行（このファイルを置くリポジトリで必ず要る） ---
+# docs/local/     ← work_policy: private のとき必須。作業ログを公開しないため
+# .docsweep/      ← docsweep が状態を書く実行時ディレクトリ。ソースではない
+#
+# .docsweep/state.json は promote / apply --action relabel / sweep のたびに
+# 書き換わる。ignore しないと git status に未追跡で出続け、git add -A で巻き込む。
+# `docsweep doctor` がどちらの抜けも検出する。
+
 # --- AI work queue (project-relative; new / capture use the same path) ---
 # work_dir: docs/local
 # work_policy: private   # private requires Git ignore and is excluded from export

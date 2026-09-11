@@ -63,12 +63,19 @@ def _okf_frontmatter(
     due: str | None,
     today: str | None = None,
     delegation: str | None = None,
+    owner: str = "",
 ) -> str:
     """OKF（plan_okf-adoption_2026-06-29.md）準拠の frontmatter ブロックを返す。
 
     最低限のフィールド: ``type`` / OKF ``status`` / ``docsweep_state`` / ``tags: []`` / ``owner`` /
     ``review_status: draft`` / ``related: []`` / ``last_reviewed: <today>``。
     ``due:`` は呼び出し側が決める（plan/pending は付与、bugfix は新規時は付けない設計）。
+
+    ``owner`` は生成時に埋める（既定は
+    :func:`docsweep.services.frontmatter.default_doc_owner`）。空で出していた頃は、
+    値を決めるのが人か AI の判断になり、リポジトリごとに別表記へ分岐していた
+    （`ishizakahiroshi` / `ishizaka` / 日本語氏名 / OS ログイン名が同一人物に対して並存）。
+    解決できない環境では従来どおり空で出す。
 
     旧来の "due だけの最小 frontmatter" と異なり常に frontmatter ブロックを出力する。
     既存ファイル（frontmatter 無し）は触らないので後方互換は維持される（parser 側が
@@ -82,7 +89,8 @@ def _okf_frontmatter(
         f"status: {lifecycle_status}",
         f"docsweep_state: {state}",
         "tags: []",
-        "owner: ",
+        # owner が空なら従来どおり "owner: "（末尾スペース）になる。
+        f"owner: {owner}",
         "review_status: draft",
         "related: []",
         f"last_reviewed: {today}",
@@ -134,11 +142,13 @@ def okf_frontmatter(
     due: str | None = None,
     offset_days: dict[str, int] | None = None,
     today: date | None = None,
+    owner: str | None = None,
 ) -> str:
     """``docsweep new`` 以外の生成経路（capture 等）へ同じ frontmatter を配る公開口。
 
     種別ごとの初期 state と due の決め方（plan/pending は offset、bugfix は付けない）を
-    1 箇所に閉じ込め、md の生まれ方で OKF 準拠が変わらないようにする。
+    1 箇所に閉じ込め、md の生まれ方で OKF 準拠が変わらないようにする。owner も同じ理由で
+    ここに寄せる（``owner=None`` で既定解決、``owner=""`` で明示的に空）。
     """
     state = _INITIAL_STATE.get(doc_type)
     if state is None:
@@ -146,8 +156,29 @@ def okf_frontmatter(
     base = today or date.today()
     resolved = _resolve_initial_due(doc_type, due=due, offset_days=offset_days, today=base)
     return _okf_frontmatter(
-        doc_type=doc_type, state=state, due=resolved, today=base.isoformat()
+        doc_type=doc_type,
+        state=state,
+        due=resolved,
+        today=base.isoformat(),
+        owner=_resolve_owner(owner),
     )
+
+
+def _resolve_owner(owner: str | None, config: Config | None = None) -> str:
+    """``None`` は既定解決、明示文字列（``""`` 含む）はそのまま使う。
+
+    ``config`` を渡すとプロジェクトの ``.docsweep.yaml`` の ``user.name`` が効く。
+    循環 import を避けるため services 側は遅延 import する。解決に失敗しても生成は
+    止めない（空 owner で出す＝従来の挙動）。
+    """
+    if owner is not None:
+        return owner
+    try:
+        from .services.frontmatter import default_doc_owner
+
+        return default_doc_owner(config=config)
+    except Exception:  # noqa: BLE001 - owner が取れないことは生成の失敗理由にしない
+        return ""
 
 
 def _plan_body(
@@ -156,6 +187,7 @@ def _plan_body(
     due: str | None = None,
     delegate: bool = False,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
+    owner: str = "",
 ) -> str:
     delegation = "external" if delegate else None
     detail = ""
@@ -174,7 +206,7 @@ def _plan_body(
         )
     body = (
         _okf_frontmatter(
-            doc_type="plan", state="planned", due=due, delegation=delegation
+            doc_type="plan", state="planned", due=due, delegation=delegation, owner=owner
         )
         + f"# [計画] {title}\n\n"
         "## context配分\n\n"
@@ -193,12 +225,13 @@ def _bugfix_body(
     due: str | None = None,
     delegate: bool = False,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
+    owner: str = "",
 ) -> str:
     # bugfix は新規時に `due:` を入れない（[様子見] へ移した時に services/status.py が付ける）。
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
     _ = (due, delegate)
     body = (
-        _okf_frontmatter(doc_type="bugfix", state="in-progress", due=None)
+        _okf_frontmatter(doc_type="bugfix", state="in-progress", due=None, owner=owner)
         # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
         + f"# [実行中] {title}\n\n"
         # 2026-08-27 改修: bugfix にも context配分 表を持たせる（列順は plan と同じ）。
@@ -221,10 +254,11 @@ def _pending_body(
     due: str | None = None,
     delegate: bool = False,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
+    owner: str = "",
 ) -> str:
     _ = delegate
     body = (
-        _okf_frontmatter(doc_type="pending", state="pending", due=due)
+        _okf_frontmatter(doc_type="pending", state="pending", due=due, owner=owner)
         + f"# [保留] {title}\n\n"
         "## 概要\n\n<TODO: 何を止めたか>\n\n## 保留理由\n\n<TODO>\n\n## 着手条件\n\n- <TODO>\n"
     )
@@ -284,6 +318,7 @@ def new_doc(
     work_dir: str | None = None,
     allow_sensitive: bool = False,
     delegate: bool = False,
+    owner: str | None = None,
 ) -> NewDoc:
     """テンプレ MD を新規生成して :class:`NewDoc` を返す。
 
@@ -294,6 +329,8 @@ def new_doc(
         title: H1 タイトル。省略時は ``topic`` を流用。
         due: 初期 due を直接指定（``YYYY-MM-DD``）。明示指定が最優先。
         offset_days: ``Config.due_default_offset_days``。``due`` 未指定時の自動計算に使う。
+        owner: frontmatter の owner。``None`` で既定解決（config user.name → git user.name）、
+            ``""`` で明示的に空。
     """
     if doc_type not in _BUILDERS:
         raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
@@ -304,6 +341,7 @@ def new_doc(
         due=resolved_due,
         delegate=delegate,
         template_sections=config.template_sections if config is not None else None,
+        owner=_resolve_owner(owner, config),
     )
     if config is not None:
         ensure_write_allowed(

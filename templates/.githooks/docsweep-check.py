@@ -145,6 +145,38 @@ def _is_unfilled_body(body: str) -> bool:
     return not meaningful
 
 
+def _find_by_basename(start: Path, name: str) -> bool:
+    """作業 queue とその archive の中に、その **ファイル名** の md があるかを返す。
+
+    探索範囲は ``start``（参照元 md のあるディレクトリ）とその配下、および
+    ``start`` の親を 2 階層まで遡った先の ``archive/`` 配下に限る。
+    リポジトリ全体は走査しない（大きなリポで pre-commit が重くなるため）。
+    """
+    if not name:
+        return False
+    roots = [start]
+    cur = start
+    for _ in range(2):
+        cur = cur.parent
+        roots.append(cur)
+    seen: set[str] = set()
+    for root in roots:
+        try:
+            key = str(root.resolve()).lower()
+        except OSError:
+            continue
+        if key in seen or not root.is_dir():
+            continue
+        seen.add(key)
+        try:
+            for found in root.rglob(name):
+                if found.is_file():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def _check_delegated_plan(path: Path, text: str, data: dict, warnings: list[str] | None) -> list[str]:
     """Validate the opt-in C detail format without importing docsweep itself."""
     if data.get("docsweep_delegation") != "external" or data.get("type") != "plan":
@@ -354,10 +386,20 @@ def _check_one(path: Path, warnings: list[str] | None = None) -> list[str]:
                 Path(ref_s),
                 Path.cwd() / ref_s,
             ]
-            if not any(c.is_file() for c in candidates):
-                errors.append(
-                    f"{path}: related に存在しない md があります: {ref_s!r}"
-                )
+            if any(c.is_file() for c in candidates):
+                continue
+            # パスで見つからない場合、同じ作業 queue の中を **ファイル名で** 探す。
+            #
+            # `related` の正本はファイル名であり、パスではない（templates/CLAUDE.md）。
+            # docsweep は完了した md を archive/ へ移送するのが仕事なので、
+            # **パスで書いた参照は移送のたびに切れる**。ファイル名なら移送に耐える。
+            # ここに basename 探索が無かったため、規約どおりファイル名で書くと
+            # 移送後に hook が「存在しない」と言う、という食い違いが起きていた。
+            if _find_by_basename(base, Path(ref_s).name):
+                continue
+            errors.append(
+                f"{path}: related に存在しない md があります: {ref_s!r}"
+            )
     errors.extend(_check_delegated_plan(path, text, data, warnings))
     return errors
 

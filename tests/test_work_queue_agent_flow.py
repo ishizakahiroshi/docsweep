@@ -15,6 +15,7 @@ from docsweep.doctor import run_doctor
 from docsweep.export import run_export
 from docsweep.inject import generate_guidance_block, preview_inject
 from docsweep.services.content import update_content
+from docsweep.work_queue import check_work_queue
 
 
 def _draft(body: str, name: str = "plan_x.md") -> Draft:
@@ -198,6 +199,72 @@ def test_private_queue_is_excluded_from_export(tmp_path: Path):
     )
     result = run_export(cfg, out=tmp_path / "bundle.zip")
     assert result.file_count == 0
+
+
+def _repo_with_state_dir(tmp_path: Path, *, ignore_state: bool) -> Path:
+    """docs/local を ignore 済みで、.docsweep/ の扱いだけ変えたリポジトリを作る。"""
+    project = tmp_path / "project"
+    (project / "docs" / "local").mkdir(parents=True)
+    (project / ".docsweep").mkdir()
+    (project / ".docsweep" / "state.json").write_text("{}", encoding="utf-8")
+    subprocess.run(["git", "init", str(project)], capture_output=True, check=True)
+    ignore = "docs/local/\n"
+    if ignore_state:
+        ignore += ".docsweep/\n"
+    (project / ".gitignore").write_text(ignore, encoding="utf-8")
+    return project
+
+
+def test_unignored_state_dir_is_reported(tmp_path: Path):
+    """.docsweep/ が ignore されていなければ警告する。
+
+    `.docsweep/state.json` は promote / relabel / sweep のたびに書き換わる実行時ファイル。
+    採用側の .gitignore にその記述が配られておらず、2026-09-11 に 8 リポを調べて
+    3 リポで抜けていた。git status に未追跡で出続け `git add -A` で巻き込む。
+    """
+    project = _repo_with_state_dir(tmp_path, ignore_state=False)
+    cfg = load_config(
+        project_dir=project,
+        explicit_roots=[str(project)],
+        global_path=tmp_path / "missing.yaml",
+    )
+    result = check_work_queue(
+        config=cfg, project_dir=project, target_dir=project / "docs" / "local"
+    )
+    assert any(".docsweep" in w for w in result.warnings), result.warnings
+    # 警告であって error ではない（書き込みを止めるほどではない）。
+    assert not result.errors, result.errors
+
+
+def test_ignored_state_dir_is_silent(tmp_path: Path):
+    """ignore 済みなら何も言わない。"""
+    project = _repo_with_state_dir(tmp_path, ignore_state=True)
+    cfg = load_config(
+        project_dir=project,
+        explicit_roots=[str(project)],
+        global_path=tmp_path / "missing.yaml",
+    )
+    result = check_work_queue(
+        config=cfg, project_dir=project, target_dir=project / "docs" / "local"
+    )
+    assert not [w for w in result.warnings if ".docsweep" in w], result.warnings
+
+
+def test_absent_state_dir_is_not_reported(tmp_path: Path):
+    """.docsweep/ がまだ無いリポジトリに警告を出さない（未導入を責めない）。"""
+    project = tmp_path / "project"
+    (project / "docs" / "local").mkdir(parents=True)
+    subprocess.run(["git", "init", str(project)], capture_output=True, check=True)
+    (project / ".gitignore").write_text("docs/local/\n", encoding="utf-8")
+    cfg = load_config(
+        project_dir=project,
+        explicit_roots=[str(project)],
+        global_path=tmp_path / "missing.yaml",
+    )
+    result = check_work_queue(
+        config=cfg, project_dir=project, target_dir=project / "docs" / "local"
+    )
+    assert not [w for w in result.warnings if ".docsweep" in w], result.warnings
 
 
 def test_doctor_reports_unignored_private_queue(tmp_path: Path):

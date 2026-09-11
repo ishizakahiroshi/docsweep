@@ -57,3 +57,24 @@ def isolate_session_log_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(session_logs, "_home", lambda: tmp_path / "no-such-home")
+
+
+@pytest.fixture(autouse=True)
+def isolate_doc_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """生成 md の ``owner:`` を「テストを流した人の身元」から切り離す。
+
+    ``docsweep new`` は owner を空ではなく実効値で埋める（表記ゆれを生む判断を
+    生成時に消すため）。遮断しないと期待値が開発者の ``git config user.name`` と
+    ``~/.docsweep/config.yaml`` に依存し、ローカルと CI で生成物が変わる（索引 DB・
+    セッションログと同型の実環境混入）。
+
+    既定は「解決できない環境」＝ owner 空。owner を検証したいテストは自分で
+    ``_git_user_name`` か ``GLOBAL_CONFIG_PATH`` を差し替える（後勝ち）。
+    """
+    from docsweep import config as config_module
+    from docsweep.services import frontmatter as frontmatter_module
+
+    monkeypatch.setattr(
+        config_module, "GLOBAL_CONFIG_PATH", tmp_path / "no-such-docsweep-config.yaml"
+    )
+    monkeypatch.setattr(frontmatter_module, "_git_user_name", lambda cwd=None: None)

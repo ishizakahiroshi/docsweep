@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "pages": {
+    "/openwiki/architecture/overview.md": {
+      "pageVersion": "sha256:c39b350f47341b55a143c1a768ae8f20adb8d2beceb59e0869ce7fa1c8b51164",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/architecture/state-model.md": {
+      "pageVersion": "sha256:bd8a8690d9a91b05273b7ca0de26743a674b44864fa24b6f046de6a6ce32bb06",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/integrations/mcp-server.md": {
+      "pageVersion": "sha256:6afefdd0d23cb7e22d8a3432fe16445048ec6fad2bab5dd2fd7b0c38636bb69e",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/integrations/okf-compatibility.md": {
+      "pageVersion": "sha256:90921c4d87a188b74b088383d559edc4a83016a637af10d62693534b8b394e5a",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/integrations/provenance.md": {
+      "pageVersion": "sha256:998ad02caddb117317300113442440afb891d706f34a401f9ab43ddb1351565e",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/integrations/web-ui.md": {
+      "pageVersion": "sha256:24db12e329c025ea8a2d4a184feb89cf17cfaa8498c0778216fdbaf6d524a74c",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/operations/adoption-and-templates.md": {
+      "pageVersion": "sha256:f65a617466230817827bb0fc9b91e40a92497e6c8666cb5ed6dabe4908b2860b",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/quickstart.md": {
+      "pageVersion": "sha256:a0d2166bd30edd6ccf9c431226760e44d2186e0aa7e479487d99eb9bad1922fa",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/testing/development-workflow.md": {
+      "pageVersion": "sha256:a6bbbf3bbc51194919787c85147da09a3b98e9e99f986a682fd5f507e4817928",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/workflows/cli-reference.md": {
+      "pageVersion": "sha256:3922010b6747184f6575042958b444c16cc50b040128a777011de1d30944892c",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    },
+    "/openwiki/workflows/lifecycle-management.md": {
+      "pageVersion": "sha256:97557cae670672a00926a2264d882896dcc8e74c212deeb7e74af2e1639868f6",
+      "completedBy": "claude-code",
+      "completedRunId": "b259b207-bce6-4368-a1bd-78a64d48ee33",
+      "gitHead": "0c5795e18208112c8b3ce4c2e42eb60e1f9ac7ec",
+      "sourceFingerprint": "sha256:cf09a52feefa9e1e4f22fa2bc0b63baceaa5dc5868fec152b450f41b8bf4a9e9"
+    }
+  }
+}

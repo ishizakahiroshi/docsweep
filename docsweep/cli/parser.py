@@ -490,6 +490,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_config.add_argument("--get", dest="get_key", metavar="KEY", help="指定キーを取得")
     p_config.add_argument("--unset", dest="unset_key", metavar="KEY", help="指定キーを削除")
     p_config.add_argument("--list", dest="list_all", action="store_true", help="全キーを表示")
+    p_config.add_argument(
+        "--from-github", dest="from_github", action="store_true",
+        help="値を gh CLI のログインアカウント（gh api user --jq .login）から取って設定する（user.name 専用）",
+    )
     p_config.add_argument("--json", action="store_true")
 
     p_activity = sub.add_parser(
