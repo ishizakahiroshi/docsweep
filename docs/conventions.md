@@ -343,6 +343,28 @@ python -m docsweep closeout-check \
 `<parent-stem>_c<N>_<short>.md` に一致し、child の `related` が親を指す場合だけ inferred child です。
 親の `related` だけでは child と確定しません。
 
+### 参照の書き方（`related` と `docsweep_parent`）
+
+**`related` にはファイル名だけを書きます。パスを書きません。**
+
+理由は docsweep の仕事そのものにあります。docsweep は完了した md を `archive/` へ
+移送するツールなので、**参照先はいずれ必ず動きます**。パスで書いた参照は、その移送の
+たびに切れます。`archive/v0.5.x/plan_x.md` のように移送後のパスへ直しても、
+次の移送でまた切れます。ファイル名で書けば、どこへ移っても同じ名前で見つかります。
+
+同名の md が複数あるときだけ、曖昧さを解くためにパスを併記してください。
+
+**他プロジェクトの md は `related` に書きません。** docsweep の参照解決はプロジェクト
+境界の内側で完結します。境界を越える参照は `related` では表現できないので、
+本文へ書いてください。
+
+`docsweep_parent` だけは repo-relative path が正本です。親子は「関連」ではなく
+構造なので、曖昧さを許さない形にしています。参照先が `archive/` へ移送された場合、
+`closeout-check` は同じファイル名の md が走査対象にちょうど 1 件だけあれば
+それを採用し、`parent_moved` の警告を出します。解決はしますが黙って直しはしないので、
+警告が出たら参照を更新してください。2 件以上見つかったときは推測せず
+`ambiguous_parent` で止まります。
+
 ---
 
 ## 配置先
