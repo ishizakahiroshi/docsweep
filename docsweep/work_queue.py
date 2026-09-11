@@ -7,6 +7,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .aggregate_index import INDEX_DIRNAME
 from .config import (
     DEFAULT_PROJECT_MARKERS,
     Config,
@@ -277,6 +278,26 @@ def check_work_queue(
             result.errors.append("private work queue が Git ignore されていません")
         elif result.ignored is None:
             result.warnings.append("Git ignore 状態を確認できませんでした")
+
+    # docsweep 自身が書く実行時ディレクトリ。`promote` / `apply --action relabel` /
+    # `sweep` のたびに `.docsweep/state.json`（ラベル履歴・postpone 回数）が書き換わる。
+    # ソースではないので追跡対象から外す必要があるが、**採用側の .gitignore に
+    # その記述が配られていなかった**。2026-09-11 に 8 リポを調べて 3 リポで抜けており、
+    # `git status` に未追跡で出続けて `git add -A` で巻き込む状態になっていた。
+    # work queue と同じ道具で見られるので、同じ検査に相乗りさせる。
+    state_dir = root / INDEX_DIRNAME
+    if state_dir.exists():
+        state_ignored = _git_ignored(root, state_dir)
+        if state_ignored is False:
+            result.warnings.append(
+                f"{INDEX_DIRNAME} が Git ignore されていません"
+                "（docsweep の実行時ファイル。.gitignore へ追加してください）"
+            )
+        if _git_tracked(root, state_dir):
+            result.errors.append(
+                f"{INDEX_DIRNAME} に tracked ファイルが含まれています"
+                "（実行時ファイルなので追跡から外してください）"
+            )
 
     if content is not None:
         # enforce_secret_policy は本文を例外・戻り値へ含めない。

@@ -143,6 +143,11 @@ due: 2026-07-06                  # 任意・期日（看板方式）
 
 docsweep 固有の追加規約は次のとおりです:
 
+- **`.gitignore` へ 2 行要る**: `docs/local/`（作業ログを公開しない）と
+  `.docsweep/`（docsweep が状態を書く実行時ディレクトリ。`promote` / `relabel` / `sweep` の
+  たびに `state.json` が書き換わる）。**どちらの抜けも `docsweep doctor` が検出する。**
+  後者は配り漏れが起きやすく、2026-09-11 に 8 リポを調べて 3 リポで抜けていた。
+
 - **archive / due / triage の標準的な作業管理対象は `plan` / `bugfix` / `pending`**。
   `manual_release` は旧形式として読み取り互換を残すが、新規 release md は `plan_release-*` とする。
   `manual` / `reference` / `setup` などの未知 type や追加フィールドは壊さず保持し、`okf-check` では拒否しない。
