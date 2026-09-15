@@ -55,6 +55,8 @@ class FileRecord:
     auto_movable: bool  # --auto で自動移送してよいか
     due: str | None = field(default=None)  # frontmatter due: YYYY-MM-DD（単独では archive しない）
     due_parse_error: bool = field(default=False)  # due フィールドがあるがパース不能
+    target_release: str | None = field(default=None)  # 計画時点の安全な任意ラベル
+    released_in: str | None = field(default=None)  # 実際に出た Git tag（丸めない）
     flags: list[str] = field(default_factory=list)
     allowed_actions: list[str] = field(default_factory=list)
     # OKF（Open Knowledge Format）併用フィールド。frontmatter にあれば取り込む。

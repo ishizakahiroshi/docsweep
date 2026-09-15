@@ -56,6 +56,8 @@ ALLOWED_FIELDS: frozenset[str] = frozenset(
         "ai_author_model_source",
         "ai_execution_refs",
         "ai_session_logs",
+        "target_release",
+        "released_in",
     }
 )
 LIST_FIELDS: frozenset[str] = frozenset(

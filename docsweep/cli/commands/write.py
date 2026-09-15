@@ -429,6 +429,13 @@ def cmd_new(args: argparse.Namespace) -> int:
         project_dir=project_dir,
         global_path=Path(args.config) if getattr(args, "config", None) else None,
     )
+    target_release = getattr(args, "target_release", None)
+    if target_release is not None and cfg.release_tracking.mode == "disabled":
+        print(
+            "release tracking が disabled のため --target-release は指定できません",
+            file=sys.stderr,
+        )
+        return 2
     if getattr(args, "work_dir", None):
         cfg.work_dir = str(args.work_dir)
         cfg.work_dir_explicit = True
@@ -505,6 +512,7 @@ def cmd_new(args: argparse.Namespace) -> int:
                     for part in (getattr(args, "titles", None) or "").split(",")
                     if part.strip()
                 ] or None,
+                target_release=target_release,
             )
         except (OSError, ValueError) as exc:
             print(f"保存を中止しました: {exc}", file=sys.stderr)
@@ -543,6 +551,7 @@ def cmd_new(args: argparse.Namespace) -> int:
             config=cfg,
             allow_sensitive=bool(getattr(args, "allow_sensitive", False)),
             delegate=delegate,
+            target_release=target_release,
         )
     except (OSError, ValueError) as exc:
         print(f"保存を中止しました: {exc}", file=sys.stderr)
@@ -574,6 +583,68 @@ def cmd_new(args: argparse.Namespace) -> int:
     if provenance_result and provenance_result.get("status") == "delegated":
         skill = provenance_result.get("delegate_skill") or "repo固有skill"
         print(f"provenance: {skill} へ委譲しました（汎用台帳は未変更）")
+    return 0
+
+
+def cmd_target_release_set(args: argparse.Namespace) -> int:
+    """既存 MD の ``target_release`` だけを更新する。設定ファイルは変更しない。"""
+    import os
+
+    from ...release import validate_release_label
+    from ...services.frontmatter import update_frontmatter_field
+    from ...work_queue import find_project_dir
+
+    raw_path = str(args.path)
+    if any(part == ".." for part in Path(raw_path).parts):
+        print("target-release: path に '..' を含む指定はできません", file=sys.stderr)
+        return 2
+    lexical_path = Path(raw_path)
+    if not lexical_path.is_absolute():
+        base = (
+            Path(args.project_dir)
+            if getattr(args, "project_dir", None)
+            else Path.cwd()
+        )
+        lexical_path = base / lexical_path
+    lexical_path = Path(os.path.abspath(os.path.normpath(os.fspath(lexical_path))))
+    project_dir = (
+        Path(args.project_dir).resolve()
+        if getattr(args, "project_dir", None)
+        else find_project_dir(cwd=lexical_path.parent)
+    )
+    cfg = load_config(
+        project_dir=project_dir,
+        explicit_roots=[str(project_dir)],
+        global_path=Path(args.config) if getattr(args, "config", None) else None,
+    )
+    if cfg.release_tracking.mode == "disabled":
+        print("target-release: release tracking が disabled です", file=sys.stderr)
+        return 2
+    try:
+        target = validate_release_label(args.to)
+        # This also validates the type/filename/project scope while retaining
+        # the lexical path needed for an explicitly configured junction queue.
+        doc = doc_for_path(lexical_path, cfg)
+        if doc is None:
+            raise ValueError("対象 MD が project root 配下の管理対象として見つかりません")
+        result = update_frontmatter_field(
+            lexical_path,
+            "target_release",
+            target,
+            expected_mtime=doc.record.mtime,
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        print(f"target-release: {exc}", file=sys.stderr)
+        return 2
+    payload = {
+        **result.to_dict(),
+        "release_tracking": cfg.release_tracking.mode,
+        "project": project_dir.resolve().as_posix(),
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"target_release を設定しました: {result.path} -> {target}")
     return 0
 
 

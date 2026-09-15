@@ -671,6 +671,8 @@ def cmd_find(args: argparse.Namespace) -> int:
         review_statuses=list(getattr(args, "review_statuses", None) or []),
         project=getattr(args, "project", None),
         q=getattr(args, "q", None),
+        target_release=getattr(args, "target_release", None),
+        missing_target_release=bool(getattr(args, "missing_target_release", False)),
     )
     records = find_records(cfg, filters)
     if getattr(args, "json", False):

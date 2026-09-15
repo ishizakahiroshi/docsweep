@@ -79,6 +79,7 @@ def archive_file(
     op: str = "archive",
     dry_run: bool = False,
     batch_id: str | None = None,
+    strict_collision: bool = False,
 ) -> Path:
     """src を project_dir/<archive_dir>/ へ移送し、移動ログに記録する。移送先を返す。
 
@@ -91,7 +92,16 @@ def archive_file(
         return dedupe_path(dest_dir / src.name)
 
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dst = _reserve_destination(dest_dir / src.name)
+    requested = dest_dir / src.name
+    if strict_collision:
+        try:
+            fd = os.open(requested, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError as exc:
+            raise FileExistsError(f"archive destination already exists: {requested}") from exc
+        os.close(fd)
+        dst = requested
+    else:
+        dst = _reserve_destination(requested)
     try:
         shutil.move(str(src), str(dst))
     except Exception:

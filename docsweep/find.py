@@ -27,6 +27,8 @@ class FindFilters:
     review_statuses: list[str] = field(default_factory=list)  # draft / review / published
     project: str | None = None
     q: str | None = None  # 全文（title/summary/body 部分一致・大小無視）UX W2 / P44 MVP
+    target_release: str | None = None  # target_release の完全一致
+    missing_target_release: bool = False  # target_release 未設定だけ
 
     def is_empty(self) -> bool:
         return not (
@@ -37,6 +39,8 @@ class FindFilters:
             or self.review_statuses
             or self.project
             or self.q
+            or self.target_release
+            or self.missing_target_release
         )
 
 
@@ -118,11 +122,32 @@ def _match_q(rec: FileRecord, q: str | None) -> bool:
     return needle in body.lower()
 
 
+def _match_target_release(rec: FileRecord, wanted: str | None) -> bool:
+    if not wanted:
+        return True
+    return (rec.target_release or "").strip() == wanted.strip()
+
+
+def _match_missing_target_release(rec: FileRecord, wanted: bool) -> bool:
+    if not wanted:
+        return True
+    return not (rec.target_release or "").strip()
+
+
 def find_records(config: Config, filters: FindFilters) -> list[FileRecord]:
     """AND クエリで FileRecord を絞り込む（経過日数の降順 = 古い順で返す）。"""
-    from .engine import scan_records
+    from .engine import run_scan, scan_records
 
-    records = scan_records(config, project=filters.project)
+    # release metadata can be edited through CLI/MCP without an index sync.
+    # Target filters therefore use the authoritative filesystem scan so a set
+    # operation is immediately visible; ordinary find queries keep the index
+    # fast path.
+    if filters.target_release or filters.missing_target_release:
+        records = run_scan(config).records
+        if filters.project:
+            records = [record for record in records if record.project == filters.project]
+    else:
+        records = scan_records(config, project=filters.project)
     out: list[FileRecord] = []
     for rec in records:
         if not _match_project(rec, filters.project):
@@ -138,6 +163,10 @@ def find_records(config: Config, filters: FindFilters) -> list[FileRecord]:
         if not _match_state(rec, filters.states, config):
             continue
         if not _match_q(rec, filters.q):
+            continue
+        if not _match_target_release(rec, filters.target_release):
+            continue
+        if not _match_missing_target_release(rec, filters.missing_target_release):
             continue
         out.append(rec)
     out.sort(key=lambda r: r.age_days, reverse=True)

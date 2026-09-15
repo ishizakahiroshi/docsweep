@@ -3,6 +3,21 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
+## [Unreleased]
+
+### Added
+
+- Git release tracking を opt-in で追加。`target_release` と正確な `released_in` を分離し、
+  `release close` と patch / minor / major bucket archive を提供する。
+- 複数リポジトリを本文非収集で棚卸しする workspace migration manifest と、リポジトリ単位の
+  原子的 apply / journal 再開経路を追加した。
+
+### Changed
+
+- 設定なし、`release_tracking.mode: disabled`、または `archive_partition: flat` のプロジェクトは
+  従来の archive 経路を維持する。
+- MCP / CLI の検索・frontmatter・SQLite 索引が release metadata を保持する。
+
 ## [0.6.0] - 2026-09-11
 
 ### Changed

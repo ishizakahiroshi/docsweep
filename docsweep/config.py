@@ -10,6 +10,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PureWindowsPath
+from typing import cast
 
 import yaml
 
@@ -27,6 +28,31 @@ DEFAULT_WORK_DIR = "docs/local"
 WORK_POLICIES = frozenset({"private", "shared"})
 SECRET_POLICIES = frozenset({"block", "warn", "off"})
 PROVENANCE_MANAGERS = frozenset({"docsweep", "repo", "disabled"})
+RELEASE_TRACKING_MODES = frozenset({"enabled", "disabled"})
+ARCHIVE_PARTITIONS = frozenset({"flat", "release"})
+RELEASE_ARCHIVE_GROUPS = frozenset({"patch", "minor", "major"})
+RELEASE_TAG_PREFIXES = frozenset({"v", "none", "optional"})
+
+
+@dataclass(frozen=True)
+class ReleaseTrackingConfig:
+    """Effective release metadata policy for one project.
+
+    ``mode=None`` means that the feature is not configured.  This is kept
+    distinct from ``disabled`` so diagnostics can tell an unconfigured legacy
+    project apart from a project that intentionally opted out.
+    """
+
+    mode: str | None = None
+    tag_pattern: str = "semver"
+    archive_group_by: str = "minor"
+    default_target: str | None = None
+    include_prerelease: bool = False
+    tag_prefix: str = "v"
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode == "enabled"
 
 
 @dataclass(frozen=True)
@@ -155,10 +181,19 @@ class Config:
     # 未設定の場合は索引機能は ``roots`` をフォールバック走査する。
     search_paths: list[str] = field(default_factory=list)
     search_exclude: list[str] = field(default_factory=lambda: list(DEFAULT_SEARCH_EXCLUDE))
+    # workspace migration の対象 root / 追加除外。製品既定では空で、明示設定時だけ使う。
+    workspace_roots: list[str] = field(default_factory=list)
+    workspace_exclude: list[str] = field(default_factory=list)
     # C2 (wings): capture で使う LLM provider 名。現状は "mock" のみ実装済。
     # 実 provider (openai / anthropic) は別 plan で対応。
     capture_llm_provider: str = "mock"
     capture_llm_model: str | None = None  # 将来用（モデル ID 指定）
+    # Git release tag と作業 MD の対応追跡。mode=None は未設定、disabled は明示的な無効化。
+    release_tracking: ReleaseTrackingConfig = field(default_factory=ReleaseTrackingConfig)
+    release_tracking_base: ReleaseTrackingConfig | None = field(default=None, repr=False)
+    # ``flat`` は従来の archive/<filename>、``release`` は release bucket 配下。
+    archive_partition: str = "flat"
+    archive_partition_base: str | None = field(default=None, repr=False)
     # AI execution provenance。既定は opt-in で、個人の global config から有効化する。
     # manager=repo はリポ固有台帳・validator を正典にする明示的な委譲モード。
     provenance_enabled: bool = False
@@ -174,6 +209,8 @@ class Config:
     # config 層の解決結果を write/archive 側が再利用するためのメタデータ。
     project_dir: Path | None = None
     archive_dir_explicit: bool = False
+    archive_partition_explicit: bool = False
+    release_tracking_explicit: bool = False
     work_dir_explicit: bool = False
     work_policy_explicit: bool = False
     loaded_from_config: bool = False
@@ -333,6 +370,39 @@ def project_work_settings(project_dir: Path, config: Config) -> tuple[str, str, 
     )
 
 
+def release_tracking_for_project(
+    config: Config, project_dir: Path
+) -> ReleaseTrackingConfig:
+    """Resolve release tracking for a project in a cross-project operation."""
+    project_path = Path(project_dir)
+    if (
+        config.project_dir is not None
+        and Path(config.project_dir).resolve() == project_path.resolve()
+    ):
+        return config.release_tracking
+    base = config.release_tracking_base or config.release_tracking
+    project_cfg = _load_yaml(project_path / PROJECT_CONFIG_NAME)
+    layer = _release_tracking_layer(
+        project_cfg.get("release_tracking"), source=project_path / PROJECT_CONFIG_NAME
+    )
+    return _resolve_release_tracking(base, layer)
+
+
+def archive_partition_for_project(config: Config, project_dir: Path) -> str:
+    """Resolve ``archive_partition`` for a project in a cross-project operation."""
+    project_path = Path(project_dir)
+    if (
+        config.project_dir is not None
+        and Path(config.project_dir).resolve() == project_path.resolve()
+    ):
+        return config.archive_partition
+    project_cfg = _load_yaml(project_path / PROJECT_CONFIG_NAME)
+    project_value = _archive_partition_value(
+        project_cfg.get("archive_partition"), source=project_path / PROJECT_CONFIG_NAME
+    )
+    return project_value or config.archive_partition_base or config.archive_partition
+
+
 def config_for_project(config: Config, project_dir: Path) -> Config:
     """横断処理で選ばれた project の queue 設定を Config に反映する。"""
     work_dir, work_policy, secret_policy = project_work_settings(project_dir, config)
@@ -358,6 +428,8 @@ def config_for_project(config: Config, project_dir: Path) -> Config:
         template_sections=_merge_template_sections(
             template_base, project_template_sections
         ),
+        release_tracking=release_tracking_for_project(config, project_dir),
+        archive_partition=archive_partition_for_project(config, project_dir),
         project_dir=Path(project_dir).resolve(),
         work_dir_explicit=(config.work_dir_explicit or "work_dir" in project_cfg),
         work_policy_explicit=(config.work_policy_explicit or "work_policy" in project_cfg),
@@ -510,6 +582,112 @@ def _merge(base: dict, override: dict) -> dict:
     return out
 
 
+def _safe_bool(value: object, default: bool) -> bool:
+    """設定値の bool を安全に読む（未知の表記は既定値へ戻す）。"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "1", "on"}:
+            return True
+        if normalized in {"false", "no", "0", "off"}:
+            return False
+    return default
+
+
+def _release_tracking_layer(raw: object, *, source: Path | None = None) -> dict[str, object]:
+    """Parse one ``release_tracking`` YAML layer without applying inheritance."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        prefix = f"{source}: " if source is not None else "release_tracking: "
+        raise ValueError(f"{prefix}マップ形式で指定してください")
+
+    parsed: dict[str, object] = {}
+    if "mode" in raw and raw.get("mode") is not None:
+        mode = str(raw.get("mode")).strip().lower()
+        if mode not in RELEASE_TRACKING_MODES:
+            raise ValueError(
+                f"{source or 'release_tracking'}: mode は enabled / disabled のいずれかです: {mode!r}"
+            )
+        parsed["mode"] = mode
+
+    if "tag_pattern" in raw and raw.get("tag_pattern") is not None:
+        pattern = str(raw.get("tag_pattern")).strip()
+        if not pattern:
+            raise ValueError(f"{source or 'release_tracking'}: tag_pattern は空にできません")
+        parsed["tag_pattern"] = pattern
+
+    if "archive_group_by" in raw and raw.get("archive_group_by") is not None:
+        grouping = str(raw.get("archive_group_by")).strip().lower()
+        if grouping not in RELEASE_ARCHIVE_GROUPS:
+            raise ValueError(
+                f"{source or 'release_tracking'}: archive_group_by は "
+                f"{', '.join(sorted(RELEASE_ARCHIVE_GROUPS))} のいずれかです: {grouping!r}"
+            )
+        parsed["archive_group_by"] = grouping
+
+    if "default_target" in raw and raw.get("default_target") is not None:
+        target = str(raw.get("default_target")).strip()
+        parsed["default_target"] = target or None
+
+    if "include_prerelease" in raw:
+        parsed["include_prerelease"] = _safe_bool(raw.get("include_prerelease"), False)
+
+    if "tag_prefix" in raw and raw.get("tag_prefix") is not None:
+        prefix = str(raw.get("tag_prefix")).strip().lower()
+        aliases = {"": "none", "none": "none", "no": "none", "v": "v", "optional": "optional", "either": "optional", "any": "optional"}
+        normalized = aliases.get(prefix)
+        if normalized is None:
+            raise ValueError(
+                f"{source or 'release_tracking'}: tag_prefix は v / none / optional のいずれかです: {prefix!r}"
+            )
+        parsed["tag_prefix"] = normalized
+    elif "allow_v_prefix" in raw:
+        parsed["tag_prefix"] = "optional" if _safe_bool(raw.get("allow_v_prefix"), False) else "none"
+
+    return parsed
+
+
+def _resolve_release_tracking(
+    base: ReleaseTrackingConfig,
+    override: Mapping[str, object] | None = None,
+) -> ReleaseTrackingConfig:
+    """Apply a parsed project layer over a global/effective base."""
+    values: dict[str, object] = {
+        "mode": base.mode,
+        "tag_pattern": base.tag_pattern,
+        "archive_group_by": base.archive_group_by,
+        "default_target": base.default_target,
+        "include_prerelease": base.include_prerelease,
+        "tag_prefix": base.tag_prefix,
+    }
+    if override:
+        values.update(override)
+    return ReleaseTrackingConfig(
+        mode=cast(str | None, values["mode"]),
+        tag_pattern=cast(str, values["tag_pattern"]),
+        archive_group_by=cast(str, values["archive_group_by"]),
+        default_target=cast(str | None, values["default_target"]),
+        include_prerelease=cast(bool, values["include_prerelease"]),
+        tag_prefix=cast(str, values["tag_prefix"]),
+    )
+
+
+def _archive_partition_value(raw: object, *, source: Path | None = None) -> str | None:
+    """Read the top-level ``archive_partition`` setting."""
+    if raw is None:
+        return None
+    value = str(raw).strip().lower()
+    if value == "none":
+        value = "flat"
+    if value not in ARCHIVE_PARTITIONS:
+        raise ValueError(
+            f"{source or 'archive_partition'}: flat / release のいずれかです: {value!r}"
+        )
+    return value
+
+
 def _resolve_roots(values: list[str] | None, base_dir: Path) -> list[Path]:
     roots: list[Path] = []
     for v in values or []:
@@ -547,6 +725,27 @@ def load_config(
             sources.append(project_config_path)
 
     merged = _merge(g, project_cfg)
+
+    # ``release_tracking`` is a nested, tri-state setting.  A shallow merge would
+    # discard global defaults when a project only overrides one key and would
+    # make an explicit project ``disabled`` indistinguishable from omission.
+    global_release_tracking = _resolve_release_tracking(
+        ReleaseTrackingConfig(),
+        _release_tracking_layer(g.get("release_tracking"), source=global_path),
+    )
+    project_release_layer = _release_tracking_layer(
+        project_cfg.get("release_tracking"), source=project_config_path
+    )
+    release_tracking = _resolve_release_tracking(
+        global_release_tracking, project_release_layer
+    )
+    global_partition = _archive_partition_value(
+        g.get("archive_partition"), source=global_path
+    )
+    project_partition = _archive_partition_value(
+        project_cfg.get("archive_partition"), source=project_config_path
+    )
+    archive_partition = project_partition or global_partition or "flat"
 
     raw_work_dir = merged.get("work_dir") or DEFAULT_WORK_DIR
     work_dir = str(raw_work_dir).strip() or DEFAULT_WORK_DIR
@@ -678,6 +877,32 @@ def load_config(
                 if s and s not in search_exclude:
                     search_exclude.append(s)
 
+    # workspace は release tracking の一括棚卸し専用。roots/search_paths と混同しないよう
+    # 明示された値だけを保持し、設定なしでは一括走査の対象を暗黙に広げない。
+    g_workspace = g.get("workspace") or {}
+    p_workspace = project_cfg.get("workspace") or {}
+    workspace_roots: list[str] = []
+    workspace_exclude: list[str] = []
+    for layer, layer_base in (
+        (g_workspace, global_path.parent),
+        (p_workspace, project_dir or Path.cwd()),
+    ):
+        if not isinstance(layer, dict):
+            continue
+        if isinstance(layer.get("roots"), list):
+            workspace_roots = [
+                str(path)
+                for path in _resolve_roots(
+                    [str(value) for value in layer["roots"] if value],
+                    layer_base,
+                )
+            ]
+        if isinstance(layer.get("exclude"), list):
+            for value in layer["exclude"]:
+                pattern = str(value).strip()
+                if pattern and pattern not in workspace_exclude:
+                    workspace_exclude.append(pattern)
+
     # C2 (wings): ``llm:`` ブロックで capture の LLM provider を指定する。
     # 例: llm: { provider: mock, model: null }。実 provider 追加は別 plan で対応。
     g_llm = g.get("llm") or {}
@@ -715,17 +940,6 @@ def load_config(
     provenance_actor_key: str | None = None
     provenance_delegate_skill: str | None = None
 
-    def _safe_bool_setting(value: object, default: bool) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"true", "yes", "1", "on"}:
-                return True
-            if normalized in {"false", "no", "0", "off"}:
-                return False
-        return default
-
     for layer, layer_base in (
         (g.get("provenance") or {}, global_path.parent),
         (project_cfg.get("provenance") or {}, project_dir or Path.cwd()),
@@ -733,7 +947,7 @@ def load_config(
         if not isinstance(layer, dict):
             continue
         if "enabled" in layer:
-            provenance_enabled = _safe_bool_setting(layer.get("enabled"), provenance_enabled)
+            provenance_enabled = _safe_bool(layer.get("enabled"), provenance_enabled)
         if layer.get("manager"):
             candidate = str(layer["manager"]).strip().lower()
             if candidate in PROVENANCE_MANAGERS:
@@ -779,8 +993,14 @@ def load_config(
         user_email=user_email,
         search_paths=search_paths,
         search_exclude=search_exclude,
+        workspace_roots=workspace_roots,
+        workspace_exclude=workspace_exclude,
         capture_llm_provider=capture_llm_provider,
         capture_llm_model=capture_llm_model,
+        release_tracking=release_tracking,
+        release_tracking_base=global_release_tracking,
+        archive_partition=archive_partition,
+        archive_partition_base=global_partition or "flat",
         provenance_enabled=provenance_enabled,
         provenance_manager=provenance_manager,
         provenance_ledger=provenance_ledger,
@@ -790,6 +1010,8 @@ def load_config(
         sources=sources,
         project_dir=project_dir.resolve() if project_dir is not None else None,
         archive_dir_explicit=("archive_dir" in g or "archive_dir" in project_cfg),
+        archive_partition_explicit=("archive_partition" in g or "archive_partition" in project_cfg),
+        release_tracking_explicit=("release_tracking" in g or "release_tracking" in project_cfg),
         work_dir_explicit=("work_dir" in g or "work_dir" in project_cfg),
         work_policy_explicit=("work_policy" in g or "work_policy" in project_cfg),
         loaded_from_config=True,

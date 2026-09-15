@@ -129,6 +129,79 @@ def build_server(config: Config):
         return [r.to_dict() for r in records]
 
     @mcp.tool()
+    def find(
+        owner: str | None = None,
+        tags: list[str] | None = None,
+        types: list[str] | None = None,
+        states: list[str] | None = None,
+        review_statuses: list[str] | None = None,
+        project: str | None = None,
+        q: str | None = None,
+        target_release: str | None = None,
+        missing_target_release: bool = False,
+    ) -> list[dict]:
+        """自由検索。CLI ``docsweep find`` と同じ AND 契約で target_release も絞る。"""
+        from .find import FindFilters, find_records, resolve_owner_alias
+
+        filters = FindFilters(
+            owner=resolve_owner_alias(owner),
+            tags=list(tags or []),
+            types=list(types or []),
+            states=list(states or []),
+            review_statuses=list(review_statuses or []),
+            project=project,
+            q=q,
+            target_release=target_release,
+            missing_target_release=missing_target_release,
+        )
+        return [record.to_dict() for record in find_records(config, filters)]
+
+    @mcp.tool()
+    def set_target_release(
+        path: str,
+        target_release: str,
+        expected_mtime: float | None = None,
+    ) -> dict:
+        """既存 MD の target_release だけを原子的に更新する（設定は変更しない）。"""
+        from .release import validate_release_label
+        from .config import release_tracking_for_project
+        from .services.frontmatter import update_frontmatter_field
+
+        resolved, err = _resolve_or_error(path, config)
+        if err is not None or resolved is None:
+            return err or {"error": "unresolved_path", "path": path, "kind": "path_scope"}
+        project_root = _project_root_for(resolved, config)
+        tracking = release_tracking_for_project(config, project_root)
+        if tracking.mode == "disabled":
+            return {
+                "error": "release tracking が disabled です",
+                "path": path,
+                "kind": "release_tracking_disabled",
+            }
+        try:
+            value = validate_release_label(target_release, field="target_release")
+            result = update_frontmatter_field(
+                resolved,
+                "target_release",
+                value,
+                expected_mtime=expected_mtime,
+            )
+        except ConflictError as exc:
+            return {
+                "error": str(exc),
+                "path": path,
+                "kind": "conflict",
+                "expected_mtime": exc.expected,
+                "actual_mtime": exc.actual,
+            }
+        except (OSError, UnicodeError, ValueError) as exc:
+            return {"error": str(exc), "path": path, "kind": "write"}
+        return {
+            **result.to_dict(),
+            "release_tracking": tracking.mode,
+        }
+
+    @mcp.tool()
     def list_projects() -> dict:
         """プロジェクト一覧と有効/除外状態（UX W2 / P39）。"""
         from .excluded import list_known_projects, load_excluded

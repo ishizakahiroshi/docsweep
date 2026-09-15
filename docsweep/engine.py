@@ -10,13 +10,25 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from .archive import _now_iso, append_move_log, archive_file
 from .atomic import ConflictError, write_atomic
-from .config import Config, archive_dir_for_project, archive_route_for_project
+from .config import (
+    Config,
+    archive_dir_for_project,
+    archive_partition_for_project,
+    archive_route_for_project,
+    release_tracking_for_project,
+)
 from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from .models import Action, Flag, FileRecord, MoveLogEntry
+from .release import (
+    ReleaseTrackingError,
+    release_bucket_for_record,
+    release_archive_root,
+    release_tag_exists,
+)
 from .scan import ScannedDoc, _build_doc, detect_project_root, scan
 from .services.status import update_status, validate_state_transition
 
@@ -296,6 +308,7 @@ def auto_sweep(
 
 def archive_doc(
     doc: ScannedDoc, config: Config, *, dry_run: bool = False, batch_id: str | None = None,
+    strict_collision: bool = False,
 ) -> MoveLogEntry:
     """1 ファイルを（ラベル書換なしで）そのまま archive へ移送する。"""
     rec = doc.record
@@ -303,7 +316,7 @@ def archive_doc(
     dst = archive_file(
         src=Path(rec.path), project_dir=project_dir, archive_dir=_archive_dir_for(doc, config),
         root=root, project=rec.project, status=rec.state, op="archive", dry_run=dry_run,
-        batch_id=batch_id,
+        batch_id=batch_id, strict_collision=strict_collision,
     )
     return MoveLogEntry(
         ts="", op="archive", project=rec.project, status=rec.state,
@@ -394,12 +407,19 @@ def _archive_routes(
         if rec.project in seen:
             continue
         route = archive_route_for_project(Path(rec.project_root), config)
-        entry = {
+        entry: dict[str, object] = {
             "project": rec.project,
             "project_root": rec.project_root,
             "archive_dir": route.archive_dir,
             "source": route.source,
+            "archive_partition": archive_partition_for_project(
+                config, Path(rec.project_root)
+            ),
         }
+        tracking = release_tracking_for_project(config, Path(rec.project_root))
+        entry["release_tracking"] = tracking.mode
+        if tracking.enabled and entry["archive_partition"] == "release":
+            entry["release_bucket"] = tracking.archive_group_by
         if route.legacy_root:
             entry["legacy_root"] = route.legacy_root
             entry["warning"] = (
@@ -413,12 +433,44 @@ def _archive_routes(
 
 
 def _archive_dir_for(doc: ScannedDoc, config: Config) -> str:
+    project_dir = Path(doc.record.project_root)
     if doc.type_def and doc.type_def.archive_dir:
-        return doc.type_def.archive_dir
-    # sweep / promote は複数プロジェクト横断で動くため、起動時に読んだ単一 config ではなく
-    # 対象プロジェクト自身の .docsweep.yaml（あれば）を優先する。これにより cwd や
-    # --project-dir フラグに依存せず、どこから実行しても各プロジェクトの設定が効く。
-    return archive_dir_for_project(Path(doc.record.project_root), config)
+        archive_dir = doc.type_def.archive_dir
+    else:
+        # sweep / promote は複数プロジェクト横断で動くため、起動時に読んだ単一 config ではなく
+        # 対象プロジェクト自身の .docsweep.yaml（あれば）を優先する。これにより cwd や
+        # --project-dir フラグに依存せず、どこから実行しても各プロジェクトの設定が効く。
+        archive_dir = archive_dir_for_project(project_dir, config)
+
+    tracking = release_tracking_for_project(config, project_dir)
+    partition = archive_partition_for_project(config, project_dir)
+    if not tracking.enabled or partition != "release":
+        return archive_dir
+
+    archive_dir = release_archive_root(archive_dir)
+
+    # release bucket is always a child of the configured archive root.  Do not
+    # reinterpret an absolute or parent-traversing archive_dir in this new
+    # route; legacy flat behavior remains unchanged for old configurations.
+    windows_path = PureWindowsPath(str(archive_dir).replace("/", "\\"))
+    if windows_path.is_absolute() or windows_path.drive or ".." in windows_path.parts:
+        raise ReleaseTrackingError(
+            f"release archive の archive_dir がプロジェクト相対ではありません: {archive_dir!r}"
+        )
+    if doc.record.released_in and not release_tag_exists(
+        project_dir, doc.record.released_in
+    ):
+        raise ReleaseTrackingError(
+            "released_in の Git tag が対象 project に存在しません: "
+            f"{doc.record.released_in!r} ({doc.record.path})"
+        )
+    bucket = release_bucket_for_record(
+        doc.record, config, project_dir=project_dir
+    )
+    if not bucket:
+        return archive_dir
+    archive_root = str(archive_dir).rstrip("/\\")
+    return f"{archive_root}/{bucket}"
 
 
 def _update_doc_state(

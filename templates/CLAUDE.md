@@ -106,6 +106,11 @@ docsweep はこのラベルを読み取って自動アーカイブ・要判断�
   卒業期限が来たものを整理するときは `promote --due-expired --dry-run` で確認し、
   明示的に `promote --due-expired` を実行する。再発したら `[実行中]` へ戻す。既存の `[対応中]` は読み取り互換。
 - `[廃止]` = 陳腐化して捨てると判断したもの。**削除ではなく** `archive/` へ隔離（復元可能）。
+- Git の版と archive を対応させたい場合だけ `release_tracking.mode: enabled` と
+  `archive_partition: release` を設定する。`target_release` は計画時の安全な任意ラベル、
+  `released_in` は `release close` が実在確認した正確な Git tag である。たとえば
+  `released_in: v0.9.1` でも、minor 集約先は `archive/v0.9.x/` になるが、frontmatter の
+  正確な tag 自体は変えない。設定なし・disabled・flat は従来の archive 経路を保つ。
 - `> ステータス:` 行は**書かない**（状態は H1 ラベルに集約）。状態が変わったら H1 ラベルを書き換える。
 - ラベル語彙はプロジェクト設定（`.docsweep.yaml` の `states:`）で追加・改名・言語追加できる。
   上表は内蔵デフォルト。`python -m docsweep inject` は `states:` からこのラベル節を生成する（設定と検出が常に同期）。
@@ -136,6 +141,8 @@ related: []                      # 関連する md の**ファイル名** list�
 # docsweep_parent: docs/local/plan_parent.md  # child の repo-relative 親 path（related とは別の正本）
 last_reviewed: 2026-06-29        # YYYY-MM-DD（stale 判定に使用）
 due: 2026-07-06                  # 任意・期日（看板方式）
+# target_release: v0.9.x         # 任意。計画時点の対象ラベル
+# released_in: v0.9.1            # 任意。release close が保存する実在 Git tag（丸めない）
 ---
 
 # [計画] タイトル
@@ -197,6 +204,23 @@ python -m docsweep fix-related --root . --apply
 旧 `status: planned` のような文書は、migrate により `status: draft` と
 `docsweep_state: planned` に分離されます。OKF と docsweep 内部 state key の対応は
 `docs/okf-mapping.md` を参照してください。
+
+### リリース追跡の移行
+
+既存リポジトリへ一括適用する場合は、まず本文を manifest に収集せず件数・設定・パスだけを
+棚卸しします。既定は dry-run で、`--review` は確認事項を表示するだけです。
+
+```bash
+python -m docsweep workspace migrate-release-tracking --root <workspace-root> --review \
+  --manifest release-migration.json
+python -m docsweep workspace migrate-release-tracking \
+  --root <workspace-root> --apply-manifest release-migration.json
+```
+
+manifest はユーザーが target と disabled / 除外判断を確認してから適用します。適用は
+リポジトリ単位で行われ、失敗したリポジトリが他のリポジトリを巻き戻したり止めたりしません。
+既存 archive のフォルダ名から target を補完する場合でも、根拠のない正確な patch tag を
+`released_in` に書いてはいけません。
 
 ### `docsweep export --okf`
 

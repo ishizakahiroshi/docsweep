@@ -240,6 +240,32 @@ git 追跡され得る場所へ黙って移送する**ことになります。
 移送先とその選択根拠は `docsweep sweep --dry-run --json` の `archive_routes` で確認できます
 （`source` は `explicit_project` / `explicit_global` / `private_queue` / `shared_root`）。
 
+### Git release tracking と版別 archive
+
+リリースとの対応付けは既定では無効です。`release_tracking.mode: enabled` と
+`archive_partition: release` を明示したプロジェクトだけ、archive の下に patch / minor /
+major の bucket を作ります。
+
+`target_release` は計画時点の対象で、`v0.9.x`、`v0.9.1`、`2026-Q3` のような安全な任意ラベルを
+保持します。`released_in` は `release close <tag>` が対象リポジトリの実在タグと完全一致を
+確認した値です。たとえば `released_in: v0.9.1` は frontmatter にそのまま残し、minor の
+移送先だけ `archive/v0.9.x/` として計算します。過去の archive フォルダ名から正確な patch
+tag を推測して `released_in` に書くことはしません。
+
+最小の操作は次のとおりです:
+
+```bash
+python -m docsweep new plan next-change --target-release v0.9.x
+python -m docsweep target-release set --path docs/local/plan_existing.md --to v0.9.x
+python -m docsweep find --missing-target-release --json
+python -m docsweep release close v0.9.1 --dry-run --json
+python -m docsweep release close v0.9.1 --json
+```
+
+設定なし、`mode: disabled`、`archive_partition: flat` の場合は従来経路を変更しません。
+`release close` はタグ未存在、target 未設定、target 不一致、watching、未完了、
+`docsweep_policy: never_archive` を移送せず診断として返します。
+
 ### 親子 plan のファイル名
 
 子 plan は `plan_<親topic>_c<N>[_<short>].md`。区切りは**アンダースコア**です。

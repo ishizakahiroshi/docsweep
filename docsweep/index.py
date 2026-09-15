@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS files (
   auto_movable   INTEGER,         -- 0/1
   project_root   TEXT,            -- 絶対パス
   abs_path       TEXT,            -- 絶対パス（移送等で参照）
+  target_release TEXT,            -- 計画時点の安全な任意ラベル
+  released_in    TEXT,            -- 実際に出た Git tag（丸めない）
   UNIQUE(project_id, rel_path)
 );
 
@@ -127,7 +129,11 @@ _V2_COLUMNS: tuple[tuple[str, str], ...] = (
     ("auto_movable", "INTEGER"),
     ("project_root", "TEXT"),
     ("abs_path", "TEXT"),
+    ("target_release", "TEXT"),
+    ("released_in", "TEXT"),
 )
+
+_RELEASE_COLUMNS = frozenset({"files.target_release", "files.released_in"})
 
 
 def _migrate_to_v2(conn: sqlite3.Connection) -> None:
@@ -246,8 +252,34 @@ def init_schema(conn: sqlite3.Connection) -> None:
     """
     state = _schema_state(conn)
     if state == SCHEMA_VERSION:
-        _validate_current_schema(conn)
-        return
+        missing = _missing_schema_parts(conn)
+        if not missing or not set(missing).issubset(_RELEASE_COLUMNS):
+            _validate_current_schema(conn)
+            return
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            # Another process may have completed the additive migration while
+            # this connection was waiting for the schema lock.
+            state = _schema_state(conn)
+            if state == SCHEMA_VERSION:
+                missing = _missing_schema_parts(conn)
+                if missing and set(missing).issubset(_RELEASE_COLUMNS):
+                    _migrate_to_v2(conn)
+                    _validate_current_schema(conn)
+                else:
+                    _validate_current_schema(conn)
+                conn.commit()
+                return
+            if state not in (None, _V1_SCHEMA_VERSION):
+                raise IndexSchemaError(
+                    f"unsupported index schema_version={state}; current version is {SCHEMA_VERSION}"
+                )
+            # Fall through to the normal initialization/migration path below.
+            conn.rollback()
+        except Exception:
+            if conn.in_transaction:
+                conn.rollback()
+            raise
     if state not in (None, _V1_SCHEMA_VERSION):
         raise IndexSchemaError(
             f"unsupported index schema_version={state}; current version is {SCHEMA_VERSION}"
@@ -392,6 +424,8 @@ def upsert_file(
     auto_movable: bool | None = None,
     project_root: str | None = None,
     abs_path: str | None = None,
+    target_release: str | None = None,
+    released_in: str | None = None,
 ) -> int:
     """files 行を UPSERT し file_id を返す。"""
     conn.execute(
@@ -400,8 +434,9 @@ def upsert_file(
                           last_reviewed, claimed_at, mtime, body_sha,
                           title, summary, state_label, state_source,
                           flags, allowed_actions, due, due_parse_error,
-                          archivable, auto_movable, project_root, abs_path)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                          archivable, auto_movable, project_root, abs_path,
+                          target_release, released_in)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(project_id, rel_path) DO UPDATE SET
           type=excluded.type,
           status=excluded.status,
@@ -422,7 +457,9 @@ def upsert_file(
           archivable=excluded.archivable,
           auto_movable=excluded.auto_movable,
           project_root=excluded.project_root,
-          abs_path=excluded.abs_path
+          abs_path=excluded.abs_path,
+          target_release=excluded.target_release,
+          released_in=excluded.released_in
         """,
         (project_id, rel_path, type_, status, review_status, owner,
          last_reviewed, claimed_at, mtime, body_sha,
@@ -431,7 +468,7 @@ def upsert_file(
          None if due_parse_error is None else (1 if due_parse_error else 0),
          None if archivable is None else (1 if archivable else 0),
          None if auto_movable is None else (1 if auto_movable else 0),
-         project_root, abs_path),
+         project_root, abs_path, target_release, released_in),
     )
     row = conn.execute(
         "SELECT file_id FROM files WHERE project_id=? AND rel_path=?",
@@ -601,7 +638,7 @@ def load_records_from_index(
           file_id, project_id, rel_path, type, status, review_status, owner,
           last_reviewed, mtime, title, summary, state_label, state_source,
           flags, allowed_actions, due, due_parse_error, archivable, auto_movable,
-          project_root, abs_path
+          project_root, abs_path, target_release, released_in
         FROM files
         """
         params: tuple = ()
@@ -671,6 +708,8 @@ def load_records_from_index(
                 auto_movable=bool(row["auto_movable"]) if row["auto_movable"] is not None else False,
                 due=row["due"],
                 due_parse_error=bool(row["due_parse_error"]) if row["due_parse_error"] is not None else False,
+                target_release=row["target_release"],
+                released_in=row["released_in"],
                 flags=flags,
                 allowed_actions=allowed_actions,
                 tags=tags,

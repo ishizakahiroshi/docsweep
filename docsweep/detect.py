@@ -97,6 +97,10 @@ class Detection:
     # OKF v0.2 の lifecycle と docsweep の作業状態は別軸。
     docsweep_state: str | None = None
     okf_status: str | None = None
+    # Git release tracking fields.  These are independent from ``tags``:
+    # target_release is a plan-time label, released_in is an exact Git tag.
+    target_release: str | None = None
+    released_in: str | None = None
     state_field: str | None = None  # docsweep_state | legacy status | h1 | filename | None
 
 
@@ -175,6 +179,18 @@ def _coerce_date_str(raw: object) -> str | None:
     return str(raw).strip() or None
 
 
+def _coerce_scalar_str(raw: object) -> str | None:
+    """Normalize a release metadata scalar without changing its spelling."""
+    if raw is None:
+        return None
+    if hasattr(raw, "isoformat"):
+        try:
+            return raw.isoformat()
+        except (TypeError, ValueError):
+            return str(raw).strip() or None
+    return str(raw).strip() or None
+
+
 _ALLOWED_POLICIES: frozenset[str] = frozenset({"archive_with_release", "never_archive"})
 
 
@@ -186,6 +202,7 @@ def _extract_okf_fields(data: dict | None) -> dict:
             "related": [], "last_reviewed": None, "frontmatter_type": None,
             "docsweep_parent": None, "docsweep_policy": None,
             "docsweep_state": None, "okf_status": None,
+            "target_release": None, "released_in": None,
         }
     owner_raw = data.get("owner")
     review_raw = data.get("review_status")
@@ -214,6 +231,8 @@ def _extract_okf_fields(data: dict | None) -> dict:
         "docsweep_policy": policy,
         "docsweep_state": (str(state_raw).strip() or None) if state_raw is not None else None,
         "okf_status": (str(status_raw).strip() or None) if status_raw is not None else None,
+        "target_release": _coerce_scalar_str(data.get("target_release")),
+        "released_in": _coerce_scalar_str(data.get("released_in")),
     }
 
 
@@ -395,6 +414,8 @@ def detect_status(
         docsweep_policy=okf["docsweep_policy"],
         docsweep_state=docsweep_state.key if docsweep_state else None,
         okf_status=okf["okf_status"],
+        target_release=okf["target_release"],
+        released_in=okf["released_in"],
         state_field=(
             "docsweep_state" if docsweep_state else
             "legacy status" if legacy_status else

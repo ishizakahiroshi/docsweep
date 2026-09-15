@@ -314,6 +314,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="初期 due の自動付与を抑止する（.docsweep.yaml の offset を無視して frontmatter を入れない）",
     )
     p_new.add_argument(
+        "--target-release",
+        help="リリース計画時点の安全な任意ラベル（例: v0.9.x / v0.9.1 / 2026-Q3）",
+    )
+    p_new.add_argument(
         "--split", type=int, default=0, metavar="N",
         help="親 plan + 子 N 本を一括生成し related 双方向と docsweep_parent を付ける（UX W3 / P26）",
     )
@@ -547,7 +551,87 @@ def build_parser() -> argparse.ArgumentParser:
         "--q", dest="q",
         help="全文検索（title/summary/本文の部分一致・MVP）",
     )
+    p_find.add_argument(
+        "--target-release",
+        help="target_release の完全一致",
+    )
+    p_find.add_argument(
+        "--missing-target-release", action="store_true",
+        help="target_release が未設定の文書だけを表示",
+    )
     p_find.add_argument("--json", action="store_true")
+
+    p_target_release = sub.add_parser(
+        "target-release",
+        help="文書の target_release ラベルを確認・設定",
+    )
+    p_target_release_sub = p_target_release.add_subparsers(
+        dest="target_release_action", required=True
+    )
+    p_target_release_set = p_target_release_sub.add_parser(
+        "set", help="既存 MD の target_release を設定（設定ファイルは変更しない）"
+    )
+    p_target_release_set.add_argument("--path", required=True, help="対象 MD")
+    p_target_release_set.add_argument("--to", required=True, help="安全な release label")
+    p_target_release_set.add_argument("--project-dir", help="対象 project root")
+    p_target_release_set.add_argument("--config", help="グローバル config のパス")
+    p_target_release_set.add_argument("--json", action="store_true")
+
+    p_release = sub.add_parser("release", help="Git tag の close と版別 archive")
+    p_release_sub = p_release.add_subparsers(dest="release_action", required=True)
+    p_release_close = p_release_sub.add_parser(
+        "close", help="指定した既存 Git tag の対象 MD を確認し archive へ移送"
+    )
+    p_release_close.add_argument("tag", help="既存の正確な Git tag（例: v0.9.1）")
+    p_release_close.add_argument("--root", action="append", dest="roots", metavar="PATH")
+    p_release_close.add_argument("--profile", help="config の named プロファイルを使う")
+    p_release_close.add_argument("--config", help="グローバル config のパス")
+    p_release_close.add_argument("--project-dir", help="対象 project の設定を読むディレクトリ")
+    p_release_close.add_argument("--project", help="対象 project 名を絞る")
+    p_release_close.add_argument("--dry-run", action="store_true")
+    p_release_close.add_argument("--json", action="store_true")
+
+    p_workspace = sub.add_parser(
+        "workspace", help="複数リポジトリの release tracking 棚卸し・manifest 移行"
+    )
+    p_workspace_sub = p_workspace.add_subparsers(
+        dest="workspace_action", required=True
+    )
+    p_workspace_migrate = p_workspace_sub.add_parser(
+        "migrate-release-tracking",
+        help="複数 root を棚卸しし、必要な設定と target の移行案を作る",
+    )
+    p_workspace_migrate.add_argument(
+        "--root", action="append", dest="roots", metavar="PATH",
+        help="探索する workspace root（複数可）",
+    )
+    p_workspace_migrate.add_argument("--config", help="workspace.roots を読む config のパス")
+    p_workspace_migrate.add_argument(
+        "--exclude", action="append", default=[],
+        help="追加で除外する相対 glob（複数可）",
+    )
+    p_workspace_migrate.add_argument(
+        "--default-target", help="未設定 MD に補完する既定 target_release",
+    )
+    p_workspace_migrate.add_argument(
+        "--manifest", help="棚卸し manifest の出力先 JSON",
+    )
+    p_workspace_migrate.add_argument(
+        "--apply-manifest", metavar="PATH",
+        help="指定済み manifest を明示適用する（repo 単位・原子的）",
+    )
+    p_workspace_migrate.add_argument(
+        "--apply", action="store_true",
+        help="今回生成した manifest を適用する（既定は dry-run）",
+    )
+    p_workspace_migrate.add_argument(
+        "--review", action="store_true",
+        help="needs_review / 除外理由を人間向けに表示する（対話入力はしない）",
+    )
+    p_workspace_migrate.add_argument(
+        "--journal", help="migration journal の出力先（既定 ~/.docsweep/release-migrations）",
+    )
+    p_workspace_migrate.add_argument("--json", action="store_true")
 
     p_completion = sub.add_parser(
         "completion", help="シェル補完スクリプトを stdout 出力 (bash/zsh/pwsh)"

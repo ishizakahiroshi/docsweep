@@ -4,15 +4,15 @@ docsweep は **「全 AI エージェント対応」** を方針として、3 �
 
 | 経路 | 対象 AI | 仕組み |
 |---|---|---|
-| **MCP**（24 tool・書き込み系を含む） | Claude Code / Codex / Cursor / Continue 等、MCP 対応 AI 全般 | `python -m docsweep mcp` を MCP サーバーとして起動。自然言語起動の主役は `brief` / `cross` / `capture_extract` / `capture_save` だが、露出する tool はそれだけではない（下記一覧） |
+| **MCP**（26 tool・書き込み系を含む） | Claude Code / Codex / Cursor / Continue 等、MCP 対応 AI 全般 | `python -m docsweep mcp` を MCP サーバーとして起動。自然言語起動の主役は `brief` / `cross` / `capture_extract` / `capture_save` だが、露出する tool はそれだけではない（下記一覧） |
 | **CLI 直叩き** | あらゆる AI（Bash ツールがあれば動く） | `docsweep <command>` をシェル経由で実行。`--json` で構造化出力を得てパースする |
 | **`/D` Skill**（Claude Code 専用） | Claude Code | `~/.claude/skills/D` 経由の薄いラッパー。MCP の主要 3 + CLI 直叩きをディスパッチ |
 
-### MCP が露出する tool（v0.5.0 時点・24 個）
+### MCP が露出する tool（release tracking 対応・26 個）
 
-scan / list_projects / set_project_enabled / route_intent / doctor / day / brief / capture_extract / capture_save / cross / triage / apply / sweep / promote / index / summary / inject / eject / inject_global / eject_global / update_status / update_due / update_content / archive_done
+scan / find / set_target_release / list_projects / set_project_enabled / route_intent / doctor / day / brief / capture_extract / capture_save / cross / triage / apply / sweep / promote / index / summary / inject / eject / inject_global / eject_global / update_status / update_due / update_content / archive_done
 
-**書き込み・設定変更を伴うもの**: `apply` / `sweep` / `promote` / `update_status` / `update_due` /
+**書き込み・設定変更を伴うもの**: `apply` / `sweep` / `promote` / `set_target_release` / `update_status` / `update_due` /
 `update_content` / `archive_done`（md を書き換える）、`inject` / `eject`（プロジェクト設定を書き換える）、
 `inject_global` / `eject_global` / `set_project_enabled`（ユーザーのグローバル設定を書き換える）。
 MCP 登録は「読み取り専用の朝の入口」ではないので、AI に許可を渡す前にこの範囲を把握しておくこと。
@@ -116,6 +116,41 @@ Bash ツールから `docsweep <command> --json` で実行してください。
 
 ---
 
+## Git release tracking
+
+release tracking は opt-in です。`release_tracking.mode: enabled` と
+`archive_partition: release` を設定したプロジェクトだけ版別 archive を使います。
+未設定・disabled・flat は既存の移送先を維持します。
+
+`target_release` は Git tag の存在を求めない計画ラベルです。`released_in` は
+`release close` が対象リポジトリで完全一致を確認した実在タグで、frontmatter には正確な
+値を残します。タグが無い、pre-release が許可されていない、target が未設定または不一致、
+watching / 未完了 / `never_archive` の文書は fail-closed で移送しません。
+
+```bash
+python -m docsweep new plan next-change --target-release v0.9.x
+python -m docsweep target-release set --path docs/local/plan_existing.md --to v0.9.x
+python -m docsweep find --target-release v0.9.x --json
+python -m docsweep find --missing-target-release --json
+python -m docsweep release close v0.9.1 --dry-run --json
+python -m docsweep release close v0.9.1 --json
+```
+
+複数リポジトリの移行は manifest を先に作り、内容を確認してから明示適用します。manifest と
+journal は本文を保存せず、リポジトリのパス、件数、設定差分、診断理由だけを持ちます。
+
+```bash
+python -m docsweep workspace migrate-release-tracking --root <workspace-root> --review \
+  --manifest release-migration.json
+python -m docsweep workspace migrate-release-tracking \
+  --root <workspace-root> --apply-manifest release-migration.json
+```
+
+`--json` / 非 TTY でも質問は出ません。`--review` は確認事項の表示だけで、書き込みは
+`--apply` または `--apply-manifest` を明示した場合に限ります。
+
+---
+
 ## `--json` 出力スキーマ概要
 
 すべての主要コマンドが `--json` をサポート。AI がパースしやすいよう以下を順守:
@@ -138,6 +173,9 @@ Bash ツールから `docsweep <command> --json` で実行してください。
 | `graph --json` | `{nodes: [{id, label, project, type, state, state_label, tags, isolated}], edges: [{source, target, resolved}]}` |
 | `capture --json` | `{drafts: [{id, kind, title, body, suggested_filename, source_hint, project, tags}], saved: [path...]}` |
 | `index-sync --json` | `{projects, files_total, files_added, files_updated, files_unchanged, files_deleted}` |
+| `find --json` | `[{path, project, target_release, released_in, ...}]` |
+| `release close --json` | `{tag, dry_run, movable, moved, watching, incomplete, target_mismatch, target_unset, never_archive, tag_missing, collision, failed}` |
+| `workspace migrate-release-tracking --json` | `{mode, manifest: {migration_id, repositories, excluded, ...}, apply?}` |
 
 ---
 

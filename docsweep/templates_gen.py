@@ -24,6 +24,7 @@ from .config import (
     resolve_work_dir,
 )
 from .okf import bundled_okf_profile
+from .release import validate_release_label
 from .work_queue import ensure_write_allowed
 
 
@@ -36,6 +37,7 @@ class NewDoc:
     path: Path
     created: bool
     due: str | None = None
+    target_release: str | None = None
 
 
 def _placement_dir(
@@ -64,6 +66,7 @@ def _okf_frontmatter(
     today: str | None = None,
     delegation: str | None = None,
     owner: str = "",
+    target_release: str | None = None,
 ) -> str:
     """OKF（plan_okf-adoption_2026-06-29.md）準拠の frontmatter ブロックを返す。
 
@@ -82,6 +85,8 @@ def _okf_frontmatter(
     H1 ラベル + ファイル名にフォールバックする）。
     """
     today = today or _today()
+    if target_release is not None:
+        target_release = validate_release_label(target_release)
     lifecycle_status = bundled_okf_profile().lifecycle_default
     lines = [
         "---",
@@ -95,6 +100,8 @@ def _okf_frontmatter(
         "related: []",
         f"last_reviewed: {today}",
     ]
+    if target_release is not None:
+        lines.append(f"target_release: {target_release}")
     if delegation:
         lines.append(f"docsweep_delegation: {delegation}")
     if due:
@@ -143,6 +150,7 @@ def okf_frontmatter(
     offset_days: dict[str, int] | None = None,
     today: date | None = None,
     owner: str | None = None,
+    target_release: str | None = None,
 ) -> str:
     """``docsweep new`` 以外の生成経路（capture 等）へ同じ frontmatter を配る公開口。
 
@@ -161,6 +169,7 @@ def okf_frontmatter(
         due=resolved,
         today=base.isoformat(),
         owner=_resolve_owner(owner),
+        target_release=target_release,
     )
 
 
@@ -188,6 +197,7 @@ def _plan_body(
     delegate: bool = False,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
     owner: str = "",
+    target_release: str | None = None,
 ) -> str:
     delegation = "external" if delegate else None
     detail = ""
@@ -206,7 +216,8 @@ def _plan_body(
         )
     body = (
         _okf_frontmatter(
-            doc_type="plan", state="planned", due=due, delegation=delegation, owner=owner
+            doc_type="plan", state="planned", due=due, delegation=delegation,
+            owner=owner, target_release=target_release,
         )
         + f"# [計画] {title}\n\n"
         "## context配分\n\n"
@@ -226,12 +237,16 @@ def _bugfix_body(
     delegate: bool = False,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
     owner: str = "",
+    target_release: str | None = None,
 ) -> str:
     # bugfix は新規時に `due:` を入れない（[様子見] へ移した時に services/status.py が付ける）。
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
     _ = (due, delegate)
     body = (
-        _okf_frontmatter(doc_type="bugfix", state="in-progress", due=None, owner=owner)
+        _okf_frontmatter(
+            doc_type="bugfix", state="in-progress", due=None, owner=owner,
+            target_release=target_release,
+        )
         # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
         + f"# [実行中] {title}\n\n"
         # 2026-08-27 改修: bugfix にも context配分 表を持たせる（列順は plan と同じ）。
@@ -255,10 +270,14 @@ def _pending_body(
     delegate: bool = False,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
     owner: str = "",
+    target_release: str | None = None,
 ) -> str:
     _ = delegate
     body = (
-        _okf_frontmatter(doc_type="pending", state="pending", due=due, owner=owner)
+        _okf_frontmatter(
+            doc_type="pending", state="pending", due=due, owner=owner,
+            target_release=target_release,
+        )
         + f"# [保留] {title}\n\n"
         "## 概要\n\n<TODO: 何を止めたか>\n\n## 保留理由\n\n<TODO>\n\n## 着手条件\n\n- <TODO>\n"
     )
@@ -319,6 +338,7 @@ def new_doc(
     allow_sensitive: bool = False,
     delegate: bool = False,
     owner: str | None = None,
+    target_release: str | None = None,
 ) -> NewDoc:
     """テンプレ MD を新規生成して :class:`NewDoc` を返す。
 
@@ -329,6 +349,7 @@ def new_doc(
         title: H1 タイトル。省略時は ``topic`` を流用。
         due: 初期 due を直接指定（``YYYY-MM-DD``）。明示指定が最優先。
         offset_days: ``Config.due_default_offset_days``。``due`` 未指定時の自動計算に使う。
+        target_release: リリース計画時点の安全な任意ラベル。
         owner: frontmatter の owner。``None`` で既定解決（config user.name → git user.name）、
             ``""`` で明示的に空。
     """
@@ -336,12 +357,16 @@ def new_doc(
         raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
     out_dir = _placement_dir(project_dir, config=config, work_dir=work_dir)
     resolved_due = _resolve_initial_due(doc_type, due=due, offset_days=offset_days)
+    resolved_target = (
+        validate_release_label(target_release) if target_release is not None else None
+    )
     body = _BUILDERS[doc_type](
         title or topic,
         due=resolved_due,
         delegate=delegate,
         template_sections=config.template_sections if config is not None else None,
         owner=_resolve_owner(owner, config),
+        target_release=resolved_target,
     )
     if config is not None:
         ensure_write_allowed(
@@ -364,7 +389,9 @@ def new_doc(
             n += 1
 
     path.write_text(body, encoding="utf-8")
-    return NewDoc(path=path, created=True, due=resolved_due)
+    return NewDoc(
+        path=path, created=True, due=resolved_due, target_release=resolved_target
+    )
 
 
 def _patch_related(path: Path, related_names: list[str]) -> None:
@@ -447,6 +474,7 @@ def new_split_plans(
     allow_sensitive: bool = False,
     delegate: bool = False,
     child_titles: list[str] | None = None,
+    target_release: str | None = None,
 ) -> list[NewDoc]:
     """親 plan + 子 N 本を生成し related と方向付き親参照を付ける（UX W3 / P26）。
 
@@ -466,7 +494,7 @@ def new_split_plans(
             project_dir=project_dir, title=parent_title,
             due=due, offset_days=offset_days,
             config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
-            delegate=delegate,
+            delegate=delegate, target_release=target_release,
         )
         created.append(parent)
         children: list[NewDoc] = []
@@ -483,7 +511,7 @@ def new_split_plans(
                 title=child_title,
                 due=due, offset_days=offset_days,
                 config=config, work_dir=work_dir, allow_sensitive=allow_sensitive,
-                delegate=delegate,
+                delegate=delegate, target_release=target_release,
             )
             created.append(child)
             children.append(child)

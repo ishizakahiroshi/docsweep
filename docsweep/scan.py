@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from fnmatch import fnmatch
@@ -33,6 +34,10 @@ class ScannedDoc:
 
 # frontmatter 矛盾 warning のプロセス内 dedup（(path, message) 単位で 1 回だけ stderr へ）。
 _WARNED_ONCE: set[tuple[str, str]] = set()
+_RELEASE_ARCHIVE_BUCKET_RE = re.compile(
+    r"^(?:v)?\d+(?:\.\d+)?(?:\.x)?$|^\d{4}-Q[1-4]$",
+    re.IGNORECASE,
+)
 
 
 def _read_gitignore(root: Path) -> list[str]:
@@ -100,6 +105,15 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
             seg = ad.strip("/").split("/")
             if seg and seg[-1]:
                 archive_names.add(seg[-1])
+                # A legacy release config may point at archive/v0.9.x while
+                # older buckets remain beside it.  In release mode the stable
+                # parent is the real archive root, so prune that parent too.
+                if (
+                    len(seg) > 1
+                    and (config.archive_partition == "release" or config.release_tracking.enabled)
+                    and _RELEASE_ARCHIVE_BUCKET_RE.fullmatch(seg[-1])
+                ):
+                    archive_names.add(seg[-2])
     base_patterns = list(config.ignore)
     if config.use_gitignore:
         base_patterns += _read_gitignore(root)
@@ -371,6 +385,8 @@ def _build_doc(
         auto_movable=bool(state and state.auto_move),
         due=det.due,
         due_parse_error=det.due_parse_error,
+        target_release=det.target_release,
+        released_in=det.released_in,
         tags=list(det.tags),
         owner=det.owner,
         review_status=det.review_status,
@@ -832,6 +848,8 @@ def sync_index(
                     allowed_actions=allowed_actions,
                     due=rec.due,
                     due_parse_error=rec.due_parse_error,
+                    target_release=rec.target_release,
+                    released_in=rec.released_in,
                     archivable=rec.archivable,
                     auto_movable=rec.auto_movable,
                     project_root=rec.project_root,

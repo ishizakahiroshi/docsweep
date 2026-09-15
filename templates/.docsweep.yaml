@@ -43,6 +43,14 @@
 #     - "**/node_modules/**"
 #     - "**/archive-vault/**"
 
+# --- workspace migration（global config に置く。製品既定では空） ---
+# workspace:
+#   roots:
+#     - <workspace-root>
+#   exclude:
+#     - "**/.many-ai-cli/worktrees/**"
+#     - "**/vendor/**"
+
 # --- capture (会話履歴 → 草案抽出) の LLM provider（wings / C2） ---
 # 既定 "mock" でヒューリスティック / Mock LLM が動く。実 provider は別 plan で対応。
 # llm:
@@ -55,6 +63,18 @@
 # private queue の文書を Git 追跡され得る場所へ黙って出さないための既定。
 # repo 直下 archive/ を従来どおり使いたい場合は下行を有効にして明示する。
 # archive_dir: archive
+
+# --- Git release tracking（opt-in。未設定なら従来の flat archive を維持） ---
+# archive_partition: release
+# release_tracking:
+#   mode: enabled
+#   tag_pattern: semver          # 既定: vMAJOR.MINOR.PATCH
+#   archive_group_by: minor     # patch / minor / major
+#   default_target: v0.9.x      # 予定ラベル。Git tag の存在は要求しない
+#   include_prerelease: false
+#   tag_prefix: v                # v / none / optional
+# `released_in` は実在する正確な Git tag、`target_release` は計画時の安全なラベル。
+# 設定変更や frontmatter 編集だけでは移送されず、明示 archive または release close だけが動かす。
 
 # 独自除外グロブ（.gitignore とは別に効く）。archive 自身は常に除外される。
 # ignore:

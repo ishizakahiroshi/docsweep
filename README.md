@@ -267,6 +267,22 @@ python -m docsweep promote --state watching --to done
 python -m docsweep promote --due-expired --dry-run
 python -m docsweep promote --due-expired
 
+# リリース対象ラベルを付けて作成／検索
+python -m docsweep new plan next-change --target-release v0.9.x
+python -m docsweep target-release set --path docs/local/plan_existing.md --to v0.9.x
+python -m docsweep find --target-release v0.9.x --json
+python -m docsweep find --missing-target-release --json
+
+# 既存 Git tag を確認して release 別 archive へ移送（まず dry-run）
+python -m docsweep release close v0.9.1 --dry-run --json
+python -m docsweep release close v0.9.1 --json
+
+# 複数リポジトリは manifest を確認してから明示適用
+python -m docsweep workspace migrate-release-tracking --root <workspace-root> --review \
+  --manifest release-migration.json
+python -m docsweep workspace migrate-release-tracking \
+  --root <workspace-root> --apply-manifest release-migration.json
+
 # 今回だけ卒業期限を今日 + 5 日に上書き（設定ファイルは変更しない）
 python -m docsweep apply --path <plan-or-bugfix.md> --action relabel --to watching --watching-days 5
 
@@ -334,6 +350,12 @@ bugfix:           [実行中] → [様子見] → [完了]
   `archive/`。private な作業文書を git 追跡され得る場所へ黙って出さないための既定です。
   移送先と選択根拠は `python -m docsweep sweep --dry-run --json` の `archive_routes` で
   確認できます。
+- Git のリリースと対応付ける場合だけ、`archive_partition: release` と
+  `release_tracking.mode: enabled` を明示します。`target_release` は計画時点の安全な任意ラベル、
+  `released_in` は `release close` が実在確認した正確な Git tag です。たとえば
+  `released_in: v0.9.1` は frontmatter に残したまま、minor 設定では
+  `archive/v0.9.x/` へ移送します。未設定・disabled・flat は従来の flat archive を維持します。
+  既存 workspace の移行手順は [release-tracking-migration.md](docs/release-tracking-migration.md) を参照してください。
 - ラベル語彙・archive 可否・自動移送可否は `states:` 設定が **唯一の正本**で、検出・Web 表示・
   注入テンプレを全部そこから導出します。
 
@@ -375,8 +397,22 @@ profiles:
     - ~/dev/works/clientB
   all:                          # python -m docsweep triage --profile all
     - ~/dev/github/public
-    - ~/dev/works
+  - ~/dev/works
 ```
+
+ワークスペース全体の release tracking を棚卸しするときは、グローバル設定へ探索 root と除外を
+置くこともできます。未設定では一括探索を行いません。
+
+```yaml
+workspace:
+  roots:
+    - <workspace-root>
+  exclude:
+    - "**/.many-ai-cli/worktrees/**"
+    - "**/vendor/**"
+```
+
+または `workspace migrate-release-tracking --root <workspace-root>` のようにコマンドで明示します。
 
 **一回きりの単発スキャン**は config を書かずに位置引数で指定もできます:
 
@@ -470,8 +506,9 @@ python -m docsweep provenance init --update --path docs/local/plan_auth-refactor
 
 > **方針**: 「全 AI 対応」を最優先し、MCP を使わない AI でも **CLI 直叩き**（`--json`）で同じことが
 > できるようにしています。自然言語起動の主役は **朝の入口**（`brief` / `cross` / `capture_extract`+`capture_save`）
-> ですが、MCP サーバーが露出する tool は v0.5.0 時点で 24 個あり、md を書き換える `apply` / `update_status` /
-> `archive_done` や、グローバル設定を書き換える `inject_global` / `eject_global` も含みます。
+> ですが、MCP サーバーが露出する tool は release tracking 対応で 26 個あり、md を書き換える `apply` /
+> `set_target_release` / `update_status` / `archive_done` や、グローバル設定を書き換える `inject_global` /
+> `eject_global` も含みます。
 > 一覧と権限の目安・自然言語マッピング表は [docs/ai-agent-integration.md](docs/ai-agent-integration.md)。
 
 ### 推奨運用: MCP 登録せず CLI 一本化
