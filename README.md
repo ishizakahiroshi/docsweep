@@ -273,6 +273,12 @@ python -m docsweep target-release set --path docs/local/plan_existing.md --to v0
 python -m docsweep find --target-release v0.9.x --json
 python -m docsweep find --missing-target-release --json
 
+# enabled な default_target は、明示 target のない new/split に自動付与
+# 優先順位: --target-release > project/global default_target。disabled では付与しない。
+# 未設定repoで対話TTYから new すると、enable/以後skip/cancelを初回だけ確認する。
+# enable時はdefault target、grouping、archive_dirを設定してからMDを生成する。
+# 明示targetと今後のdefaultは別に指定できる（例: 今回v0.9.1、defaultはv0.9.x）。
+
 # 既存 Git tag を確認して release 別 archive へ移送（まず dry-run）
 python -m docsweep release close v0.9.1 --dry-run --json
 python -m docsweep release close v0.9.1 --json
@@ -282,6 +288,13 @@ python -m docsweep workspace migrate-release-tracking --root <workspace-root> --
   --manifest release-migration.json
 python -m docsweep workspace migrate-release-tracking \
   --root <workspace-root> --apply-manifest release-migration.json
+
+# `--review` は対話 TTY で棚卸しを先に表示し、未設定 repo ごとに enable/skip を確認します。
+# 最終action一覧へのapply確認後だけ書き込みます。skip は `release_tracking.mode: disabled` として保存されるため、次回以降
+# は質問されません。`q` や入力終了で cancel すると config・MD・manifest・journal は変更
+# されません。`--json`、`--auto`、CI、非 TTY は質問せず、`needs_review` / `needs_target` を
+# JSON で返します。configured `work_dir` の外にある MD は診断だけで、一括 target action
+# の対象になりません。
 
 # 今回だけ卒業期限を今日 + 5 日に上書き（設定ファイルは変更しない）
 python -m docsweep apply --path <plan-or-bugfix.md> --action relabel --to watching --watching-days 5

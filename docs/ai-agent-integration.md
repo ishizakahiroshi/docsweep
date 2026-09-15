@@ -122,6 +122,12 @@ release tracking は opt-in です。`release_tracking.mode: enabled` と
 `archive_partition: release` を設定したプロジェクトだけ版別 archive を使います。
 未設定・disabled・flat は既存の移送先を維持します。
 
+新規 MD の `target_release` は、明示した `--target-release`、enabled な
+project/global の `release_tracking.default_target` の順で解決します。split plan
+では親と全子に同じ値が付きます。disabled では自動付与しません。未設定repoから人間の
+TTYで `new` した場合は、enable、以後skip、cancelを初回だけ確認します。enable時は
+default target、grouping、archive rootを保存してから生成します。非TTYでは質問しません。
+
 `target_release` は Git tag の存在を求めない計画ラベルです。`released_in` は
 `release close` が対象リポジトリで完全一致を確認した実在タグで、frontmatter には正確な
 値を残します。タグが無い、pre-release が許可されていない、target が未設定または不一致、
@@ -146,8 +152,16 @@ python -m docsweep workspace migrate-release-tracking \
   --root <workspace-root> --apply-manifest release-migration.json
 ```
 
-`--json` / 非 TTY でも質問は出ません。`--review` は確認事項の表示だけで、書き込みは
-`--apply` または `--apply-manifest` を明示した場合に限ります。
+`--review` は人間の TTY で棚卸しを表示してから初回設定を確認し、最終action一覧への
+apply確認後にだけ書き込み、事後結果を表示します。skip は project config の `mode: disabled` として保存され、
+以後その repo へ質問しません。`q` または入力終了で cancel すると config、MD、manifest、
+journal は変更しません。`--json`、`--auto`、CI、非 TTY、`--apply-manifest` は完全非対話で、
+未設定なら `needs_review` / `needs_target` を構造化して返します。
+
+`release close` と workspace migration は、Git tag・複数 repo・manifest/journal を扱う
+明示 CLI 操作として公開しています。MCP にはこの一括操作の対話ラッパーを登録していません。
+MCP は `scan` / `find` / `set_target_release` などの診断・明示指定面を使い、質問や暗黙の
+一括適用を行わない契約です。
 
 ---
 

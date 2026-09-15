@@ -8,14 +8,25 @@
 from __future__ import annotations
 
 import json
+import importlib
 import os
 import shutil
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import BinaryIO, Iterator
 
 from .models import MoveLogEntry
 
 MOVE_LOG_NAME = "moves.jsonl"
+
+
+class ArchiveTransactionError(OSError):
+    """A move or its log entry could not be committed atomically."""
+
+    def __init__(self, details: dict):
+        self.details = details
+        super().__init__(json.dumps(details, ensure_ascii=False))
 
 
 def _now_iso() -> str:
@@ -59,6 +70,35 @@ def _reserve_destination(dst: Path) -> Path:
 
 def move_log_path(root: Path) -> Path:
     return root / ".docsweep" / MOVE_LOG_NAME
+
+
+@contextmanager
+def _move_log_lock(root: Path) -> Iterator[BinaryIO]:
+    """Serialize move-log append/rollback across archive workers."""
+    lock_path = move_log_path(root).with_suffix(".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as lock_file:
+        if os.name == "nt":
+            import msvcrt
+
+            if lock_file.seek(0, os.SEEK_END) == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield lock_file
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl = importlib.import_module("fcntl")
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield lock_file
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def append_move_log(root: Path, entry: MoveLogEntry) -> None:
@@ -113,11 +153,84 @@ def archive_file(
         except OSError:
             pass
         raise
-    append_move_log(
-        root,
-        MoveLogEntry(
-            ts=_now_iso(), op=op, project=project, status=status,
-            src=src.as_posix(), dst=dst.as_posix(), batch_id=batch_id,
-        ),
-    )
+    log_path = move_log_path(root)
+    with _move_log_lock(root):
+        log_existed = log_path.is_file()
+        try:
+            log_size = log_path.stat().st_size if log_existed else 0
+        except OSError as exc:
+            preflight_rollback_error: str | None = None
+            try:
+                if dst.exists() and not src.exists():
+                    shutil.move(str(dst), str(src))
+            except Exception as rollback_exc:
+                preflight_rollback_error = str(rollback_exc)
+            raise ArchiveTransactionError(
+                {
+                    "reason": (
+                        "rollback_failed"
+                        if preflight_rollback_error
+                        else "move_log_preflight_failed"
+                    ),
+                    "error": str(exc),
+                    "source": src.as_posix(),
+                    "destination": dst.as_posix(),
+                    "log_path": log_path.as_posix(),
+                    "rolled_back": preflight_rollback_error is None,
+                    "source_exists": src.exists(),
+                    "destination_exists": dst.exists(),
+                    **(
+                        {"rollback_error": preflight_rollback_error}
+                        if preflight_rollback_error
+                        else {}
+                    ),
+                }
+            ) from exc
+        try:
+            append_move_log(
+                root,
+                MoveLogEntry(
+                    ts=_now_iso(), op=op, project=project, status=status,
+                    src=src.as_posix(), dst=dst.as_posix(), batch_id=batch_id,
+                ),
+            )
+        except Exception as exc:
+            rollback_error: str | None = None
+            log_rollback_error: str | None = None
+            try:
+                if log_existed:
+                    with log_path.open("r+b") as fh:
+                        fh.truncate(log_size)
+                elif log_path.exists():
+                    log_path.unlink()
+            except Exception as log_exc:
+                log_rollback_error = str(log_exc)
+            try:
+                if dst.exists():
+                    if src.exists():
+                        raise FileExistsError(
+                            f"rollback destination already exists: {src}"
+                        )
+                    shutil.move(str(dst), str(src))
+                elif not src.exists():
+                    raise FileNotFoundError(
+                        f"moved file is missing from both source and destination: {src}"
+                    )
+            except Exception as rollback_exc:
+                rollback_error = str(rollback_exc)
+            details = {
+                "reason": "rollback_failed" if rollback_error or log_rollback_error else "move_log_failed",
+                "error": str(exc),
+                "source": src.as_posix(),
+                "destination": dst.as_posix(),
+                "log_path": log_path.as_posix(),
+                "rolled_back": rollback_error is None and log_rollback_error is None,
+                "source_exists": src.exists(),
+                "destination_exists": dst.exists(),
+            }
+            if rollback_error:
+                details["rollback_error"] = rollback_error
+            if log_rollback_error:
+                details["log_rollback_error"] = log_rollback_error
+            raise ArchiveTransactionError(details) from exc
     return dst

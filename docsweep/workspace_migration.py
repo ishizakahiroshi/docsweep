@@ -9,6 +9,7 @@ repository at a time with exact-path rollback on failure.
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -61,6 +62,32 @@ class RepositoryCandidate:
     exclusion_reason: str | None = None
 
 
+@dataclass(frozen=True)
+class WorkQueue:
+    """The logical queue route and the physical directory it resolves to."""
+
+    logical_root: Path
+    physical_root: Path
+    is_reparse_root: bool
+
+
+class WorkQueueError(ValueError):
+    """A configured queue cannot be used safely for migration."""
+
+    def __init__(self, reason: str, message: str, *, path: Path | None = None):
+        super().__init__(message)
+        self.reason = reason
+        self.path = _lexical(path) if path is not None else None
+
+
+class ManifestPreflightError(ReleaseTrackingError):
+    """A manifest no longer describes the repository it is about to change."""
+
+    def __init__(self, reason: str, message: str):
+        super().__init__(message)
+        self.reason = reason
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -77,10 +104,16 @@ def _is_under(path: Path, root: Path) -> bool:
     return True
 
 
-def _path_crosses_reparse(path: Path, root: Path) -> bool:
+def _path_crosses_reparse(
+    path: Path,
+    root: Path,
+    *,
+    allowed_reparse_roots: tuple[Path, ...] = (),
+) -> bool:
     """Return true when any component between root and path is a reparse point."""
     lexical_path = _lexical(path)
     lexical_root = _lexical(root)
+    allowed = {_lexical(item) for item in allowed_reparse_roots}
     try:
         relative = lexical_path.relative_to(lexical_root)
     except ValueError:
@@ -88,7 +121,7 @@ def _path_crosses_reparse(path: Path, root: Path) -> bool:
     current = lexical_root
     for part in relative.parts:
         current /= part
-        if _is_reparse_point(current):
+        if _is_reparse_point(current) and current not in allowed:
             return True
     return False
 
@@ -102,6 +135,106 @@ def _is_reparse_point(path: Path) -> bool:
         return bool(isjunction and isjunction(path))
     except OSError:
         return True
+
+
+def _reparse_points_between(path: Path, root: Path) -> list[Path]:
+    """Return reparse points on the lexical route from ``root`` to ``path``."""
+    lexical_path = _lexical(path)
+    lexical_root = _lexical(root)
+    try:
+        relative = lexical_path.relative_to(lexical_root)
+    except ValueError:
+        return [lexical_path]
+    points: list[Path] = []
+    current = lexical_root
+    for part in relative.parts:
+        current /= part
+        if _is_reparse_point(current):
+            points.append(current)
+    return points
+
+
+def _nested_reparse_points(root: Path) -> list[Path]:
+    """Find reparse-point directories below an already accepted queue root."""
+    points: list[Path] = []
+    errors: list[OSError] = []
+
+    def onerror(error: OSError) -> None:
+        errors.append(error)
+
+    for dirpath, dirnames, _filenames in os.walk(
+        root, topdown=True, followlinks=False, onerror=onerror
+    ):
+        current = _lexical(Path(dirpath))
+        keep: list[str] = []
+        for name in dirnames:
+            child = current / name
+            if _is_reparse_point(child):
+                points.append(_lexical(child))
+            else:
+                keep.append(name)
+        dirnames[:] = keep
+    if errors:
+        raise WorkQueueError(
+            "configured_work_queue_unreadable",
+            f"configured work queue cannot be read: {root}: {errors[0]}",
+            path=root,
+        )
+    return points
+
+
+def _resolve_configured_queue(repo: Path, config: Config) -> WorkQueue:
+    """Resolve and validate the one configured queue allowed to cross a link."""
+    try:
+        work_dir, _policy, _secret = project_work_settings(repo, config)
+        logical_root = resolve_work_dir(repo, work_dir)
+    except (OSError, ValueError) as exc:
+        raise WorkQueueError(
+            "configured_work_queue_unavailable",
+            f"configured work queue cannot be resolved for {repo}: {exc}",
+        ) from exc
+
+    logical_root = _lexical(logical_root)
+    if not logical_root.is_dir():
+        raise WorkQueueError(
+            "configured_work_queue_unavailable",
+            f"configured work queue does not exist or is not a directory: {logical_root}",
+            path=logical_root,
+        )
+
+    points = _reparse_points_between(logical_root, repo)
+    unexpected = [point for point in points if point != logical_root]
+    if unexpected:
+        raise WorkQueueError(
+            "queue_parent_reparse_point",
+            f"configured work queue path crosses an unapproved reparse point: {unexpected[0]}",
+            path=unexpected[0],
+        )
+    try:
+        physical_root = logical_root.resolve(strict=True)
+        if not physical_root.is_dir():
+            raise OSError("resolved path is not a directory")
+        with os.scandir(logical_root):
+            pass
+    except (OSError, RuntimeError) as exc:
+        raise WorkQueueError(
+            "configured_work_queue_unreadable",
+            f"configured work queue cannot be read: {logical_root}: {exc}",
+            path=logical_root,
+        ) from exc
+
+    nested = _nested_reparse_points(logical_root)
+    if nested:
+        raise WorkQueueError(
+            "nested_reparse_point",
+            f"configured work queue contains an unapproved nested reparse point: {nested[0]}",
+            path=nested[0],
+        )
+    return WorkQueue(
+        logical_root=logical_root,
+        physical_root=_lexical(physical_root),
+        is_reparse_root=_is_reparse_point(logical_root),
+    )
 
 
 def _excluded(path: Path, roots: list[Path], patterns: list[str]) -> str | None:
@@ -200,11 +333,18 @@ def _config_summary(cfg: Config, raw: dict, route) -> dict:
     }
 
 
-def _archive_buckets(repo: Path, archive_dir: str) -> list[str]:
+def _archive_buckets(
+    repo: Path,
+    archive_dir: str,
+    *,
+    allowed_reparse_roots: tuple[Path, ...] = (),
+) -> list[str]:
     """List only immediate archive directory names; do not inspect file bodies."""
     base = repo / archive_dir
     try:
-        if not base.is_dir() or _path_crosses_reparse(base, repo):
+        if not base.is_dir() or _path_crosses_reparse(
+            base, repo, allowed_reparse_roots=allowed_reparse_roots
+        ):
             return []
         return sorted(
             child.name
@@ -229,32 +369,56 @@ def _is_release_bucket_name(value: str) -> bool:
     return bool(_VERSION_BUCKET_RE.fullmatch(value) or _QUARTER_BUCKET_RE.fullmatch(value))
 
 
-def _iter_active_docs(repo: Path, archive_dir: str, patterns: list[str]) -> list[Path]:
+def _iter_active_docs(
+    queue_root: Path,
+    archive_dir: str,
+    patterns: list[str],
+    *,
+    exclude_root: Path | None = None,
+    allowed_reparse_roots: tuple[Path, ...] = (),
+) -> list[Path]:
+    """Return managed files from the configured queue, using logical paths."""
     archive_names = {"archive"}
     archive_parts = [part for part in archive_dir.replace("\\", "/").split("/") if part]
     if archive_parts:
         archive_names.add(archive_parts[-1])
+    pattern_root = exclude_root or queue_root
     output: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(repo, topdown=True):
-        current = Path(dirpath)
+    for dirpath, dirnames, filenames in os.walk(
+        queue_root, topdown=True, followlinks=False
+    ):
+        current = _lexical(Path(dirpath))
         dirnames[:] = [
             name
             for name in dirnames
             if name not in {".git", ".docsweep", "node_modules", "vendor", "cache"}
             and name not in archive_names
             and not _is_reparse_point(current / name)
-            and _excluded(current / name, [repo], patterns) is None
+            and _excluded(current / name, [pattern_root], patterns) is None
         ]
         for filename in filenames:
             if _MANAGED_FILE_RE.fullmatch(filename):
-                output.append(current / filename)
+                path = current / filename
+                if not _path_crosses_reparse(
+                    path,
+                    queue_root,
+                    allowed_reparse_roots=allowed_reparse_roots,
+                ):
+                    output.append(path)
     return sorted(output, key=lambda path: path.as_posix().casefold())
 
 
-def _iter_archived_docs(repo: Path, archive_dir: str) -> list[tuple[Path, str]]:
+def _iter_archived_docs(
+    repo: Path,
+    archive_dir: str,
+    *,
+    allowed_reparse_roots: tuple[Path, ...] = (),
+) -> list[tuple[Path, str]]:
     """Return managed files under known release bucket directories only."""
     base = repo / archive_dir
-    if not base.is_dir() or _path_crosses_reparse(base, repo):
+    if not base.is_dir() or _path_crosses_reparse(
+        base, repo, allowed_reparse_roots=allowed_reparse_roots
+    ):
         return []
     output: list[tuple[Path, str]] = []
     try:
@@ -271,14 +435,71 @@ def _iter_archived_docs(repo: Path, archive_dir: str) -> list[tuple[Path, str]]:
         for dirpath, dirnames, filenames in os.walk(
             bucket_dir, topdown=True, followlinks=False
         ):
-            current = Path(dirpath)
+            current = _lexical(Path(dirpath))
             dirnames[:] = [
-                name for name in dirnames if not _is_reparse_point(current / name)
+                name
+                for name in dirnames
+                if not _is_reparse_point(current / name)
+                and not _path_crosses_reparse(
+                    current / name,
+                    repo,
+                    allowed_reparse_roots=allowed_reparse_roots,
+                )
             ]
             for filename in filenames:
                 if _MANAGED_FILE_RE.fullmatch(filename):
-                    output.append((current / filename, bucket_dir.name))
+                    path = current / filename
+                    if not _path_crosses_reparse(
+                        path,
+                        repo,
+                        allowed_reparse_roots=allowed_reparse_roots,
+                    ):
+                        output.append((path, bucket_dir.name))
     return sorted(output, key=lambda item: item[0].as_posix().casefold())
+
+
+def _iter_queue_outliers(
+    repo: Path,
+    expected_queue: Path | None,
+    archive_root: Path,
+    patterns: list[str],
+) -> list[Path]:
+    """Find managed documents under ``docs`` but outside the configured queue.
+
+    This is intentionally a diagnostic-only scan.  Its return value is never
+    used to construct migration actions.
+    """
+    docs_root = repo / "docs"
+    if not docs_root.is_dir() or _path_crosses_reparse(docs_root, repo):
+        return []
+    expected = _lexical(expected_queue) if expected_queue is not None else None
+    archive = _lexical(archive_root)
+    output: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(
+        docs_root, topdown=True, followlinks=False
+    ):
+        current = _lexical(Path(dirpath))
+        keep: list[str] = []
+        for name in dirnames:
+            child = current / name
+            if expected is not None and _is_under(child, expected):
+                continue
+            if _is_under(child, archive) or _is_reparse_point(child):
+                continue
+            if _excluded(child, [repo], patterns) is None:
+                keep.append(name)
+        dirnames[:] = keep
+        for filename in filenames:
+            if not _MANAGED_FILE_RE.fullmatch(filename):
+                continue
+            path = current / filename
+            if expected is not None and _is_under(path, expected):
+                continue
+            if _is_under(path, archive) or _path_crosses_reparse(path, repo):
+                continue
+            if _excluded(path, [repo], patterns) is None:
+                output.append(path)
+    return sorted(output, key=lambda path: path.as_posix().casefold())
 
 
 def _doc_metadata(path: Path) -> dict:
@@ -287,7 +508,15 @@ def _doc_metadata(path: Path) -> dict:
         text = path.read_text(encoding="utf-8", errors="replace")
         frontmatter, _body = read_frontmatter_text(text)
     except (OSError, UnicodeError):
-        return {"readable": False, "target_release": None, "released_in": None, "state": None, "never_archive": False}
+        return {
+            "readable": False,
+            "target_release": None,
+            "released_in": None,
+            "target_present": False,
+            "released_present": False,
+            "state": None,
+            "never_archive": False,
+        }
     target = frontmatter.get("target_release")
     released = frontmatter.get("released_in")
     state = frontmatter.get("docsweep_state") or frontmatter.get("status")
@@ -296,9 +525,93 @@ def _doc_metadata(path: Path) -> dict:
         "readable": True,
         "target_release": str(target).strip() if target is not None and str(target).strip() else None,
         "released_in": str(released).strip() if released is not None and str(released).strip() else None,
+        "target_present": "target_release" in frontmatter,
+        "released_present": "released_in" in frontmatter,
         "state": str(state).strip() if state is not None and str(state).strip() else None,
         "never_archive": policy == "never_archive",
     }
+
+
+def _normalized_field_value(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _file_precondition(path: Path, *, field: str | None = None) -> dict:
+    """Capture a write precondition without storing document contents."""
+    path = _lexical(path)
+    if not path.is_file():
+        return {
+            "exists": False,
+            "readable": True,
+            "mtime_ns": None,
+            "content_sha256": None,
+            **(
+                {"field_present": False, "old_value": None}
+                if field is not None
+                else {}
+            ),
+        }
+    try:
+        raw = path.read_bytes()
+        stat = path.stat()
+        result = {
+            "exists": True,
+            "readable": True,
+            "mtime_ns": stat.st_mtime_ns,
+            "content_sha256": hashlib.sha256(raw).hexdigest(),
+        }
+        if field is not None:
+            text = raw.decode("utf-8")
+            frontmatter, _body = read_frontmatter_text(text)
+            result.update(
+                {
+                    "field_present": field in frontmatter,
+                    "old_value": _normalized_field_value(frontmatter.get(field)),
+                }
+            )
+        return result
+    except (OSError, UnicodeError):
+        result = {
+            "exists": True,
+            "readable": False,
+            "mtime_ns": None,
+            "content_sha256": None,
+        }
+        if field is not None:
+            result.update({"field_present": None, "old_value": None})
+        return result
+
+
+def _precondition_matches(path: Path, expected: dict, *, field: str | None = None) -> tuple[bool, str]:
+    """Compare a manifest precondition with the current file state."""
+    if not isinstance(expected, dict):
+        return False, "missing_precondition"
+    actual = _file_precondition(path, field=field)
+    keys = ("exists", "readable", "mtime_ns", "content_sha256")
+    if any(actual.get(key) != expected.get(key) for key in keys):
+        return False, "file_changed"
+    if field is not None and (
+        actual.get("field_present") != expected.get("field_present")
+        or actual.get("old_value") != expected.get("old_value")
+    ):
+        return False, f"field_changed:{field}"
+    return True, "ok"
+
+
+def _manifest_fingerprint(manifest: dict) -> str:
+    payload = {
+        key: value for key, value in manifest.items() if key != "manifest_sha256"
+    }
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def _safe_archive_root(value: str) -> bool:
@@ -312,27 +625,21 @@ def _safe_archive_root(value: str) -> bool:
     )
 
 
-def _queue_outliers(repo: Path, config: Config, paths: list[Path]) -> list[dict]:
-    """Report docs under docs that are outside the configured work queue."""
-    try:
-        work_dir, _policy, _secret = project_work_settings(repo, config)
-        expected = resolve_work_dir(repo, work_dir)
-    except (OSError, ValueError) as exc:
-        return [{"kind": "queue", "reason": str(exc), "confidence": "none"}]
-    docs_root = repo / "docs"
-    outliers: list[dict] = []
-    for path in paths:
-        if _is_under(path, docs_root) and not _is_under(path, expected):
-            outliers.append(
-                {
-                    "kind": "queue",
-                    "path": _lexical(path).as_posix(),
-                    "expected_dir": _lexical(expected).as_posix(),
-                    "reason": "document_outside_configured_work_dir",
-                    "confidence": "high",
-                }
-            )
-    return outliers
+def _queue_outlier_items(
+    paths: list[Path], expected_queue: Path | None
+) -> list[dict]:
+    """Convert diagnostic-only queue outlier paths into manifest review items."""
+    expected = _lexical(expected_queue).as_posix() if expected_queue is not None else None
+    return [
+        {
+            "kind": "queue",
+            "path": _lexical(path).as_posix(),
+            "expected_dir": expected,
+            "reason": "document_outside_configured_work_dir",
+            "confidence": "high",
+        }
+        for path in paths
+    ]
 
 
 def _inventory_repository(
@@ -345,6 +652,7 @@ def _inventory_repository(
     repo = candidate.root
     project_yaml = repo / ".docsweep.yaml"
     raw = _project_yaml(project_yaml)
+    config_precondition = _file_precondition(project_yaml)
     cfg = load_config(
         project_dir=repo,
         explicit_roots=[str(repo)],
@@ -353,14 +661,55 @@ def _inventory_repository(
     route = archive_route_for_project(repo, cfg)
     before = _config_summary(cfg, raw, route)
     archive_dir, versioned_suffix = _archive_base(route.archive_dir)
-    buckets = _archive_buckets(repo, archive_dir)
+    expected_queue: Path | None = None
+    queue: WorkQueue | None = None
+    queue_error: WorkQueueError | None = None
+    try:
+        work_dir, _policy, _secret = project_work_settings(repo, cfg)
+        expected_queue = resolve_work_dir(repo, work_dir)
+    except (OSError, ValueError) as exc:
+        queue_error = WorkQueueError(
+            "configured_work_queue_unavailable",
+            f"configured work queue cannot be resolved for {repo}: {exc}",
+        )
+    if queue_error is None:
+        try:
+            queue = _resolve_configured_queue(repo, cfg)
+        except WorkQueueError as exc:
+            queue_error = exc
+    allowed_reparse_roots = (queue.logical_root,) if queue is not None else ()
+    buckets = _archive_buckets(
+        repo,
+        archive_dir,
+        allowed_reparse_roots=allowed_reparse_roots,
+    )
     effective_default = default_target or cfg.release_tracking.default_target
     if effective_default is not None:
         effective_default = validate_release_label(effective_default, field="default_target")
 
     docs: list[dict] = []
-    active_paths = _iter_active_docs(repo, archive_dir, excludes)
-    archived_paths = _iter_archived_docs(repo, archive_dir)
+    if queue is not None:
+        active_paths = _iter_active_docs(
+            queue.logical_root,
+            archive_dir,
+            excludes,
+            exclude_root=repo,
+            allowed_reparse_roots=allowed_reparse_roots,
+        )
+        archived_paths = _iter_archived_docs(
+            repo,
+            archive_dir,
+            allowed_reparse_roots=allowed_reparse_roots,
+        )
+    else:
+        active_paths = []
+        archived_paths = []
+    outlier_paths = _iter_queue_outliers(
+        repo,
+        expected_queue,
+        repo / archive_dir,
+        excludes,
+    )
     for path in active_paths:
         metadata = _doc_metadata(path)
         docs.append(
@@ -402,6 +751,8 @@ def _inventory_repository(
                     "path": item["path"],
                     "field": "target_release",
                     "value": bucket,
+                    "scope": "archive",
+                    "precondition": _file_precondition(path, field="target_release"),
                     "reason": "archive_bucket_inference",
                     "evidence": f"archive directory: {bucket}",
                     "confidence": "high",
@@ -434,6 +785,10 @@ def _inventory_repository(
                     "path": item["path"],
                     "field": "target_release",
                     "value": effective_default,
+                    "scope": "queue",
+                    "precondition": _file_precondition(
+                        Path(item["path"]), field="target_release"
+                    ),
                     "reason": "repository_default_target",
                     "evidence": "repository/default_target configuration",
                     "confidence": "high",
@@ -464,12 +819,25 @@ def _inventory_repository(
                 "archive_partition": "release",
                 "archive_dir": normalized_archive,
                 "release_tracking": desired_tracking,
+                "precondition": config_precondition,
                 "reason": "enable_release_tracking_and_normalize_archive_route",
             }
 
     status = "ready"
     diagnostics: list[str] = []
-    review_items.extend(_queue_outliers(repo, cfg, active_paths))
+    review_items.extend(_queue_outlier_items(outlier_paths, expected_queue))
+    if queue_error is not None:
+        status = "needs_review"
+        diagnostics.append(str(queue_error))
+        review_items.insert(
+            0,
+            {
+                "kind": "queue",
+                "path": queue_error.path.as_posix() if queue_error.path else None,
+                "reason": queue_error.reason,
+                "confidence": "none",
+            },
+        )
     unreadable_active = [item for item in docs if not item["readable"]]
     if unreadable_active:
         status = "needs_review"
@@ -485,6 +853,10 @@ def _inventory_repository(
     if cfg.release_tracking.mode == "disabled":
         status = "disabled"
         diagnostics.append("project release_tracking.mode is disabled")
+        actions = []
+        config_action = None
+    if queue_error is not None:
+        status = "needs_review"
         actions = []
         config_action = None
     elif missing_target and not effective_default:
@@ -515,7 +887,12 @@ def _inventory_repository(
                 "confidence": "none",
             }
         )
-    if not project_yaml.is_file() and config_action is None and cfg.release_tracking.mode is None:
+    if (
+        queue_error is None
+        and not project_yaml.is_file()
+        and config_action is None
+        and cfg.release_tracking.mode is None
+    ):
         config_action = {
             "archive_partition": "release",
             "archive_dir": archive_dir,
@@ -525,6 +902,7 @@ def _inventory_repository(
                 "archive_group_by": "minor",
                 **({"default_target": effective_default} if effective_default else {}),
             },
+            "precondition": config_precondition,
             "reason": "create_project_release_tracking_config",
         }
 
@@ -558,11 +936,22 @@ def _inventory_repository(
             "git_tags": len(tags),
             "semver_tags": len(semver_tags),
             "ignored_tag_count": len(tags) - len(semver_tags),
+            "configured_work_dir": expected_queue.as_posix()
+            if expected_queue is not None
+            else None,
+            "configured_work_dir_physical": queue.physical_root.as_posix()
+            if queue is not None
+            else None,
+            "configured_work_dir_is_reparse": queue.is_reparse_root
+            if queue is not None
+            else None,
+            "configured_work_dir_valid": queue_error is None,
         },
         "documents": docs,
         "archived_documents": archived_documents,
         "actions": actions,
         "config_action": config_action,
+        "config_precondition": config_precondition,
         "diagnostics": diagnostics,
         "review_items": review_items,
     }
@@ -606,7 +995,23 @@ def build_manifest(
                     "diagnostics": [str(exc)],
                 }
             )
-    return {
+    configured_reparse_queues = {
+        _lexical(Path(str(inventory.get("configured_work_dir")))).as_posix()
+        for repository in repositories
+        for inventory in [repository.get("inventory") or {}]
+        if inventory.get("configured_work_dir_is_reparse") is True
+        and inventory.get("configured_work_dir")
+    }
+    if configured_reparse_queues:
+        excluded = [
+            item
+            for item in excluded
+            if not (
+                item.get("reason") == "reparse-point"
+                and item.get("path") in configured_reparse_queues
+            )
+        ]
+    manifest = {
         "schema_version": 1,
         "migration_id": migration_id or f"rm-{datetime.now().strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}",
         "created_at": _utc_now(),
@@ -616,6 +1021,8 @@ def build_manifest(
         "excluded": excluded,
         "repositories": repositories,
     }
+    manifest["manifest_sha256"] = _manifest_fingerprint(manifest)
+    return manifest
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -663,41 +1070,157 @@ def _target_after_text(path: Path, value: str) -> str:
     return _replace_or_insert(text, "target_release", _format_value("target_release", value))
 
 
-def _apply_repository(repo: dict) -> dict:
-    """Apply all operations for one repository or roll that repository back."""
+def _manifest_action_path(
+    action: dict,
+    *,
+    root: Path,
+    queue: WorkQueue,
+    archive_root: Path,
+) -> Path:
+    """Validate an action's logical path against the same queue boundary used by inventory."""
+    path = _lexical(Path(str(action.get("path", ""))))
+    if not _is_under(path, root) or path.suffix.lower() not in {".md", ".markdown"}:
+        raise ReleaseTrackingError(
+            f"manifest path is outside repository or not Markdown: {path}"
+        )
+    scope = str(action.get("scope") or "queue").strip().lower()
+    if scope == "queue":
+        if not _is_under(path, queue.logical_root):
+            raise ReleaseTrackingError(
+                f"manifest action is outside the configured work queue: {path}"
+            )
+    elif scope == "archive":
+        if not _is_under(path, archive_root):
+            raise ReleaseTrackingError(
+                f"manifest action is outside the configured archive root: {path}"
+            )
+    elif scope == "explicit_override":
+        if action.get("allow_outside_queue") is not True:
+            raise ReleaseTrackingError(
+                f"queue-outside action requires an explicit file override: {path}"
+            )
+    else:
+        raise ReleaseTrackingError(f"unknown manifest action scope: {scope}")
+    if _path_crosses_reparse(
+        path,
+        root,
+        allowed_reparse_roots=(queue.logical_root,),
+    ):
+        raise ReleaseTrackingError(
+            f"manifest path crosses an unapproved reparse point: {path}"
+        )
+    return path
+
+
+def _apply_repository(repo: dict, *, global_path: Path | None = None) -> dict:
+    """Preflight and apply all operations for one repository atomically."""
     root = _lexical(Path(str(repo.get("root", ""))))
     if not root.is_dir() or not (root / ".git").exists():
         raise ReleaseTrackingError(f"manifest repository is not a Git repository: {root}")
-    operations: list[tuple[Path, str, str | None]] = []
-    config_action = repo.get("config_action")
+    if _is_reparse_point(root):
+        raise ReleaseTrackingError(f"manifest repository root is a reparse point: {root}")
+    cfg = load_config(
+        project_dir=root,
+        explicit_roots=[str(root)],
+        global_path=global_path,
+    )
+    queue = _resolve_configured_queue(root, cfg)
+    archive_route = archive_route_for_project(root, cfg)
+    archive_dir, _versioned_suffix = _archive_base(archive_route.archive_dir)
+    archive_root = _lexical(root / archive_dir)
     config_path = root / ".docsweep.yaml"
+    expected_config = repo.get("config_precondition")
+    if expected_config is None:
+        config_action = repo.get("config_action")
+        expected_config = (
+            config_action.get("precondition")
+            if isinstance(config_action, dict)
+            else None
+        )
+    if expected_config is None:
+        raise ManifestPreflightError(
+            "missing_config_precondition",
+            f"manifest has no project config precondition: {root}",
+        )
+    matches, reason = _precondition_matches(config_path, expected_config)
+    if not matches:
+        raise ManifestPreflightError(
+            "stale_manifest",
+            f"project config precondition failed for {root}: {reason}",
+        )
+
+    operations: list[tuple[Path, str]] = []
+    config_action = repo.get("config_action")
     if isinstance(config_action, dict):
-        operations.append((config_path, _config_after_text(config_path, config_action), None))
+        operations.append((config_path, _config_after_text(config_path, config_action)))
+    seen_paths = {config_path}
     for action in repo.get("actions") or []:
         if not isinstance(action, dict) or action.get("field") != "target_release":
             continue
-        path = _lexical(Path(str(action.get("path", ""))))
-        if not _is_under(path, root) or path.suffix.lower() not in {".md", ".markdown"}:
-            raise ReleaseTrackingError(f"manifest path is outside repository or not Markdown: {path}")
+        path = _manifest_action_path(
+            action,
+            root=root,
+            queue=queue,
+            archive_root=archive_root,
+        )
+        if path in seen_paths:
+            raise ManifestPreflightError(
+                "duplicate_operation",
+                f"manifest contains duplicate operation path: {path}",
+            )
+        seen_paths.add(path)
+        precondition = action.get("precondition")
+        if not isinstance(precondition, dict):
+            raise ManifestPreflightError(
+                "missing_precondition",
+                f"manifest document has no precondition: {path}",
+            )
+        matches, reason = _precondition_matches(
+            path,
+            precondition,
+            field="target_release",
+        )
+        if not matches:
+            raise ManifestPreflightError(
+                "stale_manifest",
+                f"document precondition failed for {path}: {reason}",
+            )
         if not path.is_file():
-            raise FileNotFoundError(path)
-        operations.append((path, _target_after_text(path, str(action.get("value", ""))), None))
+            raise ManifestPreflightError(
+                "document_missing",
+                f"manifest document is missing: {path}",
+            )
+        operations.append((path, _target_after_text(path, str(action.get("value", "")))))
 
     if not operations:
         return {"root": root.as_posix(), "status": "skipped", "changed": 0}
 
     originals: dict[Path, tuple[bool, str]] = {}
     changed: list[Path] = []
+    for path, _content in operations:
+        existed = path.is_file()
+        try:
+            original = (
+                path.open("r", encoding="utf-8", newline="").read()
+                if existed
+                else ""
+            )
+        except (OSError, UnicodeError) as exc:
+            raise ManifestPreflightError(
+                "preflight_read_failed",
+                f"manifest operation cannot be read before writing: {path}: {exc}",
+            ) from exc
+        originals[path] = (existed, original)
+
     try:
-        for path, content, _ in operations:
-            existed = path.is_file()
-            original = path.open("r", encoding="utf-8", newline="").read() if existed else ""
-            originals[path] = (existed, original)
+        for path, content in operations:
+            existed, original = originals[path]
             if existed and original == content:
                 continue
             write_atomic(path, content)
             changed.append(path)
-    except Exception:
+    except Exception as exc:
+        rollback_errors: list[dict] = []
         for path in reversed(changed):
             existed, original = originals[path]
             try:
@@ -705,9 +1228,22 @@ def _apply_repository(repo: dict) -> dict:
                     write_atomic(path, original)
                 elif path.is_file():
                     path.unlink()
-            except OSError:
-                pass
-        raise
+            except Exception as rollback_exc:  # preserve recovery facts for the caller
+                rollback_errors.append(
+                    {"path": path.as_posix(), "error": str(rollback_exc)}
+                )
+        raise ReleaseTrackingError(
+            json.dumps(
+                {
+                    "reason": "rollback_failed" if rollback_errors else "apply_failed",
+                    "error": str(exc),
+                    "changed_paths": [path.as_posix() for path in changed],
+                    "rolled_back": not rollback_errors,
+                    "rollback_errors": rollback_errors,
+                },
+                ensure_ascii=False,
+            )
+        ) from exc
     return {
         "root": root.as_posix(),
         "status": "applied" if changed else "skipped",
@@ -716,41 +1252,138 @@ def _apply_repository(repo: dict) -> dict:
     }
 
 
-def apply_manifest(manifest: dict, *, journal_path: Path | None = None) -> dict:
-    """Apply a manifest, skipping repositories already recorded as applied."""
+def _journal_cumulative(previous: dict) -> dict[str, dict]:
+    """Read durable applied state, keeping it separate from attempt results."""
+    raw = previous.get("cumulative")
+    if isinstance(raw, dict) and isinstance(raw.get("repositories"), dict):
+        return {
+            str(root): dict(value)
+            for root, value in raw["repositories"].items()
+            if isinstance(value, dict)
+        }
+    legacy = {}
+    for item in previous.get("repositories") or []:
+        if isinstance(item, dict) and item.get("status") == "applied":
+            root = str(item.get("root", ""))
+            if root:
+                legacy[root] = dict(item)
+    return legacy
+
+
+def _structured_apply_error(exc: Exception) -> dict:
+    try:
+        value = json.loads(str(exc))
+    except (TypeError, ValueError):
+        return {"error": str(exc)}
+    return value if isinstance(value, dict) else {"error": str(exc)}
+
+
+def apply_manifest(
+    manifest: dict,
+    *,
+    journal_path: Path | None = None,
+    global_path: Path | None = None,
+) -> dict:
+    """Apply a manifest with identity checks and durable, resumable state."""
     if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
         raise ValueError("未対応の release migration manifest です")
+    expected_hash = manifest.get("manifest_sha256")
+    actual_hash = _manifest_fingerprint(manifest)
+    if not isinstance(expected_hash, str) or expected_hash != actual_hash:
+        raise ValueError("manifest の内容が記録済みの fingerprint と一致しません")
     migration_id = str(manifest.get("migration_id") or "unknown")
     journal = _lexical(journal_path or (_JOURNAL_ROOT / f"{migration_id}.json"))
     previous: dict = {}
     if journal.is_file():
         try:
             previous = json.loads(journal.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            previous = {}
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ReleaseTrackingError(
+                f"migration journal を安全に読み込めません: {journal}: {exc}"
+            ) from exc
+        if not isinstance(previous, dict):
+            raise ReleaseTrackingError(f"migration journal の形式が不正です: {journal}")
+        journal_hash = previous.get("manifest_sha256")
+        if journal_hash is None:
+            old_manifest = previous.get("manifest")
+            journal_hash = old_manifest.get("manifest_sha256") if isinstance(old_manifest, dict) else None
+        if journal_hash != expected_hash:
+            raise ReleaseTrackingError(
+                "migration journal の manifest fingerprint が今回の manifest と一致しません"
+            )
+
+    cumulative = _journal_cumulative(previous)
     repo_results: list[dict] = []
     for repo in manifest.get("repositories") or []:
         if not isinstance(repo, dict):
             continue
         root = str(repo.get("root", ""))
-        prior = next(
-            (item for item in previous.get("repositories", []) if item.get("root") == root),
-            None,
-        )
+        prior = cumulative.get(root)
         if prior and prior.get("status") == "applied":
-            repo_results.append({"root": root, "status": "skipped", "reason": "already_applied", "changed": 0})
+            repo_results.append(
+                {
+                    "root": root,
+                    "status": "skipped",
+                    "reason": "already_applied",
+                    "changed": 0,
+                }
+            )
             continue
         if repo.get("status") in {"disabled", "needs_review", "failed", "excluded"}:
-            repo_results.append({"root": root, "status": "needs_review", "reason": repo.get("status"), "changed": 0})
+            repo_results.append(
+                {
+                    "root": root,
+                    "status": "needs_review",
+                    "reason": repo.get("status"),
+                    "changed": 0,
+                }
+            )
             continue
         try:
-            repo_results.append(_apply_repository(repo))
+            applied = _apply_repository(repo, global_path=global_path)
+            repo_results.append(applied)
+            if applied.get("status") in {"applied", "skipped"}:
+                cumulative[root] = {
+                    "status": "applied",
+                    "changed": int(applied.get("changed", 0)),
+                    "changed_paths": list(applied.get("changed_paths", [])),
+                    "completed_at": _utc_now(),
+                }
+        except ManifestPreflightError as exc:
+            repo_results.append(
+                {
+                    "root": root,
+                    "status": "needs_review",
+                    "reason": exc.reason,
+                    "changed": 0,
+                    "error": str(exc),
+                }
+            )
+        except WorkQueueError as exc:
+            repo_results.append(
+                {
+                    "root": root,
+                    "status": "needs_review",
+                    "reason": exc.reason,
+                    "changed": 0,
+                    "error": str(exc),
+                }
+            )
         except Exception as exc:  # one repository must not stop the others
-            repo_results.append({"root": root, "status": "failed", "changed": 0, "error": str(exc)})
+            details = _structured_apply_error(exc)
+            repo_results.append(
+                {
+                    "root": root,
+                    "status": "failed",
+                    "changed": 0,
+                    **details,
+                }
+            )
 
     result = {
         "schema_version": 1,
         "migration_id": migration_id,
+        "manifest_sha256": expected_hash,
         "updated_at": _utc_now(),
         "manifest_roots": manifest.get("roots") or [],
         "repositories": repo_results,
@@ -761,7 +1394,22 @@ def apply_manifest(manifest: dict, *, journal_path: Path | None = None) -> dict:
             "failed": sum(item.get("status") == "failed" for item in repo_results),
         },
     }
-    _write_json(journal, {"manifest": manifest, **result})
+    attempts = previous.get("attempts")
+    if not isinstance(attempts, list):
+        attempts = []
+    attempts = [*attempts, result]
+    _write_json(
+        journal,
+        {
+            "schema_version": 1,
+            "migration_id": migration_id,
+            "manifest_sha256": expected_hash,
+            "manifest": manifest,
+            "cumulative": {"repositories": cumulative},
+            "attempts": attempts,
+            **result,
+        },
+    )
     return result
 
 
@@ -801,7 +1449,11 @@ def migrate_release_tracking(
     if manifest_path is not None:
         _write_json(manifest_path, manifest)
     if apply or apply_manifest_path is not None:
-        applied = apply_manifest(manifest, journal_path=journal_path)
+        applied = apply_manifest(
+            manifest,
+            journal_path=journal_path,
+            global_path=global_path,
+        )
         if manifest_path is None and apply_manifest_path is not None:
             # Keep the original user-edited manifest as the source of truth;
             # the journal carries apply state separately.

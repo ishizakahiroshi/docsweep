@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from docsweep.config import Config, TemplateSection
+from docsweep.config import Config, ReleaseTrackingConfig, TemplateSection, load_config
 from docsweep.templates_gen import _resolve_initial_due, new_doc, new_split_plans
 
 
@@ -272,6 +272,127 @@ def test_configured_sections_are_appended_only_to_matching_type(tmp_path: Path):
     bugfix_body = bugfix.path.read_text(encoding="utf-8")
     assert plan_body.endswith("## 顧客への説明\n\n<TODO: 伝達範囲>\n")
     assert "## 顧客への説明" not in bugfix_body
+
+
+def test_enabled_release_tracking_default_target_is_used_for_new_docs(
+    tmp_path: Path,
+) -> None:
+    config = Config(
+        release_tracking=ReleaseTrackingConfig(
+            mode="enabled",
+            default_target="v1.2.x",
+        ),
+    )
+
+    doc = new_doc(
+        "plan",
+        "default-release",
+        project_dir=tmp_path,
+        config=config,
+        offset_days={},
+    )
+
+    assert doc.target_release == "v1.2.x"
+    assert "target_release: v1.2.x" in doc.path.read_text(encoding="utf-8")
+
+
+def test_explicit_release_target_wins_over_configured_default(tmp_path: Path) -> None:
+    config = Config(
+        release_tracking=ReleaseTrackingConfig(
+            mode="enabled",
+            default_target="v1.2.x",
+        ),
+    )
+
+    doc = new_doc(
+        "plan",
+        "explicit-release",
+        project_dir=tmp_path,
+        config=config,
+        offset_days={},
+        target_release="v2.0.x",
+    )
+
+    assert doc.target_release == "v2.0.x"
+    assert "target_release: v2.0.x" in doc.path.read_text(encoding="utf-8")
+
+
+def test_disabled_release_tracking_does_not_auto_assign_default_target(
+    tmp_path: Path,
+) -> None:
+    config = Config(
+        release_tracking=ReleaseTrackingConfig(
+            mode="disabled",
+            default_target="v1.2.x",
+        ),
+    )
+
+    doc = new_doc(
+        "plan",
+        "disabled-release",
+        project_dir=tmp_path,
+        config=config,
+        offset_days={},
+    )
+
+    assert doc.target_release is None
+    assert "target_release:" not in doc.path.read_text(encoding="utf-8")
+
+
+def test_project_default_overrides_global_default_for_new_docs(tmp_path: Path) -> None:
+    global_config = tmp_path / "global.yaml"
+    global_config.write_text(
+        "release_tracking:\n  mode: enabled\n  default_target: v1.0.x\n",
+        encoding="utf-8",
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".docsweep.yaml").write_text(
+        "release_tracking:\n"
+        "  mode: enabled\n"
+        "  default_target: v2.0.x\n",
+        encoding="utf-8",
+    )
+    config = load_config(
+        project_dir=project,
+        explicit_roots=[str(project)],
+        global_path=global_config,
+    )
+
+    doc = new_doc(
+        "plan",
+        "project-default",
+        project_dir=project,
+        config=config,
+        offset_days={},
+    )
+
+    assert doc.target_release == "v2.0.x"
+
+
+def test_split_plans_share_the_configured_default_release_target(
+    tmp_path: Path,
+) -> None:
+    config = Config(
+        release_tracking=ReleaseTrackingConfig(
+            mode="enabled",
+            default_target="v3.4.x",
+        ),
+    )
+
+    created = new_split_plans(
+        "split-default-release",
+        n=2,
+        project_dir=tmp_path,
+        config=config,
+        offset_days={},
+    )
+
+    assert [doc.target_release for doc in created] == ["v3.4.x"] * 3
+    assert all(
+        "target_release: v3.4.x" in doc.path.read_text(encoding="utf-8")
+        for doc in created
+    )
 
 
 # --- --split の子ファイル名が親子命名規約と一致すること -------------------------

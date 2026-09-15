@@ -11,12 +11,26 @@
   `release close` と patch / minor / major bucket archive を提供する。
 - 複数リポジトリを本文非収集で棚卸しする workspace migration manifest と、リポジトリ単位の
   原子的 apply / journal 再開経路を追加した。
+- `docsweep new` / `new --split` が enabled な project/global の
+  `release_tracking.default_target` を明示 target の次に解決するようにした。workspace の
+  TTY review では未設定 repo の enable/skip を初回確認でき、skip は `mode: disabled` として
+  永続化する。
+- 未設定repoからの対話TTY `new` に初回設定を追加し、workspace reviewは棚卸しと最終actionを
+  表示してから明示確認した場合だけapplyする。
 
 ### Changed
 
 - 設定なし、`release_tracking.mode: disabled`、または `archive_partition: flat` のプロジェクトは
   従来の archive 経路を維持する。
 - MCP / CLI の検索・frontmatter・SQLite 索引が release metadata を保持する。
+- workspace migration は configured work queue と manifest precondition の境界を守り、
+  JSON・非 TTY・CI・`--auto` では質問しない。stale input は repo 単位で無変更のまま
+  `needs_review` とし、manifest fingerprint と累積 journal 状態を保持する。
+- release close は move log 失敗時に frontmatter と移送先を rollback し、rollback 先衝突や
+  復旧失敗を実在 path つきで返す。custom tag regex の未一致 optional prefix は空文字として
+  archive bucket を計算する。
+- configured archive rootがwork queue外でもarchive metadata actionを安全に適用し、move logの
+  rollback区間はworker間で排他する。
 
 ## [0.6.0] - 2026-09-11
 

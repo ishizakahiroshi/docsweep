@@ -626,7 +626,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_workspace_migrate.add_argument(
         "--review", action="store_true",
-        help="needs_review / 除外理由を人間向けに表示する（対話入力はしない）",
+        help="TTY では初回設定を確認して適用、非対話経路では要確認結果を表示する",
+    )
+    p_workspace_migrate.add_argument(
+        "--auto", action="store_true",
+        help="自動実行経路（入力を求めず、明示した --apply 以外は dry-run）",
     )
     p_workspace_migrate.add_argument(
         "--journal", help="migration journal の出力先（既定 ~/.docsweep/release-migrations）",

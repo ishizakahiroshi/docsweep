@@ -7,12 +7,14 @@ an apply operation cannot silently calculate different destinations.
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from copy import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .atomic import write_atomic
 from .config import (
     RELEASE_ARCHIVE_GROUPS,
     RELEASE_TAG_PREFIXES,
@@ -205,7 +207,7 @@ def parse_release_tag(
                 minor=int(match.group("minor")),
                 patch=int(match.group("patch")),
                 prerelease=match.groupdict().get("prerelease"),
-                prefix=match.groupdict().get("prefix", ""),
+                prefix=match.groupdict().get("prefix") or "",
             )
         except (TypeError, ValueError):
             return None
@@ -470,11 +472,16 @@ def close_release(
     for doc in docs_to_move:
         rec = doc.record
         previous_released_in = rec.released_in
+        source_path = Path(rec.path)
+        original_source_text: str | None = None
         metadata_mtime: float | None = None
         try:
+            original_source_text = source_path.open(
+                "r", encoding="utf-8", newline=""
+            ).read()
             if rec.released_in != exact_tag:
                 metadata = update_frontmatter_field(
-                    Path(rec.path), "released_in", exact_tag, expected_mtime=rec.mtime
+                    source_path, "released_in", exact_tag, expected_mtime=rec.mtime
                 )
                 metadata_mtime = metadata.new_mtime
                 rec.released_in = exact_tag
@@ -482,14 +489,51 @@ def close_release(
             result.moved.append(move.to_dict())
         except (OSError, UnicodeError, ValueError) as exc:
             failure: dict[str, object] = {"path": rec.path, "error": str(exc)}
+            try:
+                details = json.loads(str(exc))
+            except (TypeError, ValueError):
+                details = {}
+            if isinstance(details, dict):
+                for key in (
+                    "reason",
+                    "source",
+                    "destination",
+                    "log_path",
+                    "rolled_back",
+                    "source_exists",
+                    "destination_exists",
+                    "rollback_error",
+                    "log_rollback_error",
+                ):
+                    if key in details:
+                        failure[key] = details[key]
+                if (
+                    details.get("destination_exists") is True
+                    and details.get("source_exists") is False
+                ):
+                    failure["reason"] = "moved_unlogged"
+                    failure["recovery"] = "destination remains; restore it before retrying"
             if metadata_mtime is not None:
                 try:
+                    if details.get("destination_exists") is True:
+                        raise OSError(
+                            "archive destination remains; source rollback is not safe"
+                        )
+                    if original_source_text is None or not source_path.is_file():
+                        raise OSError(
+                            "source file is unavailable for released_in rollback"
+                        )
                     update_frontmatter_field(
-                        Path(rec.path),
+                        source_path,
                         "released_in",
                         previous_released_in,
                         expected_mtime=metadata_mtime,
                     )
+                    current_source_text = source_path.open(
+                        "r", encoding="utf-8", newline=""
+                    ).read()
+                    if current_source_text != original_source_text:
+                        write_atomic(source_path, original_source_text)
                     rec.released_in = previous_released_in
                     failure["released_in_rolled_back"] = True
                 except (OSError, UnicodeError, ValueError) as rollback_exc:

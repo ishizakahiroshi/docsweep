@@ -4,13 +4,144 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
+import yaml
+
 from ...atomic import write_atomic
-from ...config import load_config
+from ...config import Config, archive_route_for_project, load_config
 from ...engine import apply_action, auto_sweep, doc_for_path, run_scan
 from ..parser import _build_config
+
+
+def _new_release_setup_allowed() -> bool:
+    if os.environ.get("CI", "").strip().lower() not in {"", "0", "false", "no", "off"}:
+        return False
+    return bool(getattr(sys.stdin, "isatty", lambda: False)())
+
+
+def _new_prompt(message: str) -> str:
+    try:
+        return input(message).strip()
+    except (EOFError, KeyboardInterrupt):
+        return "q"
+
+
+def _persist_release_tracking_choice(
+    project_dir: Path,
+    *,
+    mode: str,
+    default_target: str | None = None,
+    archive_group_by: str = "minor",
+    archive_dir: str | None = None,
+) -> None:
+    """Persist only the first-run release choice while preserving other YAML."""
+    config_path = project_dir / ".docsweep.yaml"
+    if config_path.is_file():
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(raw, dict):
+            raise ValueError(f"project config のルートがmapではありません: {config_path}")
+    else:
+        raw = {}
+    tracking = raw.get("release_tracking")
+    tracking = dict(tracking) if isinstance(tracking, dict) else {}
+    tracking["mode"] = mode
+    if mode == "enabled":
+        from ...release import validate_release_label
+        from ...workspace_migration import _safe_archive_root
+
+        if not default_target:
+            raise ValueError("release trackingをenableするにはdefault targetが必要です")
+        if archive_group_by not in {"patch", "minor", "major"}:
+            raise ValueError(f"archive_group_byが未対応です: {archive_group_by}")
+        if not archive_dir or not _safe_archive_root(archive_dir):
+            raise ValueError("archive_dirは安全なプロジェクト相対パスで指定してください")
+        tracking.update(
+            {
+                "default_target": validate_release_label(
+                    default_target, field="default_target"
+                ),
+                "archive_group_by": archive_group_by,
+            }
+        )
+        raw["archive_partition"] = "release"
+        raw["archive_dir"] = archive_dir
+    raw["release_tracking"] = tracking
+    write_atomic(
+        config_path,
+        yaml.safe_dump(raw, allow_unicode=True, sort_keys=False),
+    )
+
+
+def _first_run_release_setup(
+    project_dir: Path,
+    cfg: Config,
+    explicit_target: str | None,
+) -> tuple[str, str | None]:
+    """Return (decision, target): enabled / disabled / cancelled."""
+    answer = _new_prompt(
+        "release trackingが未設定です。設定しますか? "
+        "[y=enable / n=以後skip / q=cancel]: "
+    ).lower()
+    if answer in {"q", "quit", "cancel", "c", ""}:
+        return "cancelled", None
+    if answer in {"n", "no", "0", "skip", "disabled"}:
+        _persist_release_tracking_choice(project_dir, mode="disabled")
+        return "disabled", None
+    if answer not in {"y", "yes", "1", "enable", "enabled"}:
+        raise ValueError("y（enable）/ n（以後skip）/ q（cancel）を指定してください")
+
+    from ...release import validate_release_label
+
+    target: str | None = None
+    if explicit_target:
+        explicit_target = validate_release_label(
+            explicit_target, field="target_release"
+        )
+        value = _new_prompt(
+            "今後のdefault target_release "
+            f"（空欄で今回の {explicit_target}、qでcancel）: "
+        )
+        if value.lower() in {"q", "quit", "cancel", "c", ""}:
+            if value:
+                return "cancelled", None
+            target = explicit_target
+        else:
+            target = validate_release_label(value, field="default_target")
+    while not target:
+        value = _new_prompt("default target_release（必須、qでcancel）: ")
+        if value.lower() in {"q", "quit", "cancel", "c", ""}:
+            return "cancelled", None
+        try:
+            target = validate_release_label(value, field="default_target")
+        except ValueError as exc:
+            print(f"default target_releaseが不正です: {exc}", file=sys.stderr)
+
+    group = _new_prompt(
+        f"archive grouping [patch/minor/major]（既定 {cfg.release_tracking.archive_group_by}）: "
+    ).lower()
+    if group in {"q", "quit", "cancel", "c"}:
+        return "cancelled", None
+    group = group or cfg.release_tracking.archive_group_by or "minor"
+    if group not in {"patch", "minor", "major"}:
+        raise ValueError("archive groupingはpatch/minor/majorのいずれかです")
+    default_archive = archive_route_for_project(project_dir, cfg).archive_dir
+    archive_dir = _new_prompt(
+        f"archive_dir（既定 {default_archive}、qでcancel）: "
+    )
+    if archive_dir.lower() in {"q", "quit", "cancel", "c"}:
+        return "cancelled", None
+    archive_dir = archive_dir or default_archive
+    _persist_release_tracking_choice(
+        project_dir,
+        mode="enabled",
+        default_target=target,
+        archive_group_by=group,
+        archive_dir=archive_dir,
+    )
+    return "enabled", target
 
 
 def _rollback_generated_documents(
@@ -430,6 +561,35 @@ def cmd_new(args: argparse.Namespace) -> int:
         global_path=Path(args.config) if getattr(args, "config", None) else None,
     )
     target_release = getattr(args, "target_release", None)
+    if cfg.release_tracking.mode is None:
+        if _new_release_setup_allowed():
+            try:
+                decision, selected_target = _first_run_release_setup(
+                    project_dir,
+                    cfg,
+                    target_release,
+                )
+            except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
+                print(f"release trackingの初回設定を中止しました: {exc}", file=sys.stderr)
+                return 2
+            if decision == "cancelled":
+                print("release trackingの初回設定をキャンセルしました", file=sys.stderr)
+                return 2
+            if selected_target is not None and target_release is None:
+                target_release = selected_target
+            cfg = load_config(
+                project_dir=project_dir,
+                global_path=(
+                    Path(args.config) if getattr(args, "config", None) else None
+                ),
+            )
+        else:
+            print(
+                "warning: release trackingが未設定です。非対話実行では確認せず、"
+                "従来形式で生成します。workspace migrate-release-tracking --review "
+                "またはprojectの.docsweep.yamlで設定してください",
+                file=sys.stderr,
+            )
     if target_release is not None and cfg.release_tracking.mode == "disabled":
         print(
             "release tracking が disabled のため --target-release は指定できません",

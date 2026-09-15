@@ -10,8 +10,14 @@ cwd がリポジトリ内のサブディレクトリ（例: web/）のとき、-
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 from docsweep.cli import main
+
+
+class _TTY:
+    def isatty(self) -> bool:
+        return True
 
 
 def _isolate_global_config(tmp_path: Path, monkeypatch) -> None:
@@ -97,3 +103,127 @@ def test_delegate_cli_generates_delegated_plan(tmp_path: Path, monkeypatch, caps
     body = generated.read_text(encoding="utf-8")
     assert "docsweep_delegation: external" in body
     assert "## C 詳細" in body
+
+
+def test_new_first_run_can_enable_release_tracking(tmp_path: Path, monkeypatch):
+    global_config = tmp_path / "global.yaml"
+    global_config.write_text("", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".git").mkdir()
+    answers = iter(["y", "v1.2.x", "", ""])
+    monkeypatch.setattr(sys, "stdin", _TTY())
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    rc = main(
+        [
+            "new",
+            "plan",
+            "first-release",
+            "--project-dir",
+            str(project),
+            "--config",
+            str(global_config),
+            "--no-due",
+        ]
+    )
+
+    assert rc == 0
+    config = (project / ".docsweep.yaml").read_text(encoding="utf-8")
+    body = (project / "docs/local/plan_first-release.md").read_text(encoding="utf-8")
+    assert "mode: enabled" in config
+    assert "default_target: v1.2.x" in config
+    assert "archive_group_by: minor" in config
+    assert "archive_dir: docs/local/archive" in config
+    assert "target_release: v1.2.x" in body
+
+
+def test_new_first_run_skip_is_persisted(tmp_path: Path, monkeypatch):
+    global_config = tmp_path / "global.yaml"
+    global_config.write_text("", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".git").mkdir()
+    monkeypatch.setattr(sys, "stdin", _TTY())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+
+    rc = main(
+        [
+            "new",
+            "plan",
+            "skip-release",
+            "--project-dir",
+            str(project),
+            "--config",
+            str(global_config),
+            "--no-due",
+        ]
+    )
+
+    assert rc == 0
+    config = (project / ".docsweep.yaml").read_text(encoding="utf-8")
+    body = (project / "docs/local/plan_skip-release.md").read_text(encoding="utf-8")
+    assert "mode: disabled" in config
+    assert "archive_dir:" not in config
+    assert "target_release:" not in body
+
+
+def test_new_first_run_keeps_explicit_target_separate_from_future_default(
+    tmp_path: Path, monkeypatch
+):
+    global_config = tmp_path / "global.yaml"
+    global_config.write_text("", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".git").mkdir()
+    answers = iter(["y", "v1.2.x", "minor", ""])
+    monkeypatch.setattr(sys, "stdin", _TTY())
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    rc = main(
+        [
+            "new",
+            "plan",
+            "exact-release",
+            "--project-dir",
+            str(project),
+            "--config",
+            str(global_config),
+            "--target-release",
+            "v1.2.3",
+            "--no-due",
+        ]
+    )
+
+    assert rc == 0
+    config = (project / ".docsweep.yaml").read_text(encoding="utf-8")
+    body = (project / "docs/local/plan_exact-release.md").read_text(encoding="utf-8")
+    assert "default_target: v1.2.x" in config
+    assert "target_release: v1.2.3" in body
+
+
+def test_new_first_run_cancel_writes_nothing(tmp_path: Path, monkeypatch):
+    global_config = tmp_path / "global.yaml"
+    global_config.write_text("", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".git").mkdir()
+    monkeypatch.setattr(sys, "stdin", _TTY())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "q")
+
+    rc = main(
+        [
+            "new",
+            "plan",
+            "cancel-release",
+            "--project-dir",
+            str(project),
+            "--config",
+            str(global_config),
+            "--no-due",
+        ]
+    )
+
+    assert rc == 2
+    assert not (project / ".docsweep.yaml").exists()
+    assert not (project / "docs/local/plan_cancel-release.md").exists()

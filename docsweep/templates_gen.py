@@ -325,6 +325,28 @@ def _resolve_initial_due(
     return (base + timedelta(days=int(n))).isoformat()
 
 
+def _resolve_target_release(
+    target_release: str | None,
+    *,
+    config: Config | None,
+) -> str | None:
+    """Resolve an explicit or configured target for newly generated documents.
+
+    An explicit value always wins.  The configured default is intentionally
+    effective only while release tracking is enabled; a disabled project must
+    not acquire release metadata merely because a stale default remains in a
+    merged config object.
+    """
+    if target_release is not None:
+        return validate_release_label(target_release)
+    if config is None or config.release_tracking.mode != "enabled":
+        return None
+    default_target = config.release_tracking.default_target
+    if default_target is None:
+        return None
+    return validate_release_label(default_target, field="default_target")
+
+
 def new_doc(
     doc_type: str,
     topic: str,
@@ -357,9 +379,7 @@ def new_doc(
         raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
     out_dir = _placement_dir(project_dir, config=config, work_dir=work_dir)
     resolved_due = _resolve_initial_due(doc_type, due=due, offset_days=offset_days)
-    resolved_target = (
-        validate_release_label(target_release) if target_release is not None else None
-    )
+    resolved_target = _resolve_target_release(target_release, config=config)
     body = _BUILDERS[doc_type](
         title or topic,
         due=resolved_due,
