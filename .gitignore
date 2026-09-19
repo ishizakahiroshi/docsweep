@@ -89,8 +89,8 @@ docs/local/
 # AI 監査の生レポート（人間レビュー前は公開しない）
 /docs/ai-audit-prompts/
 
-# Obsidian knowledge artifacts are not public repository content.
-/docs/obsidian/
+# Obsidian knowledge artifacts は公開リポジトリの中身ではない。
+# ignore 行は末尾の obsidian-link managed ブロックが正本（ここで二重に持たない）。
 
 # docsweep 実行時の生成物（スキャン結果・履歴）
 #
