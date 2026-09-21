@@ -550,7 +550,7 @@ def generate_guidance_block(
         "### 経路選択（全 AI 対応）",
         "",
         "- 朝の入口（自然言語起動の価値が高い）: MCP `brief` / `cross` / `capture_extract` / `capture_save`",
-        "- それ以外（整合チェック・archive 蘇生・グラフ等）: Bash で `docsweep <command> --json`",
+        "- それ以外（整合チェック・archive 蘇生・グラフ等）: 端末で `docsweep <command> --json`（使うシェルツールはその環境の既定に従う）",
         "- Claude Code では `/D` slash command でも 3 経路をまとめてディスパッチできる",
         "",
         "### 親子 plan の closeout",
