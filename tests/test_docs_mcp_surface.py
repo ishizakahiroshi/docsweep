@@ -14,12 +14,16 @@ REPO = Path(__file__).resolve().parents[1]
 DOC = REPO / "docs" / "ai-agent-integration.md"
 SERVER = REPO / "docsweep" / "mcp_server.py"
 
-_TOOL_RE = re.compile(r"@mcp\.tool\(\)\s*\n\s*def\s+([a-z_]+)")
+# 説明文は言語ごとの JSON から渡すので、@mcp.tool(description=...) の形も拾う。
+_TOOL_RE = re.compile(r"@mcp\.tool\([^\n]*\)\s*\n\s*def\s+([a-z_]+)")
 _COUNT_RE = re.compile(r"MCP が露出する tool（[^）]*?(\d+) 個）")
 
 
 def _registered_tools() -> list[str]:
-    return _TOOL_RE.findall(SERVER.read_text(encoding="utf-8"))
+    tools = _TOOL_RE.findall(SERVER.read_text(encoding="utf-8"))
+    # 正規表現が実装の書き方に追随できなくなった時に 0 件で素通りしないよう検査する。
+    assert tools, "mcp_server.py から tool を 1 つも拾えていない（検出パターンが古い?）"
+    return tools
 
 
 def test_every_mcp_tool_is_documented():
@@ -30,8 +34,6 @@ def test_every_mcp_tool_is_documented():
 
 def test_documented_tool_count_matches_implementation():
     tools = _registered_tools()
-    # 正規表現が実装の書き方に追随できなくなった時に 0 件で素通りしないよう検査する。
-    assert tools, "mcp_server.py から tool を 1 つも拾えていない（検出パターンが古い?）"
     doc = DOC.read_text(encoding="utf-8")
     m = _COUNT_RE.search(doc)
     assert m, "露出 tool 数の見出しが見つからない（資料側の書式が変わった?）"

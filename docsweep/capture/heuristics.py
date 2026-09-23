@@ -10,13 +10,11 @@ import re
 from collections.abc import Mapping
 
 from ..config import TemplateSection
-from .llm import _make_draft
+from .llm import _make_draft, has_marker
 from .models import Draft, DraftKind
 
-# 決定事項マーカー（段落単位で拾う）。
-PLAN_MARKERS = ("決定", "やる", "実装する", "TODO", "todo", "次に", "やろう", "対応する")
-BUGFIX_MARKERS = ("バグ", "不具合", "壊れ", "再現", "エラー", "落ちる", "出ない")
-PENDING_MARKERS = ("保留", "あとで", "ペンディング", "棚上げ")
+# 決定事項マーカー（段落単位で拾う）は terms.json の ``capture.markers.*``。
+# 照合のしかた（部分一致 / 語単位）は ``llm.has_marker`` を参照。
 
 
 def _split_paragraphs(text: str) -> list[str]:
@@ -26,11 +24,11 @@ def _split_paragraphs(text: str) -> list[str]:
 
 
 def _classify_paragraph(para: str) -> str | None:
-    if any(m in para for m in BUGFIX_MARKERS):
+    if has_marker(para, "capture.markers.bugfix"):
         return DraftKind.BUGFIX.value
-    if any(m in para for m in PENDING_MARKERS):
+    if has_marker(para, "capture.markers.pending"):
         return DraftKind.PENDING.value
-    if any(m in para for m in PLAN_MARKERS):
+    if has_marker(para, "capture.markers.plan"):
         return DraftKind.PLAN.value
     return None
 
@@ -56,8 +54,9 @@ def extract_drafts_heuristic(
     offset_days: dict[str, int] | None = None,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
     owner: str | None = None,
+    lang: str | None = None,
 ) -> list[Draft]:
-    """LLM 不要のヒューリスティック抽出。"""
+    """LLM 不要のヒューリスティック抽出。``lang`` は草案の本文の言語（None なら表示言語）。"""
     drafts: list[Draft] = []
     for para in _split_paragraphs(text):
         kind = _classify_paragraph(para)
@@ -74,6 +73,7 @@ def extract_drafts_heuristic(
             offset_days=offset_days,
             template_sections=template_sections,
             owner=owner,
+            lang=lang,
         ))
         if len(drafts) >= max_drafts:
             break

@@ -33,7 +33,7 @@
       </span>
     {% endif %}
     {% for h in data.health %}
-      <span class="health-chip">{{ h.project }} <b>{{ h.oldest }}d</b></span>
+      <span class="health-chip">{{ h.project }} <b>{{ T.days_short.format(n=h.oldest) }}</b></span>
     {% endfor %}
     {% if data.metrics and data.metrics.enabled %}
       <span class="metrics-chip" title="{{ T.metrics_title }}">
@@ -57,7 +57,7 @@
     {% if data.profiles %}
     <label class="profile-switch" title="{{ T.profile_switch_title }}">
       <select id="profile-select" data-action="set-profile" aria-label="{{ T.profile_switch_title }}">
-        <option value="all" {% if data.profile == 'all' %}selected{% endif %}>all</option>
+        <option value="all" {% if data.profile == 'all' %}selected{% endif %}>{{ T.profile_all }}</option>
         {% for pr in data.profiles %}
         <option value="{{ pr }}" {% if data.profile == pr %}selected{% endif %}>{{ pr }}</option>
         {% endfor %}
@@ -95,7 +95,7 @@
   <button type="button" class="bulk-btn" data-action="bulk-due-date" title="{{ T.bulk_date_title }}">{{ T.bulk_date }}</button>
   {# 2026-06-23 改修: 独立「着手」「廃止」ボタンを撤去し「ラベル変更▾」に集約 #}
   <button type="button" class="bulk-btn" data-action="bulk-open-label-picker" title="{{ T.bulk_label_title }}">{{ T.change_label }}</button>
-  <button type="button" class="bulk-btn" data-action="bulk" data-op="archive">archive</button>
+  <button type="button" class="bulk-btn" data-action="bulk" data-op="archive">{{ T.bulk_archive_btn }}</button>
   <button type="button" class="bulk-btn bulk-ghost" data-action="bulk-clear" title="{{ T.bulk_clear_title }}">{{ T.bulk_clear }}</button>
   <a href="#" class="bulk-all" data-action="bulk-select-all" title="{{ T.select_all_title }}">{{ T.select_all_link }} <span id="bulk-total-n">0</span></a>
   <button type="button" class="bulk-close" data-action="bulk-clear" title="{{ T.close_esc }}" aria-label="{{ T.close }}">×</button>
@@ -174,11 +174,13 @@
 
 <div id="toast" class="toast" hidden role="status" aria-live="polite">
   <span class="toast-msg" id="toast-msg"></span>
-  <button type="button" class="toast-undo" id="toast-undo" data-action="undo">↶ Undo</button>
+  <button type="button" class="toast-undo" id="toast-undo" data-action="undo">{{ T.undo_btn }}</button>
   <button type="button" class="toast-close" data-action="toast-close" aria-label="{{ T.close }}">×</button>
 </div>
 
 <script src="/static/htmx.min.js"></script>
+{# JS の文言（DS_T）は表示言語 1 つ分をデータ島で渡す（実行されないので CSP の対象外）。 #}
+<script type="application/json" id="ds-i18n">{{ JS_T|tojson }}</script>
 <script src="/static/i18n.js"></script>
 <script src="/static/keymap.js"></script>
 <script src="/static/dnd.js"></script>

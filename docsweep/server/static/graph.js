@@ -12,6 +12,11 @@
   const dataEl = document.getElementById("graph-data");
   if (!dataEl) return;
   const GRAPH = JSON.parse(dataEl.textContent);
+  // ノード詳細の項目名は画面の言語で template から受け取る（graph.html の graph-labels）。
+  // 文言はここに持たない。受け取れなかった項目はキー名をそのまま出す（DS_T と同じ扱い）。
+  const labelsEl = document.getElementById("graph-labels");
+  const LABELS = labelsEl ? JSON.parse(labelsEl.textContent) : {};
+  const label = key => LABELS[key] || key;
 
   const elements = [];
   for (const n of GRAPH.nodes) {
@@ -75,6 +80,9 @@
 
   cy.on("tap", "node", evt => {
     const d = evt.target.data();
-    alert(`${d.label}\n  state: ${d.stateLabel || d.state || "-"}\n  project: ${d.project}\n  type: ${d.type}`);
+    alert(
+      `${d.label}\n  ${label("state")}: ${d.stateLabel || d.state || "-"}` +
+      `\n  ${label("project")}: ${d.project}\n  ${label("type")}: ${d.type}`
+    );
   });
 })();

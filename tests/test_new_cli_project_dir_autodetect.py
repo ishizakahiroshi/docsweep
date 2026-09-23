@@ -79,7 +79,7 @@ def test_delegate_is_ignored_for_bugfix_with_one_warning(tmp_path: Path, monkeyp
 
     captured = capsys.readouterr()
     assert rc == 0
-    assert captured.err.count("warning: --delegate") == 1
+    assert captured.err.count("警告: --delegate") == 1
     generated = next((project / "docs" / "local").glob("bugfix_delegate-warning_*.md"))
     body = generated.read_text(encoding="utf-8")
     assert "docsweep_delegation: external" not in body

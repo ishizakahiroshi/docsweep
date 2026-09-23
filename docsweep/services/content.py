@@ -13,6 +13,7 @@ from pathlib import Path
 from ..atomic import write_atomic
 from ..config import Config, config_for_project
 from ..detect import _H1_RE, mask_code_fences
+from ..i18n import t
 from ..work_queue import ensure_write_allowed, find_project_dir
 
 
@@ -56,12 +57,12 @@ def update_content(
         expected_mtime: 楽観ロック用（Web UI からは必須・MCP は省略可）
     """
     if new_content == "":
-        raise ContentValidationError("new_content が空です（0 バイト書き込みは拒否されます）")
+        raise ContentValidationError(t("services_content.empty"))
 
     warnings: list[str] = []
     masked = mask_code_fences(new_content)
     if not _H1_RE.search(masked):
-        warnings.append("H1 行が見つかりません（ステータスラベル抽出ができなくなる可能性）")
+        warnings.append(t("services_content.h1_missing"))
     from ..secrets_guard import enforce_secret_policy, format_warnings
     effective_config = config
     if config is not None:

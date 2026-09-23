@@ -39,11 +39,13 @@ def _persist_release_tracking_choice(
     archive_dir: str | None = None,
 ) -> None:
     """Persist only the first-run release choice while preserving other YAML."""
+    from ...i18n import t
+
     config_path = project_dir / ".docsweep.yaml"
     if config_path.is_file():
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         if not isinstance(raw, dict):
-            raise ValueError(f"project config のルートがmapではありません: {config_path}")
+            raise ValueError(t("cli_write.config_root_not_map", path=config_path))
     else:
         raw = {}
     tracking = raw.get("release_tracking")
@@ -54,11 +56,11 @@ def _persist_release_tracking_choice(
         from ...workspace_migration import _safe_archive_root
 
         if not default_target:
-            raise ValueError("release trackingをenableするにはdefault targetが必要です")
+            raise ValueError(t("cli_write.enable_needs_default_target"))
         if archive_group_by not in {"patch", "minor", "major"}:
-            raise ValueError(f"archive_group_byが未対応です: {archive_group_by}")
+            raise ValueError(t("cli_write.unsupported_group_by", value=archive_group_by))
         if not archive_dir or not _safe_archive_root(archive_dir):
-            raise ValueError("archive_dirは安全なプロジェクト相対パスで指定してください")
+            raise ValueError(t("cli_write.unsafe_archive_dir"))
         tracking.update(
             {
                 "default_target": validate_release_label(
@@ -82,17 +84,16 @@ def _first_run_release_setup(
     explicit_target: str | None,
 ) -> tuple[str, str | None]:
     """Return (decision, target): enabled / disabled / cancelled."""
-    answer = _new_prompt(
-        "release trackingが未設定です。設定しますか? "
-        "[y=enable / n=以後skip / q=cancel]: "
-    ).lower()
+    from ...i18n import t
+
+    answer = _new_prompt(t("cli_write.prompt_setup_release")).lower()
     if answer in {"q", "quit", "cancel", "c", ""}:
         return "cancelled", None
     if answer in {"n", "no", "0", "skip", "disabled"}:
         _persist_release_tracking_choice(project_dir, mode="disabled")
         return "disabled", None
     if answer not in {"y", "yes", "1", "enable", "enabled"}:
-        raise ValueError("y（enable）/ n（以後skip）/ q（cancel）を指定してください")
+        raise ValueError(t("cli_write.invalid_setup_answer"))
 
     from ...release import validate_release_label
 
@@ -102,8 +103,7 @@ def _first_run_release_setup(
             explicit_target, field="target_release"
         )
         value = _new_prompt(
-            "今後のdefault target_release "
-            f"（空欄で今回の {explicit_target}、qでcancel）: "
+            t("cli_write.prompt_default_target_with_current", target=explicit_target)
         )
         if value.lower() in {"q", "quit", "cancel", "c", ""}:
             if value:
@@ -112,26 +112,27 @@ def _first_run_release_setup(
         else:
             target = validate_release_label(value, field="default_target")
     while not target:
-        value = _new_prompt("default target_release（必須、qでcancel）: ")
+        value = _new_prompt(t("cli_write.prompt_default_target"))
         if value.lower() in {"q", "quit", "cancel", "c", ""}:
             return "cancelled", None
         try:
             target = validate_release_label(value, field="default_target")
         except ValueError as exc:
-            print(f"default target_releaseが不正です: {exc}", file=sys.stderr)
+            print(t("cli_write.invalid_default_target", error=exc), file=sys.stderr)
 
     group = _new_prompt(
-        f"archive grouping [patch/minor/major]（既定 {cfg.release_tracking.archive_group_by}）: "
+        t(
+            "cli_write.prompt_archive_grouping",
+            default=cfg.release_tracking.archive_group_by,
+        )
     ).lower()
     if group in {"q", "quit", "cancel", "c"}:
         return "cancelled", None
     group = group or cfg.release_tracking.archive_group_by or "minor"
     if group not in {"patch", "minor", "major"}:
-        raise ValueError("archive groupingはpatch/minor/majorのいずれかです")
+        raise ValueError(t("cli_write.invalid_archive_grouping"))
     default_archive = archive_route_for_project(project_dir, cfg).archive_dir
-    archive_dir = _new_prompt(
-        f"archive_dir（既定 {default_archive}、qでcancel）: "
-    )
+    archive_dir = _new_prompt(t("cli_write.prompt_archive_dir", default=default_archive))
     if archive_dir.lower() in {"q", "quit", "cancel", "c"}:
         return "cancelled", None
     archive_dir = archive_dir or default_archive
@@ -182,6 +183,7 @@ def _rollback_generated_documents(
 def cmd_fix_conflict(args: argparse.Namespace) -> int:
     """conflict 修理（UX W2 / P37）。"""
     from ...fix_conflict import _conflict_rows, fix_conflicts
+    from ...i18n import t
 
     cfg = _build_config(args)
     if getattr(args, "list", False):
@@ -189,14 +191,14 @@ def cmd_fix_conflict(args: argparse.Namespace) -> int:
         rows, unmatched = _conflict_rows(cfg, target_paths)
         if unmatched:
             print(
-                f"warning: --path の指定 {len(unmatched)} 件は conflict 一覧に一致しませんでした",
+                t("cli_write.fix_conflict_unmatched", count=len(unmatched)),
                 file=sys.stderr,
             )
         if getattr(args, "json", False):
             print(json.dumps({"conflicts": rows, "unmatched": unmatched}, ensure_ascii=False, indent=2))
         else:
             if not rows:
-                print("conflict なし")
+                print(t("cli_write.no_conflicts"))
             for r in rows:
                 print(f"{r.get('state_label')} {r.get('path')} (source={r.get('state_source')})")
         # --path の不一致は JSON の unmatched で機械可読に返す。既存 CLI の「対象 0 件は
@@ -213,7 +215,7 @@ def cmd_fix_conflict(args: argparse.Namespace) -> int:
         print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
     else:
         if not res.items:
-            print("修理対象の conflict なし")
+            print(t("cli_write.no_conflicts_to_fix"))
         for it in res.items:
             mark = "ok" if it.fixed else "ng"
             print(f"[{mark}] {it.path}: {it.detail}")
@@ -230,7 +232,9 @@ def cmd_apply(args: argparse.Namespace) -> int:
         # is still valid and must not be reported as a scan-scope success/empty.
         doc = doc_for_path(Path(args.path), cfg)
     if doc is None:
-        print(f"対象が見つかりません（スキャン範囲外?）: {args.path}", file=sys.stderr)
+        from ...i18n import t
+
+        print(f"{t('target.not_found_in_scan')}: {args.path}", file=sys.stderr)
         return 2
     try:
         entry = apply_action(
@@ -252,32 +256,47 @@ def _print_moves_summary(moved, cfg, *, action: str, dry_run: bool) -> None:
     """移送/昇格ログの末尾に「合計・状態別・プロジェクト別」を出す。
 
     フラット出力では俯瞰できないため、走査直後に確認用の集計をまとめて見せる。
-    JSON 出力には混ぜない（機械可読を汚さない）。``action`` は "移送" / "昇格" 等の
-    呼び出し側の動作語。dry-run 時は "予定" を付ける。
+    JSON 出力には混ぜない（機械可読を汚さない）。``action`` は ``"sweep"``（移送）/
+    ``"promote"``（昇格）。dry-run 時は「予定」の見出しにする。
     """
     if not moved:
         return
     from collections import Counter
 
+    from ...i18n import current_lang, t
+
     sm = cfg.state_model
-    lang = cfg.lang
+    # 集計の状態名は画面に出す文言なので表示言語で出す（文書の言語 cfg.lang ではない）
+    lang = current_lang()
 
     def _label(k: str | None) -> str:
         s = sm.by_key(k) if k else None
-        return s.label(lang) if s else (k or "(none)")
+        return s.label(lang) if s else (k or t("common.none"))
 
     by_state = Counter(_label(m.status) for m in moved)
     by_proj = Counter(m.project for m in moved)
-    verb = f"{action}予定" if dry_run else action
+    total_key = {
+        ("sweep", False): "cli_write.summary_total_sweep",
+        ("sweep", True): "cli_write.summary_total_sweep_dry",
+        ("promote", False): "cli_write.summary_total_promote",
+        ("promote", True): "cli_write.summary_total_promote_dry",
+    }[(action, dry_run)]
     print()
-    print(f"{verb}合計: {len(moved)} 件 ({len(by_proj)} プロジェクト)")
-    print("  状態別: " + " / ".join(f"{k} {v}" for k, v in by_state.most_common()))
-    print("  プロジェクト別:")
+    print(t(total_key, count=len(moved), projects=len(by_proj)))
+    print(
+        t(
+            "cli_write.summary_by_state",
+            states=" / ".join(f"{k} {v}" for k, v in by_state.most_common()),
+        )
+    )
+    print(t("cli_write.summary_by_project"))
     for proj, n in by_proj.most_common():
-        print(f"    {proj}: {n} 件")
+        print(t("cli_write.summary_project_row", project=proj, count=n))
 
 
 def cmd_sweep(args: argparse.Namespace) -> int:
+    from ...i18n import t
+
     cfg = _build_config(args)
     moved = auto_sweep(cfg, project=getattr(args, "project", None), dry_run=args.dry_run)
     if not args.dry_run and cfg.roots:
@@ -287,22 +306,71 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     routes = getattr(moved, "routes", [])
     if getattr(args, "json", False):
         payload: list | dict = [m.to_dict() for m in moved]
-        if moved.failed or routes:
+        if moved.failed or routes or moved.ref_updates or moved.ref_failed:
             payload = {"moved": payload, "failed": moved.failed, "archive_routes": routes}
+            payload.update(_ref_payload(moved))
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        verb = "移送予定" if args.dry_run else "移送"
+        moved_key = "cli_write.moved_dry" if args.dry_run else "cli_write.moved"
         if not moved:
-            print("自動移送対象なし（done/discarded のラベル確定ファイルが無い）")
+            print(t("cli_write.sweep_nothing"))
         for m in moved:
-            print(f"{verb}: {m.src} -> {m.dst}")
+            print(t(moved_key, src=m.src, dst=m.dst))
+        _print_ref_updates(moved, dry_run=args.dry_run)
         for route in routes:
             if route.get("warning"):
-                print(f"warning: {route['project']}: {route['warning']}", file=sys.stderr)
+                print(
+                    t("cli_write.route_warning", project=route["project"], warning=route["warning"]),
+                    file=sys.stderr,
+                )
         for failure in moved.failed:
-            print(f"失敗: {failure.get('path') or '(scan)'}: {failure.get('error')}", file=sys.stderr)
-        _print_moves_summary(moved, cfg, action="移送", dry_run=args.dry_run)
-    return 1 if moved.failed else 0
+            print(
+                t(
+                    "cli_write.failed",
+                    path=failure.get("path") or t("cli_write.failed_scan"),
+                    error=failure.get("error"),
+                ),
+                file=sys.stderr,
+            )
+        _print_moves_summary(moved, cfg, action="sweep", dry_run=args.dry_run)
+    return 1 if moved.failed or moved.ref_failed else 0
+
+
+def _ref_payload(moved) -> dict:
+    """移送に伴う参照の書き換え（予定）を JSON に足す。失敗は無いときは出さない。"""
+    data: dict = {"ref_updates": moved.ref_updates}
+    if moved.ref_failed:
+        data["ref_failed"] = moved.ref_failed
+    return data
+
+
+def _print_ref_updates(moved, *, dry_run: bool) -> None:
+    from ...i18n import t
+
+    body_key = "cli_write.ref_body_dry" if dry_run else "cli_write.ref_body"
+    field_key = "cli_write.ref_field_dry" if dry_run else "cli_write.ref_field"
+    for update in moved.ref_updates:
+        if update["field"] == "body":
+            print(t(body_key, path=update["path"], count=update["count"]))
+        else:
+            print(
+                t(
+                    field_key,
+                    path=update["path"],
+                    field=update["field"],
+                    before=update["before"],
+                    after=update["after"],
+                )
+            )
+    for failure in moved.ref_failed:
+        print(
+            t(
+                "cli_write.ref_failed",
+                path=failure.get("path") or t("cli_write.failed_project"),
+                error=failure.get("error"),
+            ),
+            file=sys.stderr,
+        )
 
 
 def cmd_promote(args: argparse.Namespace) -> int:
@@ -310,6 +378,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
 
     from ...bulk_confirm import BulkConfirmRequired, phrase_for
     from ...bulk_confirm import require as bulk_require
+    from ...i18n import t
 
     cfg = _build_config(args)
     due_expired_only = getattr(args, "due_expired", False)
@@ -331,9 +400,12 @@ def cmd_promote(args: argparse.Namespace) -> int:
         except BulkConfirmRequired as exc:
             preview_cmd = "docsweep promote --due-expired --dry-run" if due_expired_only else "docsweep promote --dry-run"
             print(
-                f"promote: {exc.count} 件はしきい値 {exc.threshold} 件以上です。"
-                "内容を確認して --yes を付けて再実行してください"
-                f"（下見: {preview_cmd}）",
+                t(
+                    "cli_write.promote_needs_yes",
+                    count=exc.count,
+                    threshold=exc.threshold,
+                    preview=preview_cmd,
+                ),
                 file=sys.stderr,
             )
             return 2
@@ -347,30 +419,40 @@ def cmd_promote(args: argparse.Namespace) -> int:
         return 2
     if getattr(args, "json", False):
         payload: list | dict = [m.to_dict() for m in moved]
-        if moved.failed:
+        if moved.failed or moved.ref_updates or moved.ref_failed:
             payload = {"moved": payload, "failed": moved.failed}
+            payload.update(_ref_payload(moved))
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         if not moved:
             # 失敗が 1 件でもあるときに「対象なし」と言ってはいけない。対象はあったが
             # 全部落ちた状態と、そもそも対象が無い状態は、利用者にとって意味が違う。
             if moved.failed:
-                print(f"昇格できたファイルなし（対象 {len(moved.failed)} 件がすべて失敗。詳細は下記）")
+                print(t("cli_write.promote_all_failed", count=len(moved.failed)))
             elif due_expired_only:
-                print(f"昇格対象なし（{args.state} の due 到来ファイルが無い）")
+                print(t("cli_write.promote_nothing_due", state=args.state))
             else:
-                print(f"昇格対象なし（{args.state} のファイルが無い）")
+                print(t("cli_write.promote_nothing", state=args.state))
         for m in moved:
-            print(f"昇格→archive: {m.src} -> {m.dst}")
+            print(t("cli_write.promoted", src=m.src, dst=m.dst))
+        _print_ref_updates(moved, dry_run=args.dry_run)
         for failure in moved.failed:
-            print(f"失敗: {failure.get('path') or '(scan)'}: {failure.get('error')}", file=sys.stderr)
-        _print_moves_summary(moved, cfg, action="昇格", dry_run=args.dry_run)
-    return 1 if moved.failed else 0
+            print(
+                t(
+                    "cli_write.failed",
+                    path=failure.get("path") or t("cli_write.failed_scan"),
+                    error=failure.get("error"),
+                ),
+                file=sys.stderr,
+            )
+        _print_moves_summary(moved, cfg, action="promote", dry_run=args.dry_run)
+    return 1 if moved.failed or moved.ref_failed else 0
 
 
 def cmd_capture(args: argparse.Namespace) -> int:
     """会話履歴から plan / bugfix / pending 草案を抽出 (heuristic / LLM)。"""
     from ...capture import extract_drafts, save_drafts
+    from ...i18n import t
     from ...work_queue import resolve_work_target
 
     cfg = _build_config(args)
@@ -382,7 +464,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
     elif source == "file":
         fpath = getattr(args, "file", None)
         if not fpath:
-            print("--from file には --file <path> が必要です", file=sys.stderr)
+            print(t("cli_write.capture_file_required"), file=sys.stderr)
             return 2
         text = Path(fpath).read_text(encoding="utf-8", errors="replace")
     elif source == "-":
@@ -391,7 +473,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
         text = ""
 
     if not text.strip():
-        print("入力が空です", file=sys.stderr)
+        print(t("cli_write.capture_empty_input"), file=sys.stderr)
         return 2
 
     try:
@@ -411,7 +493,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
         if getattr(args, "json", False):
             print(json.dumps({"drafts": [], "saved": []}, ensure_ascii=False, indent=2))
         else:
-            print("草案候補は見つかりませんでした (heuristic マーカー未検出)")
+            print(t("cli_write.capture_no_drafts"))
         return 0
 
     saved: list[Path] = []
@@ -441,16 +523,16 @@ def cmd_capture(args: argparse.Namespace) -> int:
         }, ensure_ascii=False, indent=2))
         return 0
 
-    print(f"草案候補: {len(drafts)} 件")
+    print(t("cli_write.capture_drafts", count=len(drafts)))
     for d in drafts:
         print(f"  [{d.id}] {d.kind:7s} {d.suggested_filename}")
         print(f"          {d.title}")
     if saved:
-        print(f"\n保存: {len(saved)} 件")
+        print(t("cli_write.capture_saved", count=len(saved)))
         for p in saved:
             print(f"  {p}")
     elif not getattr(args, "save_all", False):
-        print("\n(保存するには --save-all を付けるか、--json で受け取って MCP capture_save を呼んでください)")
+        print(t("cli_write.capture_save_hint"))
     return 0
 
 
@@ -520,6 +602,7 @@ def _resolve_out_dir(cfg) -> Path:
 def cmd_auto_triage(args: argparse.Namespace) -> int:
     """状態遷移提案 / 適用（C5）。"""
     from ...auto_triage import apply_suggestions, suggest_transitions
+    from ...i18n import t
 
     cfg = _build_config(args)
     if getattr(args, "suggest", False):
@@ -531,10 +614,13 @@ def cmd_auto_triage(args: argparse.Namespace) -> int:
         try:
             decisions = json.loads(Path(apply_arg).read_text(encoding="utf-8"))
         except FileNotFoundError:
-            print(f"apply 対象の JSON が見つかりません: {apply_arg}", file=sys.stderr)
+            print(t("cli_write.auto_triage_json_missing", path=apply_arg), file=sys.stderr)
             return 2
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            print(f"apply 対象の JSON を読み込めません: {apply_arg}: {e}", file=sys.stderr)
+            print(
+                t("cli_write.auto_triage_json_invalid", path=apply_arg, error=e),
+                file=sys.stderr,
+            )
             return 2
         if isinstance(decisions, dict):
             decisions = decisions.get("decisions") or decisions.get("suggestions") or []
@@ -545,6 +631,7 @@ def cmd_auto_triage(args: argparse.Namespace) -> int:
 
 
 def cmd_new(args: argparse.Namespace) -> int:
+    from ...i18n import t
     from ...provenance import AIMetadata, initialize_document
     from ...provenance_hint import warn_if_unresolved
     from ...similar_guard import find_similar_open
@@ -571,10 +658,10 @@ def cmd_new(args: argparse.Namespace) -> int:
                     target_release,
                 )
             except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
-                print(f"release trackingの初回設定を中止しました: {exc}", file=sys.stderr)
+                print(t("cli_write.release_setup_aborted", error=exc), file=sys.stderr)
                 return 2
             if decision == "cancelled":
-                print("release trackingの初回設定をキャンセルしました", file=sys.stderr)
+                print(t("cli_write.release_setup_cancelled"), file=sys.stderr)
                 return 2
             if selected_target is not None and target_release is None:
                 target_release = selected_target
@@ -585,17 +672,9 @@ def cmd_new(args: argparse.Namespace) -> int:
                 ),
             )
         else:
-            print(
-                "warning: release trackingが未設定です。非対話実行では確認せず、"
-                "従来形式で生成します。workspace migrate-release-tracking --review "
-                "またはprojectの.docsweep.yamlで設定してください",
-                file=sys.stderr,
-            )
+            print(t("cli_write.release_not_configured"), file=sys.stderr)
     if target_release is not None and cfg.release_tracking.mode == "disabled":
-        print(
-            "release tracking が disabled のため --target-release は指定できません",
-            file=sys.stderr,
-        )
+        print(t("cli_write.target_release_disabled"), file=sys.stderr)
         return 2
     if getattr(args, "work_dir", None):
         cfg.work_dir = str(args.work_dir)
@@ -609,7 +688,7 @@ def cmd_new(args: argparse.Namespace) -> int:
     try:
         sim = find_similar_open(cfg, topic=args.topic)
         if sim:
-            print("類似の現役ドキュメントがあります（重複防止ヒント）:", file=sys.stderr)
+            print(t("cli_write.similar_docs"), file=sys.stderr)
             for s in sim[:3]:
                 print(f"  - {s.get('state_label')} {s.get('path')}", file=sys.stderr)
     except Exception:
@@ -617,7 +696,7 @@ def cmd_new(args: argparse.Namespace) -> int:
     offsets: dict[str, int] = {} if getattr(args, "no_due", False) else cfg.due_default_offset_days
     delegate = bool(getattr(args, "delegate", False))
     if delegate and args.type != "plan":
-        print("warning: --delegate は plan のみ対応のため無視します", file=sys.stderr)
+        print(t("cli_write.delegate_plan_only"), file=sys.stderr)
         delegate = False
     metadata = AIMetadata.resolve(
         actor_default=cfg.provenance_actor_key,
@@ -655,7 +734,7 @@ def cmd_new(args: argparse.Namespace) -> int:
     split_n = int(getattr(args, "split", 0) or 0)
     if split_n > 0:
         if args.type != "plan":
-            print("--split は plan のみ対応です", file=sys.stderr)
+            print(t("cli_write.split_plan_only"), file=sys.stderr)
             return 2
         try:
             created = new_split_plans(
@@ -676,15 +755,15 @@ def cmd_new(args: argparse.Namespace) -> int:
                 target_release=target_release,
             )
         except (OSError, ValueError) as exc:
-            print(f"保存を中止しました: {exc}", file=sys.stderr)
+            print(t("cli_write.save_aborted", error=exc), file=sys.stderr)
             return 2
         try:
             before = ledger_snapshot()
         except OSError as exc:
             rollback_errors = _rollback_generated_documents(created)
-            print(f"provenance 台帳の事前読み取りに失敗しました。生成物をロールバックしました: {exc}", file=sys.stderr)
+            print(t("cli_write.ledger_read_failed", error=exc), file=sys.stderr)
             for error in rollback_errors:
-                print(f"ロールバック失敗: {error}", file=sys.stderr)
+                print(t("cli_write.rollback_failed", error=error), file=sys.stderr)
             return 2
         try:
             provenance_results = [register_provenance(doc.path) for doc in created]
@@ -694,14 +773,17 @@ def cmd_new(args: argparse.Namespace) -> int:
                 ledger_path=cfg.provenance_ledger if provenance_active else None,
                 ledger_before=before,
             )
-            print(f"provenance 登録に失敗しました。生成物をロールバックしました: {exc}", file=sys.stderr)
+            print(t("cli_write.provenance_register_failed", error=exc), file=sys.stderr)
             for error in rollback_errors:
-                print(f"ロールバック失敗: {error}", file=sys.stderr)
+                print(t("cli_write.rollback_failed", error=error), file=sys.stderr)
             return 2
         for d in created:
-            print(f"生成しました: {d.path}" + (f" (due={d.due})" if d.due else ""))
+            if d.due:
+                print(t("cli_write.created_due", path=d.path, due=d.due))
+            else:
+                print(t("cli_write.created", path=d.path))
         if any(result and result.get("status") == "delegated" for result in provenance_results):
-            print("provenance: repo固有skillへ委譲しました（汎用台帳は未変更）")
+            print(t("cli_write.provenance_delegated_repo"))
         return 0
     try:
         doc = new_doc(
@@ -715,15 +797,15 @@ def cmd_new(args: argparse.Namespace) -> int:
             target_release=target_release,
         )
     except (OSError, ValueError) as exc:
-        print(f"保存を中止しました: {exc}", file=sys.stderr)
+        print(t("cli_write.save_aborted", error=exc), file=sys.stderr)
         return 2
     try:
         before = ledger_snapshot()
     except OSError as exc:
         rollback_errors = _rollback_generated_documents([doc])
-        print(f"provenance 台帳の事前読み取りに失敗しました。生成物をロールバックしました: {exc}", file=sys.stderr)
+        print(t("cli_write.ledger_read_failed", error=exc), file=sys.stderr)
         for error in rollback_errors:
-            print(f"ロールバック失敗: {error}", file=sys.stderr)
+            print(t("cli_write.rollback_failed", error=error), file=sys.stderr)
         return 2
     try:
         provenance_result = register_provenance(doc.path)
@@ -733,17 +815,17 @@ def cmd_new(args: argparse.Namespace) -> int:
             ledger_path=cfg.provenance_ledger if provenance_active else None,
             ledger_before=before,
         )
-        print(f"provenance 登録に失敗しました。生成物をロールバックしました: {exc}", file=sys.stderr)
+        print(t("cli_write.provenance_register_failed", error=exc), file=sys.stderr)
         for error in rollback_errors:
-            print(f"ロールバック失敗: {error}", file=sys.stderr)
+            print(t("cli_write.rollback_failed", error=error), file=sys.stderr)
         return 2
     if doc.due:
-        print(f"生成しました: {doc.path} (due={doc.due})")
+        print(t("cli_write.created_due", path=doc.path, due=doc.due))
     else:
-        print(f"生成しました: {doc.path}")
+        print(t("cli_write.created", path=doc.path))
     if provenance_result and provenance_result.get("status") == "delegated":
-        skill = provenance_result.get("delegate_skill") or "repo固有skill"
-        print(f"provenance: {skill} へ委譲しました（汎用台帳は未変更）")
+        skill = provenance_result.get("delegate_skill") or t("cli_write.repo_skill")
+        print(t("cli_write.provenance_delegated", skill=skill))
     return 0
 
 
@@ -751,13 +833,14 @@ def cmd_target_release_set(args: argparse.Namespace) -> int:
     """既存 MD の ``target_release`` だけを更新する。設定ファイルは変更しない。"""
     import os
 
+    from ...i18n import t
     from ...release import validate_release_label
     from ...services.frontmatter import update_frontmatter_field
     from ...work_queue import find_project_dir
 
     raw_path = str(args.path)
     if any(part == ".." for part in Path(raw_path).parts):
-        print("target-release: path に '..' を含む指定はできません", file=sys.stderr)
+        print(t("cli_write.target_release_dotdot"), file=sys.stderr)
         return 2
     lexical_path = Path(raw_path)
     if not lexical_path.is_absolute():
@@ -779,7 +862,7 @@ def cmd_target_release_set(args: argparse.Namespace) -> int:
         global_path=Path(args.config) if getattr(args, "config", None) else None,
     )
     if cfg.release_tracking.mode == "disabled":
-        print("target-release: release tracking が disabled です", file=sys.stderr)
+        print(t("cli_write.target_release_tracking_disabled"), file=sys.stderr)
         return 2
     try:
         target = validate_release_label(args.to)
@@ -787,7 +870,7 @@ def cmd_target_release_set(args: argparse.Namespace) -> int:
         # the lexical path needed for an explicitly configured junction queue.
         doc = doc_for_path(lexical_path, cfg)
         if doc is None:
-            raise ValueError("対象 MD が project root 配下の管理対象として見つかりません")
+            raise ValueError(t("cli_write.target_md_not_found"))
         result = update_frontmatter_field(
             lexical_path,
             "target_release",
@@ -805,12 +888,13 @@ def cmd_target_release_set(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print(f"target_release を設定しました: {result.path} -> {target}")
+        print(t("cli_write.target_release_set", path=result.path, target=target))
     return 0
 
 
 def cmd_migrate_frontmatter(args: argparse.Namespace) -> int:
     """既存 md に OKF frontmatter を非破壊的に挿入する。"""
+    from ...i18n import t
     from ...migrate import apply_migration, plan_migration
 
     cfg = _build_config(args)
@@ -824,14 +908,18 @@ def cmd_migrate_frontmatter(args: argparse.Namespace) -> int:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
     if not result.planned and not result.skipped:
-        print("migrate-frontmatter: 対象なし")
+        print(t("cli_write.migrate_nothing"))
         return 0
-    verb = "適用" if apply else "予定"
-    print(f"migrate-frontmatter {verb}: {len(result.planned)} 件 / skipped {len(result.skipped)} 件")
+    summary_key = "cli_write.migrate_summary_apply" if apply else "cli_write.migrate_summary_plan"
+    print(t(summary_key, planned=len(result.planned), skipped=len(result.skipped)))
     for p in result.planned:
-        marker = "[適用済]" if (apply and p.path in result.applied) else "[予定]"
-        mode_note = "（既存frontmatterへ不足キー追記）" if p.mode == "upgrade" else ""
-        legacy_note = "（旧 status を分離）" if p.legacy_status_migration else ""
+        marker = (
+            t("cli_write.marker_applied")
+            if (apply and p.path in result.applied)
+            else t("cli_write.marker_planned")
+        )
+        mode_note = t("cli_write.migrate_note_upgrade") if p.mode == "upgrade" else ""
+        legacy_note = t("cli_write.migrate_note_legacy") if p.legacy_status_migration else ""
         print(
             f"  {marker} {p.doc_type:<8} docsweep_state={p.status:<11} "
             f"{p.path}{mode_note}{legacy_note}"
@@ -839,12 +927,13 @@ def cmd_migrate_frontmatter(args: argparse.Namespace) -> int:
         if not apply and p.diff:
             print(p.diff, end="" if p.diff.endswith("\n") else "\n")
     for p in result.skipped:
-        print(f"  [skip] {p.path}  ({p.skipped_reason})")
+        print(f"  {t('cli_write.marker_skipped')} {p.path}  ({p.skipped_reason})")
     return 0
 
 
 def cmd_fix_related(args: argparse.Namespace) -> int:
     """片側参照 related: [B] を B 側にも追記して対称化する。"""
+    from ...i18n import t
     from ...related import apply_fix_related, plan_fix_related
 
     cfg = _build_config(args)
@@ -857,40 +946,59 @@ def cmd_fix_related(args: argparse.Namespace) -> int:
         return 0
     if not result.fixes:
         if not result.failed:
-            print("fix-related: 対称化が必要な参照はありません")
+            print(t("cli_write.fix_related_nothing"))
             return 0
-    verb = "適用" if getattr(args, "apply", False) else "予定"
-    print(f"fix-related {verb}: {len(result.fixes)} ファイルに追記")
+    summary_key = (
+        "cli_write.fix_related_summary_apply"
+        if getattr(args, "apply", False)
+        else "cli_write.fix_related_summary_plan"
+    )
+    print(t(summary_key, count=len(result.fixes)))
     for fix in result.fixes:
-        marker = "[適用済]" if fix.path in result.applied else "[予定]"
+        marker = (
+            t("cli_write.marker_applied")
+            if fix.path in result.applied
+            else t("cli_write.marker_planned")
+        )
         print(f"  {marker} {fix.path}  + related: [{', '.join(fix.additions)}]")
     for failure in result.failed:
-        print(f"  [失敗] {failure.get('path')}: {failure.get('error')}", file=sys.stderr)
+        print(
+            t("cli_write.fix_related_failed", path=failure.get("path"), error=failure.get("error")),
+            file=sys.stderr,
+        )
     return 1 if result.failed else 0
 
 
 def cmd_claim(args: argparse.Namespace) -> int:
     """frontmatter の owner を現ユーザーで上書き / unclaim。"""
     from ...claim import claim
+    from ...i18n import t
     from ...services.frontmatter import FrontmatterValidationError
 
     path = Path(args.file)
     try:
         result = claim(path, unclaim=getattr(args, "unclaim", False))
     except FileNotFoundError:
-        print(f"ファイルが見つかりません: {args.file}", file=sys.stderr)
+        print(t("cli_write.claim_file_not_found", path=args.file), file=sys.stderr)
         return 2
     except OSError as exc:
-        print(f"claim: 書き換えに失敗しました: {exc}", file=sys.stderr)
+        print(t("cli_write.claim_write_failed", error=exc), file=sys.stderr)
         return 2
     except FrontmatterValidationError as e:
-        print(f"frontmatter 書き換え失敗: {e}", file=sys.stderr)
+        print(t("cli_write.claim_frontmatter_failed", error=e), file=sys.stderr)
         return 2
     if getattr(args, "json", False):
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
     if getattr(args, "unclaim", False):
-        print(f"unclaim: owner を空にしました ({result.path})")
+        print(t("cli_write.unclaimed", path=result.path))
     else:
-        print(f"claim: owner={result.owner} claimed_at={result.claimed_at} ({result.path})")
+        print(
+            t(
+                "cli_write.claimed",
+                owner=result.owner,
+                claimed_at=result.claimed_at,
+                path=result.path,
+            )
+        )
     return 0

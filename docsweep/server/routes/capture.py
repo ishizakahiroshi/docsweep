@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from ...capture import extract_drafts, save_drafts
 from ...capture.models import Draft
 from ...capture.service import CaptureScopeError
+from ...i18n import t
 from ...work_queue import resolve_work_target
 from ..security import check_token
 
@@ -57,7 +58,7 @@ def api_capture_extract(
     allow_sensitive = bool(payload.get("allow_sensitive", False))
 
     if not text.strip():
-        raise HTTPException(status_code=400, detail="text is empty")
+        raise HTTPException(status_code=400, detail=t("web.text_empty"))
 
     try:
         drafts = extract_drafts(

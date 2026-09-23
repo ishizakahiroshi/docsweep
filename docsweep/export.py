@@ -25,25 +25,31 @@ import yaml
 from . import __version__
 from .config import Config, config_for_project, project_work_settings, privacy_enforced, resolve_work_dir
 from .engine import run_scan
+from .i18n import t
 from .okf import OkfProfile, bundled_okf_profile, load_okf_profile
 
 
-# docsweep 固定 type 集合の説明。OKF v0.2 は type を登録制にしていないため、
+# docsweep 固定 type 集合と、それに当たる OKF の語。OKF v0.2 は type を登録制にしていないため、
 # これは docsweep 固有の補助情報であり、Bundle の type を制限する schema ではない。
-OKF_TYPE_VOCABULARY: dict[str, dict[str, str]] = {
-    "plan": {
-        "okf_equivalent": "plan",
-        "description": "計画 / 調査メモ / 検討メモ（着手前〜進行中の作業）",
-    },
-    "bugfix": {
-        "okf_equivalent": "incident",
-        "description": "障害対応の事後記録（症状 / 根本原因 / 修正内容）",
-    },
-    "pending": {
-        "okf_equivalent": "deferred",
-        "description": "保留 / 将来対応（着手条件待ち）",
-    },
+OKF_TYPE_EQUIVALENTS: dict[str, str] = {
+    "plan": "plan",
+    "bugfix": "incident",
+    "pending": "deferred",
 }
+
+
+def okf_type_vocabulary(lang: str | None = None) -> dict[str, dict[str, str]]:
+    """manifest の ``type_vocabulary``。説明文は terms.json の ``export.type_description.<type>``。
+
+    ``lang`` は説明文の言語（Bundle へ書き込むので、呼び出し側は文書の言語を渡す）。
+    """
+    return {
+        name: {
+            "okf_equivalent": equivalent,
+            "description": t(f"export.type_description.{name}", lang=lang),
+        }
+        for name, equivalent in OKF_TYPE_EQUIVALENTS.items()
+    }
 
 # docsweep 内部 state key → 選択された OKF profile の lifecycle status 値。
 # 公開互換の定数として残すが、値の正本は同梱 profile JSON に置く。
@@ -119,8 +125,9 @@ def _build_manifest(
     generated_at: str,
     include_archive: bool,
     profile: OkfProfile,
+    lang: str | None = None,
 ) -> dict:
-    """OKF manifest（zip に同梱する JSON）を組み立てる。"""
+    """OKF manifest（zip に同梱する JSON）を組み立てる。``lang`` は説明文の言語。"""
     return {
         "format": "okf",
         "okf_version": profile.spec_version,
@@ -128,7 +135,7 @@ def _build_manifest(
         "docsweep_version": __version__,
         "generated_at": generated_at,
         "include_archive": include_archive,
-        "type_vocabulary": OKF_TYPE_VOCABULARY,
+        "type_vocabulary": okf_type_vocabulary(lang),
         "status_vocabulary": dict(profile.docsweep_status_map),
         "review_status_vocabulary": OKF_REVIEW_STATUS_VOCABULARY,
         "file_count": len(files),
@@ -158,9 +165,9 @@ def _gather_archive_files(config: Config) -> list[tuple[str, str, str, str]]:
     archive_names = {
         (config.archive_dir or "archive").split("/")[-1],
     }
-    for t in config.types:
-        if t.archive_dir:
-            archive_names.add(t.archive_dir.split("/")[-1])
+    for type_def in config.types:
+        if type_def.archive_dir:
+            archive_names.add(type_def.archive_dir.split("/")[-1])
     for root in config.roots:
         root = root.resolve()
         if not root.is_dir():
@@ -246,11 +253,11 @@ def _normalize_export_text(
     try:
         data = yaml.safe_load(raw_inner)
     except yaml.YAMLError as exc:
-        raise ValueError("frontmatter の YAML を解析できません") from exc
+        raise ValueError(t("export.frontmatter_yaml_invalid")) from exc
     if data is None:
         data = {}
     if not isinstance(data, dict):
-        raise ValueError("frontmatter の root は mapping である必要があります")
+        raise ValueError(t("export.frontmatter_not_mapping"))
 
     changed = False
     raw_type = data.get("type")
@@ -403,16 +410,13 @@ def collect_export(
 
     if excluded_private:
         print(
-            f"note: private work queue / 秘密情報らしき {excluded_private} 件を export から"
-            "除外しました（含める場合は --allow-sensitive）",
+            f"note: {t('export.excluded_private', count=excluded_private)}",
             file=sys.stderr,
         )
     if nominally_private and not allow_sensitive:
         names = ", ".join(sorted(nominally_private))
         print(
-            f"warning: work_policy=private の作業 queue を export に含めました（{names}）。"
-            "work_dir / work_policy が明示されていないため除外を強制していません。"
-            "除外するには .docsweep.yaml で work_policy を明示してください",
+            f"warning: {t('export.private_queue_included', names=names)}",
             file=sys.stderr,
         )
     return out_files, pairs
@@ -468,7 +472,7 @@ def run_export(
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
-            raise ValueError(f"export 対象が UTF-8 ではありません: {abs_path}") from exc
+            raise ValueError(t("export.not_utf8", path=abs_path)) from exc
         try:
             normalized, changed = _normalize_export_text(
                 text,
@@ -506,6 +510,8 @@ def run_export(
         generated_at=generated_at,
         include_archive=include_archive,
         profile=profile,
+        # manifest は Bundle へ書き込む文書なので、表示言語ではなく文書の言語で書く
+        lang=config.document_lang(),
     )
 
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -520,7 +526,8 @@ def run_export(
             "",
             "# docsweep export",
             "",
-            "## Concepts",
+            # Bundle へ書き込む文書なので、manifest と同じく文書の言語で書く
+            f"## {t('export.index.concepts', lang=config.document_lang())}",
             "",
         ]
         for entry in files:

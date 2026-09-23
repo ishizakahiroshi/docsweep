@@ -1,0 +1,236 @@
+{
+  "doc.heading.context": "context配分",
+  "doc.heading.summary": "概要",
+  "doc.heading.symptoms": "症状",
+  "doc.heading.root_cause": "根本原因",
+  "doc.heading.fix": "修正内容",
+  "doc.heading.changed_files": "変更ファイル",
+  "doc.heading.verification": "検証",
+  "doc.heading.notes": "備忘",
+  "doc.heading.pending_reason": "保留理由",
+  "doc.heading.resume_when": "着手条件",
+  "doc.heading.c_details": "C 詳細",
+  "doc.heading.goal": "目的",
+  "doc.heading.current_impl": "調査で確認した現在の実装",
+  "doc.heading.work": "作業内容",
+  "doc.heading.files_to_change": "変更予定ファイル",
+  "doc.heading.keep": "維持する仕様",
+  "doc.heading.out_of_scope": "スコープ外",
+  "doc.heading.how_to_verify": "検証方法",
+  "doc.heading.completion": "完了条件",
+  "doc.column.status": "種別",
+  "doc.column.description": "内容",
+  "doc.column.notes": "備考/注意点",
+  "doc.column.ai_execution": "AI実行",
+  "doc.column.execution_model": "実行モデル",
+  "doc.placeholder.plan_summary": "<TODO: 何をしようとしているか>",
+  "doc.placeholder.plan_completion": "<TODO: 何がどうなったら完了か>",
+  "doc.placeholder.plan_verification": "<TODO: 何をどう確かめたか（実行したコマンドと結果）>",
+  "doc.placeholder.pending_summary": "<TODO: 何を止めたか>",
+  "doc.placeholder.c_goal": "<TODO: 短い目的>",
+  "state.label.planned": "計画",
+  "state.label.in-progress": "実行中",
+  "state.label.watching": "様子見",
+  "state.label.done": "完了",
+  "state.label.discarded": "廃止",
+  "state.label.pending": "保留",
+  "state.alias.in-progress": [
+    "対応中"
+  ],
+  "doc.heading.acceptance": "受入条件",
+  "intent.keywords.activity": [
+    "昨日",
+    "何やった",
+    "振り返り"
+  ],
+  "intent.keywords.brief": [
+    "今日",
+    "朝",
+    "1個",
+    "一件"
+  ],
+  "intent.keywords.cross": [
+    "横断",
+    "腐",
+    "ヘルス"
+  ],
+  "intent.keywords.doctor": [
+    "診断",
+    "壊",
+    "ヘルスチェック",
+    "動かない"
+  ],
+  "intent.keywords.init": [
+    "初期",
+    "セットアップ",
+    "導入"
+  ],
+  "intent.keywords.undo": [
+    "戻す",
+    "取り消",
+    "元に戻"
+  ],
+  "intent.keywords.day_open": [
+    "デイオープン",
+    "日を開"
+  ],
+  "intent.keywords.day_close": [
+    "デイクローズ",
+    "日を閉",
+    "今日を閉"
+  ],
+  "intent.keywords.sweep": [
+    "掃除",
+    "片付ける"
+  ],
+  "intent.keywords.promote": [
+    "様子見",
+    "昇格"
+  ],
+  "intent.keywords.capture": [
+    "会話",
+    "書き出"
+  ],
+  "intent.keywords.triage": [
+    "要判断",
+    "判断"
+  ],
+  "intent.keywords.index_sync": [
+    "同期"
+  ],
+  "intent.keywords.serve": [
+    "看板",
+    "ボード"
+  ],
+  "intent.keywords.graph": [
+    "関連",
+    "グラフ"
+  ],
+  "intent.keywords.resurrect": [
+    "復活",
+    "類似"
+  ],
+  "intent.keywords.find": [
+    "探す",
+    "検索"
+  ],
+  "intent.keywords.inject": [
+    "導線",
+    "注入"
+  ],
+  "capture.marker_match": "substring",
+  "capture.markers.plan": [
+    "決定",
+    "やる",
+    "実装する",
+    "TODO",
+    "todo",
+    "次に",
+    "やろう",
+    "対応する"
+  ],
+  "capture.markers.bugfix": [
+    "バグ",
+    "不具合",
+    "壊れ",
+    "再現",
+    "エラー",
+    "落ちる",
+    "出ない"
+  ],
+  "capture.markers.pending": [
+    "保留",
+    "あとで",
+    "ペンディング",
+    "棚上げ"
+  ],
+  "capture.mock_markers.plan": [
+    "決定",
+    "やる",
+    "TODO",
+    "実装する"
+  ],
+  "capture.mock_markers.bugfix": [
+    "バグ",
+    "不具合",
+    "壊れ",
+    "エラー"
+  ],
+  "capture.mock_markers.pending": [
+    "保留",
+    "あとで"
+  ],
+  "closeout.words.todo": [
+    "未記入",
+    "未定"
+  ],
+  "closeout.words.failure": [
+    "失敗",
+    "エラー"
+  ],
+  "closeout.words.count_to_failure": [
+    "\\s*(?:件)?\\s*(?:の)?\\s*"
+  ],
+  "closeout.words.failure_to_count": [
+    "\\s*(?:数)?\\s*[:=]?\\s*"
+  ],
+  "closeout.words.count_suffix": [
+    "\\s*(?:件)?"
+  ],
+  "closeout.words.zero_failure": [
+    "(?:失敗|エラー)\\s*[はがも]?\\s*(?:なし|無し|ありません|有りません|無い|ない|無かった|なかった|出ていません|出ていない|出ておらず|出なかった|出ず|生じていない|生じませんでした|生じなかった)"
+  ],
+  "closeout.words.asserted_failure": [
+    "失敗(?:した|している|しました|が残|があっ|がある|に終わ)",
+    "落ち(?:た|ている|ました)",
+    "エラー(?:になった|になっている|が発生|が出た|が出ている|が残|で停止|で中断|で落ち)"
+  ],
+  "closeout.words.not_run": [
+    "未実施",
+    "未検証",
+    "未確認"
+  ],
+  "closeout.words.automatic": [
+    "自動(?:確認|検証|テスト)?",
+    "静的(?:検査|確認)"
+  ],
+  "closeout.words.manual": [
+    "手動(?:確認|受入|検証)?",
+    "ブラウザ",
+    "目視",
+    "実機",
+    "本番"
+  ],
+  "closeout.words.success": [
+    "成功",
+    "通過",
+    "合格",
+    "完了",
+    "確認済",
+    "済み"
+  ],
+  "closeout.heading.completion": [
+    "完了条件"
+  ],
+  "closeout.heading.verification": [
+    "検証"
+  ],
+  "closeout.heading.acceptance": [
+    "受入",
+    "受け入れ"
+  ],
+  "closeout.heading.changed_files": [
+    "変更予定ファイル",
+    "変更ファイル"
+  ],
+  "export.type_description.plan": "計画 / 調査メモ / 検討メモ（着手前〜進行中の作業）",
+  "export.type_description.bugfix": "障害対応の事後記録（症状 / 根本原因 / 修正内容）",
+  "export.type_description.pending": "保留 / 将来対応（着手条件待ち）",
+  "export.index.concepts": "文書一覧",
+  "doc_links.doc.cli.unknown_command": "README.md#使い方",
+  "doc_links.doc.config.yaml_parse": "templates/.docsweep.yaml",
+  "doc_links.doc.console.encoding": "README.md#windows",
+  "doc_links.doc.naming.work_md": "docs/conventions.md",
+  "doc_links.doc.closeout.parent_only": "docs/conventions.md",
+  "doc_links.doc.states.label": "docs/conventions.md"
+}

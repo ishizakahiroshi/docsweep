@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 
+from ...i18n import t
 from ..parser import _build_config
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -14,7 +15,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if not cfg.roots:
         # --root も config の roots も無ければカレントフォルダを採用（手軽起動）。
         cfg.roots = [Path.cwd()]
-        print(f"（--root 未指定のためカレントを使用: {Path.cwd()}）")
+        print(t("cli_serve.using_cwd", path=Path.cwd()))
     try:
         import secrets
 
@@ -22,7 +23,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
         from ...server.app import create_app
     except ImportError:
-        print("Web UI には web extra が必要です: pip install 'docsweep[web]'", file=sys.stderr)
+        print(t("cli_serve.needs_web_extra"), file=sys.stderr)
         return 3
 
     # トークンはコマンドライン引数（他プロセスから見える）より環境変数を推奨。
@@ -36,14 +37,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
     url = f"http://127.0.0.1:{args.port}/board"
     initial_url = f"http://127.0.0.1:{args.port}/?token={token}"
     print("=" * 60)
-    print("  ブックマーク用 URL（初回認証後はこちらで開けます）:")
+    print(t("cli_serve.bookmark_url"))
     print(f"  {url}")
-    print("  初回認証 URL（?token= は Cookie 交換後に自動で消えます）:")
+    print(t("cli_serve.initial_url"))
     print(f"  {initial_url}")
     if getattr(args, "read_only", False):
-        print("  [read-only] 書き込み API は 403 です")
+        print(t("cli_serve.read_only"))
     print("=" * 60)
-    print("（Ctrl+C または画面右上の電源ボタンで停止）")
+    print(t("cli_serve.stop_hint"))
     if not args.no_browser:
         import threading
         import webbrowser
@@ -59,5 +60,5 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         # Python 3.14 の asyncio.runners は Ctrl+C を KeyboardInterrupt として再送出する。
         # 正常な停止操作なのでスタックトレースを見せず 1 行で終える。
-        print("停止しました（Ctrl+C）")
+        print(t("cli_serve.stopped"))
     return 0

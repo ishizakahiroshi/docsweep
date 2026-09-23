@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from ..i18n import t
 from ..server.security import resolve_under_roots
 
 
@@ -43,13 +44,13 @@ def resolve_writable_md(
         PathScopeError: ``..`` を含む / 解決後にルート外 / ``.md`` 以外。
     """
     if not raw_path or not isinstance(raw_path, str):
-        raise PathScopeError(f"path が空または不正です: {raw_path!r}")
+        raise PathScopeError(t("security_path.empty", path=raw_path))
 
     # ``..`` を明示的に弾く。realpath は ``..`` を解決してしまうので
     # 「外に出ようとした意図そのもの」を入力段階で拒否する（多層防御）。
     parts = Path(raw_path).parts
     if any(p == ".." for p in parts):
-        raise PathScopeError(f"path に '..' を含むことはできません: {raw_path!r}")
+        raise PathScopeError(t("security_path.dotdot", path=raw_path))
 
     # 相対パスは base_dir 基準で解決（指定なし時は CWD）。
     p = Path(raw_path)
@@ -60,6 +61,6 @@ def resolve_writable_md(
     resolved = resolve_under_roots(str(p), roots)
     if resolved is None:
         # 詳細メッセージは出さない（root 一覧の漏洩を避ける・呼び出し側が必要に応じて足す）。
-        raise PathScopeError(f"path はスキャンルート配下の .md である必要があります: {raw_path!r}")
+        raise PathScopeError(t("security_path.outside_roots", path=raw_path))
     # ``os.path.realpath`` は str を返すので Path 化して返却。
     return Path(os.path.realpath(str(resolved)))

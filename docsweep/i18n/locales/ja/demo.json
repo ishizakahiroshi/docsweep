@@ -1,0 +1,25 @@
+{
+  "demo.seed.plan_search-relevance.title": "検索の関連度を作り直す",
+  "demo.seed.plan_search-relevance.summary": "全文検索の並びが古い順のままで、探しているものが下に沈む。",
+  "demo.seed.plan_onboarding-flow.title": "初回オンボーディングの導線",
+  "demo.seed.plan_onboarding-flow.summary": "初回起動から最初の価値到達までが 5 手かかっている。",
+  "demo.seed.bugfix_login-timeout_2026-05-02.title": "ログインが 30 秒で切れる",
+  "demo.seed.bugfix_login-timeout_2026-05-02.summary": "セッション延長が効かず、作業中にログイン画面へ戻される。",
+  "demo.seed.bugfix_csv-encoding_2026-05-20.title": "CSV 取り込みの文字化け",
+  "demo.seed.bugfix_csv-encoding_2026-05-20.summary": "cp932 の CSV を取り込むと一部の列が化ける。直したが再発を見ている。",
+  "demo.seed.plan_billing-rework.title": "課金まわりの作り直し",
+  "demo.seed.plan_billing-rework.summary": "プラン変更の日割りが仕様化されていない。",
+  "demo.seed.pending_mobile-app.title": "モバイルアプリを出すかの判断",
+  "demo.seed.pending_mobile-app.summary": "着手条件は Web の月間利用が安定してから。",
+  "demo.seed.pending_i18n.title": "多言語対応の範囲を決める",
+  "demo.seed.pending_i18n.summary": "英語だけ先に出すか、最初から 3 言語そろえるか。",
+  "demo.seed.plan_weekly-report.title": "週次レポートの自動生成",
+  "demo.seed.plan_weekly-report.summary": "毎週月曜に前週分をまとめて配信するところまで完了。",
+  "demo.table_rows": [
+    "| C1 | planned | 現状を実測する | デモ用のサンプルなので中身は空 |",
+    "| C2 | planned | 直す | |"
+  ],
+  "demo.completion_item": "- [ ] デモ用のサンプルなので完了条件は入っていない",
+  "demo.verification_item": "- [ ] 未実施",
+  "demo.config_comment": "# docsweep demo project（使い捨て）"
+}

@@ -172,6 +172,39 @@ def test_plan_context_table_column_order(tmp_path: Path):
     assert "| C1 | planned | <TODO> | — |" in body
 
 
+def test_plan_has_the_sections_closeout_check_requires(tmp_path: Path):
+    """closeout-check が plan に必須にする「完了条件」「検証」を最初から持つ。
+
+    無いと、docsweep で作った plan が人が節を書き足すまで ``missing_section`` で止まる。
+    """
+    from docsweep.closeout import check_closeout
+
+    proj = tmp_path / "proj"
+    (proj / ".git").mkdir(parents=True)
+    doc = new_doc("plan", "closeout-ready", project_dir=proj, offset_days={"plan": 7})
+    body = doc.path.read_text(encoding="utf-8")
+
+    assert body.index("## 概要") < body.index("## 完了条件") < body.index("## 検証")
+    result = check_closeout(doc.path, project_dir=proj, config=Config())
+    assert "missing_section" not in {blocker.get("code") for blocker in result.blockers}
+
+
+def test_configured_completion_section_is_not_duplicated(tmp_path: Path):
+    project = tmp_path / "project"
+    project.mkdir()
+    config = Config(
+        template_sections={"plan": (TemplateSection(heading="完了条件", body="- 顧客が確認した"),)}
+    )
+
+    body = new_doc(
+        "plan", "own-completion", project_dir=project, config=config, offset_days={}
+    ).path.read_text(encoding="utf-8")
+
+    assert body.count("## 完了条件") == 1
+    assert body.endswith("## 完了条件\n\n- 顧客が確認した\n")
+    assert "## 検証" in body
+
+
 def test_bugfix_has_context_table_too(tmp_path: Path):
     """bugfix にも同じ列順の context配分 表を持たせる（2026-08-27 変更）。
 

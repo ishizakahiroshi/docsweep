@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .config import Config
 from .engine import ScanResult, scan_records
+from .i18n import t
 from .models import Flag
 
 INDEX_DIRNAME = ".docsweep"
@@ -103,24 +104,31 @@ def render_markdown(idx: IndexData, state_model) -> str:
     lines: list[str] = [
         "# docsweep INDEX",
         "",
-        f"> 横断集約: {c['projects']} プロジェクト / {c['total']} 件 ＝ "
-        f"要判断 {c['needs_decision']} · 要修正 {c['needs_fix']} · 保留 {c['pending']} · archive候補 {c['archivable']}",
+        "> " + t(
+            "aggregate_index.summary",
+            projects=c["projects"],
+            total=c["total"],
+            needs_decision=c["needs_decision"],
+            needs_fix=c["needs_fix"],
+            pending=c["pending"],
+            archivable=c["archivable"],
+        ),
         "",
     ]
     if idx.needs_decision:
-        lines += ["## ⚠ 要判断（陳腐化）", ""]
+        lines += [f"## {t('aggregate_index.heading_needs_decision')}", ""]
         lines += [_render_row(d) for d in idx.needs_decision]
         lines += [""]
     if idx.pending:
-        lines += ["## 💤 保留（pending）", ""]
+        lines += [f"## {t('aggregate_index.heading_pending')}", ""]
         lines += [_render_row(d) for d in idx.pending]
         lines += [""]
     if idx.needs_fix:
-        lines += ["## 🔧 要修正（ラベル欠落・パース不能）", ""]
+        lines += [f"## {t('aggregate_index.heading_needs_fix')}", ""]
         lines += [_render_row(d) for d in idx.needs_fix]
         lines += [""]
 
-    lines += ["## ステータス別", ""]
+    lines += [f"## {t('aggregate_index.heading_by_state')}", ""]
     for key in sorted(idx.by_state):
         recs = idx.by_state[key]
         st = state_model.by_key(key) if state_model else None

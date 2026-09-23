@@ -17,6 +17,7 @@ from urllib.parse import unquote, urlparse
 
 import yaml
 
+from .i18n import t
 from .okf import OkfProfile
 
 _FRONTMATTER_RE = re.compile(
@@ -111,10 +112,10 @@ def _check_index(
                 file.name,
                 "error",
                 "reserved_index_frontmatter",
-                "nested index.md は frontmatter を持てません",
+                t("okf_check.nested_index_frontmatter"),
             )
     elif error not in {None, "missing_frontmatter"}:
-        _issue(issues, file.name, "error", error, "bundle root の index.md frontmatter が不正です")
+        _issue(issues, file.name, "error", error, t("okf_check.root_index_frontmatter_invalid"))
     elif data:
         extra = set(data) - {"okf_version"}
         if extra:
@@ -123,7 +124,7 @@ def _check_index(
                 file.name,
                 "error",
                 "reserved_index_keys",
-                f"bundle root の index.md で許可されるキー以外があります: {sorted(extra)}",
+                t("okf_check.root_index_extra_keys", keys=sorted(extra)),
             )
         declared = data.get("okf_version")
         if declared is not None and str(declared).strip() != profile.spec_version:
@@ -132,7 +133,11 @@ def _check_index(
                 file.name,
                 "error",
                 "okf_version_mismatch",
-                f"index.md の okf_version={declared!r} と profile={profile.spec_version!r} が不一致です",
+                t(
+                    "okf_check.okf_version_mismatch",
+                    declared=declared,
+                    profile=profile.spec_version,
+                ),
             )
     if not re.search(r"^#\s+\S", file.text, re.MULTILINE) or not re.search(
         r"^\s*[*-]\s+\[[^]]+\]\([^)]*\)", file.text, re.MULTILINE
@@ -142,7 +147,7 @@ def _check_index(
             file.name,
             "warning",
             "index_structure",
-            "index.md に見出しと Markdown link の一覧が見つかりません",
+            t("okf_check.index_structure"),
         )
 
 
@@ -154,7 +159,7 @@ def _check_log(file: _BundleFile, issues: list[OkfIssue]) -> None:
             file.name,
             "error",
             "reserved_log_frontmatter",
-            "log.md は frontmatter を持てません",
+            t("okf_check.log_frontmatter"),
         )
     headings = re.findall(r"^##\s+(.+?)\s*$", file.text, re.MULTILINE)
     invalid_dates = []
@@ -173,7 +178,7 @@ def _check_log(file: _BundleFile, issues: list[OkfIssue]) -> None:
             file.name,
             "error",
             "log_date_heading",
-            "log.md の ## 見出しは YYYY-MM-DD 形式である必要があります",
+            t("okf_check.log_date_heading"),
         )
     if not headings:
         _issue(
@@ -181,29 +186,36 @@ def _check_log(file: _BundleFile, issues: list[OkfIssue]) -> None:
             file.name,
             "warning",
             "log_structure",
-            "log.md に日付単位の ## 見出しがありません",
+            t("okf_check.log_structure"),
         )
+
+
+# frontmatter の読み取りエラーのコード → 文言のキー。
+_FRONTMATTER_ERROR_MESSAGES = {
+    "missing_frontmatter": "okf_check.missing_frontmatter",
+    "invalid_yaml": "okf_check.invalid_yaml",
+    "frontmatter_not_mapping": "okf_check.frontmatter_not_mapping",
+}
 
 
 def _check_concept(file: _BundleFile, profile: OkfProfile, issues: list[OkfIssue]) -> None:
     data, error = _read_frontmatter(file.text)
     if error:
-        messages = {
-            "missing_frontmatter": "非予約 Markdown は YAML frontmatter が必要です",
-            "invalid_yaml": "frontmatter の YAML を解析できません",
-            "frontmatter_not_mapping": "frontmatter の root は mapping である必要があります",
-        }
-        _issue(issues, file.name, "error", error, messages.get(error, "frontmatter が不正です"))
+        message_key = _FRONTMATTER_ERROR_MESSAGES.get(error, "okf_check.frontmatter_invalid")
+        _issue(issues, file.name, "error", error, t(message_key))
         return
     assert data is not None
     for key in profile.required_frontmatter:
         value = data.get(key)
         if key == "type" and not isinstance(value, str):
-            _issue(issues, file.name, "error", "missing_type", "type は空でない文字列が必要です")
+            _issue(issues, file.name, "error", "missing_type", t("okf_check.type_required"))
         elif isinstance(value, str) and not value.strip():
-            _issue(issues, file.name, "error", "missing_type", "type は空でない文字列が必要です")
+            _issue(issues, file.name, "error", "missing_type", t("okf_check.type_required"))
         elif value is None:
-            _issue(issues, file.name, "error", "missing_type", f"必須 frontmatter {key!r} がありません")
+            _issue(
+                issues, file.name, "error", "missing_type",
+                t("okf_check.required_frontmatter_missing", field=key),
+            )
 
     status = data.get("status")
     if status is not None and not profile.is_lifecycle_status(status):
@@ -212,7 +224,7 @@ def _check_concept(file: _BundleFile, profile: OkfProfile, issues: list[OkfIssue
             file.name,
             "warning",
             "nonstandard_status",
-            f"status={status!r} は profile の lifecycle 値ではありません（文書は reject しません）",
+            t("okf_check.nonstandard_status", status=status),
         )
 
 
@@ -260,7 +272,7 @@ def _check_links(
                     file.name,
                     severity,
                     "broken_link",
-                    f"Bundle 内にリンク先がありません: {target}",
+                    t("okf_check.broken_link", target=target),
                 )
 
 
@@ -308,7 +320,7 @@ def _iter_zip(path: Path) -> list[_BundleFile]:
                     continue
                 files.append(_BundleFile(name=name.replace("\\", "/"), text=text))
     except (OSError, zipfile.BadZipFile) as exc:
-        raise ValueError(f"OKF Bundle zip を読めません: {path}") from exc
+        raise ValueError(t("okf_check.zip_unreadable", path=path)) from exc
     return files
 
 
@@ -320,16 +332,16 @@ def check_bundle(path: Path, profile: OkfProfile) -> OkfCheckResult:
     elif path.is_file() and path.suffix.lower() == ".zip":
         files = _iter_zip(path)
     else:
-        raise ValueError(f"OKF Bundle のディレクトリまたは zip がありません: {path}")
+        raise ValueError(t("okf_check.bundle_not_found", path=path))
 
     issues: list[OkfIssue] = []
     for file in files:
         if file.read_error:
             code = file.read_error
             message = (
-                "Markdown は UTF-8 である必要があります"
+                t("okf_check.invalid_utf8")
                 if code == "invalid_utf8"
-                else "Bundle 内のファイルを読み取れません"
+                else t("okf_check.read_error")
             )
             _issue(issues, file.name, "error", code, message)
             continue

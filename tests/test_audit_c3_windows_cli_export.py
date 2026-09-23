@@ -165,7 +165,9 @@ def test_export_reflects_duplicate_arcname_in_manifest_and_index(tmp_path: Path)
 
 def test_unknown_command_returns_usage_error_but_existing_dir_scans(tmp_path: Path, capsys):
     assert main(["trige"]) == 2
-    assert "unknown command" in capsys.readouterr().err
+    assert "コマンドでも既存のディレクトリでもありません: trige" in capsys.readouterr().err
+    assert main(["trige", "--lang", "en"]) == 2
+    assert "unknown command or scan directory: trige" in capsys.readouterr().err
 
     root = tmp_path / "root"
     _write(root / "proj" / "docs" / "plan_x.md", "# [計画] x\n")

@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from docsweep.config import load_config  # noqa: E402
 from docsweep.server.app import create_app  # noqa: E402
-from docsweep.server.i18n import MESSAGES, absolute_title, age_label, weekday_label  # noqa: E402
+from docsweep.server.i18n import absolute_title, age_label, weekday_label  # noqa: E402
 
 STATIC = Path(__file__).resolve().parents[1] / "docsweep" / "server" / "static"
 TEMPLATES = Path(__file__).resolve().parents[1] / "docsweep" / "server" / "templates"
@@ -99,39 +99,24 @@ def test_today_pick_age_is_localised(client) -> None:
 # ===== i18n の網羅 ============================================================
 
 
-def test_every_new_message_has_both_languages() -> None:
+def test_every_ui_message_has_all_languages() -> None:
+    """Web UI の文言は locales/<言語>/ui.json に置く（全言語でキーがそろう）。"""
+    from docsweep.i18n import MESSAGES, SUPPORTED_LANGS
+
     for key, entry in MESSAGES.items():
-        assert entry.get("ja"), key + " に ja が無い"
-        assert entry.get("en"), key + " に en が無い"
-
-
-def test_js_dictionary_has_the_same_keys_in_both_languages() -> None:
-    js = (STATIC / "i18n.js").read_text(encoding="utf-8")
-    tables = re.findall(r"^\s{4}(ja|en):\s*\{$", js, flags=re.MULTILINE)
-    assert tables == ["ja", "en"], tables
-    ja_block, en_block = _split_tables(js)
-    ja_keys = set(re.findall(r"^\s{6}([a-z0-9_]+):", ja_block, flags=re.MULTILINE))
-    en_keys = set(re.findall(r"^\s{6}([a-z0-9_]+):", en_block, flags=re.MULTILINE))
-    assert ja_keys - en_keys == set(), "en に無いキー: " + str(sorted(ja_keys - en_keys))
-    assert en_keys - ja_keys == set(), "ja に無いキー: " + str(sorted(en_keys - ja_keys))
-
-
-def _split_tables(js: str) -> tuple[str, str]:
-    start_ja = js.index("    ja: {")
-    start_en = js.index("    en: {")
-    end_en = js.index("\n  };", start_en)
-    return js[start_ja:start_en], js[start_en:end_en]
+        if key.startswith(("ui.", "js.")):
+            assert set(entry) == set(SUPPORTED_LANGS), key
 
 
 def test_w4_js_only_uses_keys_that_exist_in_the_dictionary() -> None:
+    from docsweep.server.i18n import js_messages
+
     js = (STATIC / "w4.js").read_text(encoding="utf-8")
-    dictionary = (STATIC / "i18n.js").read_text(encoding="utf-8")
     used = set(re.findall(r'\b(?:T|fmt)\("([a-z0-9_]+)"', js))
     # ツアーは key + "_title" / "_body" で組み立てるので静的には拾えない分を足す。
     used |= {f"tour_{i}_{part}" for i in range(1, 5) for part in ("title", "body")}
-    declared = set(re.findall(r"^\s{6}([a-z0-9_]+):", dictionary, flags=re.MULTILINE))
-    missing = sorted(used - declared)
-    assert not missing, "i18n.js に無いキーを使っている: " + str(missing)
+    missing = sorted(used - set(js_messages("en")))
+    assert not missing, "ui.json の js.* に無いキーを使っている: " + str(missing)
 
 
 # ===== 日付フォーマッタ =======================================================
@@ -160,4 +145,5 @@ def test_get_messages_reports_the_resolved_language() -> None:
 
     assert get_messages("en")["__lang__"] == "en"
     assert get_messages("ja")["__lang__"] == "ja"
-    assert get_messages("zz")["__lang__"] == "ja"
+    # 対応していない言語は既定（en）で出す（CLI の t() と同じ寄せ方）
+    assert get_messages("zz")["__lang__"] == "en"

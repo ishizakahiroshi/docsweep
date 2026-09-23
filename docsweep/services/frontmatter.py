@@ -24,6 +24,7 @@ from pathlib import Path
 import yaml
 
 from ..atomic import update_line
+from ..i18n import t
 
 # 区切り行の末尾は空白・タブ・CR だけを吸収する。`\s*` にすると閉じ `---` の後ろの
 # **空行まで飲み込み**、書き戻すときに落ちる（frontmatter を 1 フィールド直すたびに
@@ -165,26 +166,24 @@ class UpdateFrontmatterResult:
 def _validate_scalar(value: str) -> str:
     """改行・YAML 制御文字を含むスカラを拒否する。"""
     if "\n" in value or "\r" in value:
-        raise FrontmatterValidationError("スカラ値に改行は含められません")
+        raise FrontmatterValidationError(t("services_frontmatter.scalar_newline"))
     # `:` や `#` を含む値は引用する判断が必要なので、ここでは簡易対応として弾く。
     # owner 名・YYYY-MM-DD・review_status の値域では `:` / `#` は使わない想定。
     if ":" in value or "#" in value:
-        raise FrontmatterValidationError(
-            "スカラ値に ':' / '#' は含められません（引用が必要なため拒否します）"
-        )
+        raise FrontmatterValidationError(t("services_frontmatter.scalar_colon_hash"))
     return value.strip()
 
 
 def _validate_list_item(item: str) -> str:
     item = item.strip()
     if not item:
-        raise FrontmatterValidationError("list 要素に空文字は入れられません")
+        raise FrontmatterValidationError(t("services_frontmatter.list_item_empty"))
     if "\n" in item or "\r" in item:
-        raise FrontmatterValidationError("list 要素に改行は含められません")
+        raise FrontmatterValidationError(t("services_frontmatter.list_item_newline"))
     # フロー記法 ``[a, b]`` で安全に書ける文字に限定する（`,` `[` `]` `"` `'` を含めない）。
     if any(c in item for c in (",", "[", "]", '"', "'", "#")):
         raise FrontmatterValidationError(
-            f"list 要素に使えない文字が含まれます: {item!r}"
+            t("services_frontmatter.list_item_invalid_char", item=item)
         )
     return item
 
@@ -216,7 +215,7 @@ _BLOCK_LIST_CONTINUATION_RE = re.compile(r"^[ \t]+-(?:[ \t]|$)")
 
 def _field_line_re(field: str) -> re.Pattern[str]:
     if not _FIELD_NAME_RE.match(field):
-        raise FrontmatterValidationError(f"不正なフィールド名: {field!r}")
+        raise FrontmatterValidationError(t("services_frontmatter.invalid_field_name", field=field))
     return re.compile(_FIELD_LINE_TEMPLATE.format(name=re.escape(field)), re.MULTILINE)
 
 
@@ -253,10 +252,7 @@ def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
             next_line = after.splitlines()[0] if after else ""
             if next_line and _BLOCK_LIST_CONTINUATION_RE.match(next_line):
                 raise FrontmatterBlockStyleError(
-                    f"frontmatter フィールド {field!r} が block-style list で書かれています "
-                    f"（次行: {next_line!r}）。docsweep は現在フロー記法 "
-                    f"（{field}: [a, b]）のみ書き換え可能です。"
-                    " 手動で flow 記法へ変換してから再実行してください。"
+                    t("services_frontmatter.block_style_list", field=field, next_line=next_line)
                 )
             indent = m_line.group("indent") or ""
             replacement = f"{indent}{new_yaml_line}{m_line.group('eol') or ''}"
@@ -272,6 +268,24 @@ def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
         )
     newline = _preferred_newline(parse_text)
     return f"{bom}---{newline}{new_yaml_line}{newline}---{newline}{parse_text}"
+
+
+def _remove_field(text: str, field: str) -> str:
+    """frontmatter から field の 1 行を消す（無ければそのまま返す）。
+
+    ``_replace_or_insert`` が新設した行を取り消すために使う。block 記法の継続行は扱わない。
+    """
+    parse_text, bom = _without_bom(text)
+    fm = _FRONTMATTER_RE.match(parse_text)
+    if not fm:
+        return text
+    inner = fm.group(1)
+    m_line = _field_line_re(field).search(inner)
+    if m_line is None:
+        return text
+    new_inner = (inner[: m_line.start()] + inner[m_line.end():]).rstrip("\r\n")
+    newline = _preferred_newline(parse_text[: fm.end()])
+    return f"{bom}---{newline}{new_inner}{newline}---{newline}{parse_text[fm.end():]}"
 
 
 def update_frontmatter_field(
@@ -291,7 +305,11 @@ def update_frontmatter_field(
     """
     if field not in ALLOWED_FIELDS:
         raise FrontmatterValidationError(
-            f"許可されていないフィールド名: {field!r}（許可: {sorted(ALLOWED_FIELDS)}）"
+            t(
+                "services_frontmatter.field_not_allowed",
+                field=field,
+                allowed=sorted(ALLOWED_FIELDS),
+            )
         )
     new_line = _format_value(field, new_value)
     text_before = Path(abs_path).open("r", encoding="utf-8", newline="").read()

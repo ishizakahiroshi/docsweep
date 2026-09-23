@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .i18n import t
+
 # 操作 ID → 打ち込ませるフレーズ。操作ごとに変えて「惰性の Enter」を効かなくする。
 PHRASES: dict[str, str] = {
     "promote": "PROMOTE",
@@ -31,8 +33,7 @@ class BulkConfirmRequired(Exception):
         self.threshold = threshold
         self.phrase = phrase
         super().__init__(
-            f"{count} 件は一括確認のしきい値 {threshold} 件以上です。"
-            f"確認のため {phrase!r} を入力してください。"
+            t("bulk_confirm.required", count=count, threshold=threshold, phrase=phrase)
         )
 
     def to_dict(self) -> dict:

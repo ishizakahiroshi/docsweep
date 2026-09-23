@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from ...atomic import ConflictError
 from ...bulk_confirm import BulkConfirmRequired
 from ...bulk_confirm import require as bulk_require
+from ...i18n import t
 from ...services.archive import archive_done, undo_last_batch
 from ...services.content import ContentValidationError, update_content
 from ...services.due import DueParseError, update_due
@@ -28,7 +29,7 @@ from ...services.frontmatter import (
     current_owner,
     update_frontmatter_field,
 )
-from ...services.status import StatusValidationError, update_status
+from ...services.status import StatusValidationError, UpdateStatusResult, update_status
 from ...state import set_pinned, set_snooze
 from ..security import check_token, resolve_under_roots
 
@@ -39,9 +40,9 @@ def _resolve(request: Request, raw_path: str) -> Path:
     cfg = request.app.state.docsweep.config
     resolved = resolve_under_roots(raw_path, cfg.roots)
     if resolved is None:
-        raise HTTPException(status_code=403, detail="path outside scan roots")
+        raise HTTPException(status_code=403, detail=t("web.path_outside_roots"))
     if not resolved.is_file():
-        raise HTTPException(status_code=404, detail="not found")
+        raise HTTPException(status_code=404, detail=t("web.not_found"))
     return resolved
 
 
@@ -82,7 +83,7 @@ def _parse_mtime(value: str | None) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError) as e:
-        raise HTTPException(status_code=400, detail="expected_mtime must be float") from e
+        raise HTTPException(status_code=400, detail=t("web.expected_mtime_float")) from e
 
 
 @router.post("/api/cards/status")
@@ -94,7 +95,7 @@ def post_status(
     expected_mtime: str | None = Form(default=None),
 ):
     """H1 ラベル書き換え。`[完了]` / `[廃止]` 指定時は続けて archive 移送。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved = _resolve(request, path)
     cfg = request.app.state.docsweep.config
     project_root = _project_root_for(resolved, cfg.roots)
@@ -118,7 +119,10 @@ def post_status(
     if res.archive_triggered:
         # 不変条件: `[完了]` / `[廃止]` のみ archive 移送。ここで続けて呼ぶことで
         # Web UI は「ラベル変更 → 移送」を 1 操作で済ませられる。
-        arc = archive_done(config=cfg, paths=[resolved.as_posix()])
+        # ラベルの書き換えも渡し、undo で場所と一緒にラベルも戻せるようにする。
+        arc = archive_done(
+            config=cfg, paths=[resolved.as_posix()], state_changes={res.path: res}
+        )
         payload["archive"] = arc.to_dict()
     return JSONResponse(payload)
 
@@ -133,7 +137,7 @@ def post_due(
     expected_mtime: str | None = Form(default=None),
 ):
     """frontmatter `due:` 書き換え + postpone_count 自動インクリメント。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved = _resolve(request, path)
     cfg = request.app.state.docsweep.config
     project_root = _project_root_for(resolved, cfg.roots)
@@ -165,7 +169,7 @@ def post_content(
     allow_sensitive: bool = Form(default=False),
 ):
     """本文全置換（楽観ロック・mtime 不一致は 409）。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved = _resolve(request, path)
     expected = _parse_mtime(expected_mtime)
     try:
@@ -191,7 +195,7 @@ def post_archive(
     dry_run: bool = Form(default=False),
 ):
     """`[完了]` / `[廃止]` 確定済みファイルを archive へ移送する閉じた口。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved = _resolve(request, path)
     cfg = request.app.state.docsweep.config
     res = archive_done(config=cfg, paths=[resolved.as_posix()], dry_run=dry_run)
@@ -214,7 +218,7 @@ def _try_resolve(request: Request, raw_path: str) -> tuple[Path | None, dict | N
     if resolved is None or not resolved.is_file():
         return None, {
             "path": raw_path,
-            "error": "path outside scan roots or not a file",
+            "error": t("web.path_outside_roots_or_not_file"),
             "kind": "path_scope",
         }
     return resolved, None
@@ -233,7 +237,7 @@ def post_bulk_due(
     ``new_due`` の parse は全件共通なので、ここで失敗したら 400 で即返す。
     各 path の mtime conflict / validation 失敗は個別に ``failed[]`` へ。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     ok: list[dict] = []
     failed: list[dict] = []
@@ -245,7 +249,7 @@ def post_bulk_due(
             else:
                 failed.append({
                     "path": raw,
-                    "error": "path outside scan roots or not a file",
+                    "error": t("web.path_outside_roots_or_not_file"),
                     "kind": "path_scope",
                 })
             continue
@@ -284,7 +288,7 @@ def post_bulk_status(
     各 path のファイル種別×ラベル組み合わせ違反は services 層が validation で弾く
     → 個別に ``failed[]`` へ振り分け（bugfix は [計画] 不可、pending は [様子見]/[実行中] 不可など）。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     try:
         bulk_require("bulk_status", len(paths), cfg.bulk_confirm_threshold, confirm)
@@ -293,6 +297,7 @@ def post_bulk_status(
     ok: list[dict] = []
     failed: list[dict] = []
     archive_targets: list[str] = []
+    state_changes: dict[str, UpdateStatusResult] = {}
     for raw in paths:
         resolved, err = _try_resolve(request, raw)
         if err is not None or resolved is None:
@@ -301,7 +306,7 @@ def post_bulk_status(
             else:
                 failed.append({
                     "path": raw,
-                    "error": "path outside scan roots or not a file",
+                    "error": t("web.path_outside_roots_or_not_file"),
                     "kind": "path_scope",
                 })
             continue
@@ -316,6 +321,7 @@ def post_bulk_status(
             ok.append(res.to_dict())
             if res.archive_triggered:
                 archive_targets.append(resolved.as_posix())
+                state_changes[res.path] = res
         except StatusValidationError as e:
             failed.append({"path": resolved.as_posix(), "error": str(e), "kind": "validation"})
         except ConflictError as e:
@@ -328,7 +334,9 @@ def post_bulk_status(
     archive_result = None
     if archive_targets:
         # archive_triggered のものをまとめて移送（単数 API と同じ閉じた口を通す）
-        archive_result = archive_done(config=cfg, paths=archive_targets).to_dict()
+        archive_result = archive_done(
+            config=cfg, paths=archive_targets, state_changes=state_changes
+        ).to_dict()
     return JSONResponse({"ok": ok, "failed": failed, "archive": archive_result})
 
 
@@ -347,11 +355,11 @@ def post_frontmatter(
     スカラ系は ``value`` をそのまま書き込む（空文字 → 値を空にして行は残す）。
     本文・H1 ラベル・他フィールドは触らない（C4 plan の後方互換 100% を担保）。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved = _resolve(request, path)
     expected = _parse_mtime(expected_mtime)
     if field not in ALLOWED_FIELDS:
-        raise HTTPException(status_code=400, detail=f"unknown field: {field}")
+        raise HTTPException(status_code=400, detail=t("web.unknown_field", field=field))
     if field in LIST_FIELDS:
         # カンマ区切りで受ける。空白だけの要素は捨てる。
         new_value: list[str] | str = [
@@ -377,7 +385,7 @@ def get_current_user(request: Request, token: str = Query(default="")):
     解決順は ``services.frontmatter.current_owner`` 参照（git config → OS ログイン）。
     C2 で ``docsweep config user.name`` が来たら本ハンドラもそちらを最優先にする。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     cwd = Path(cfg.roots[0]) if cfg.roots else None
     return JSONResponse({"name": current_owner(cwd=cwd)})
@@ -396,7 +404,7 @@ def post_claim(
     C2 の `docsweep claim` と同じファイルを書き換える（Web UI と CLI で動作を揃える）。
     git 未導入環境でも OS ログイン名でフォールバックして動く。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved = _resolve(request, path)
     expected = _parse_mtime(expected_mtime)
     cfg = request.app.state.docsweep.config
@@ -425,7 +433,7 @@ def post_undo(
     Undo 対象は最新の未復元 batch_id のみ。restore エントリが moves.jsonl に追記され、
     二重 Undo を防ぐ。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     res = undo_last_batch(config=cfg)
     return JSONResponse(res.to_dict())
@@ -445,7 +453,7 @@ def post_bulk_archive(
     件数が ``bulk_confirm_threshold`` 以上のときは ``confirm`` の打ち込みを求める
     （UX W4 / P59）。``dry_run`` は下見なので確認を求めない。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     if not dry_run:
         try:
@@ -462,7 +470,7 @@ def post_bulk_archive(
             else:
                 failed_validation.append({
                     "path": raw,
-                    "error": "path outside scan roots or not a file",
+                    "error": t("web.path_outside_roots_or_not_file"),
                     "kind": "path_scope",
                 })
             continue
@@ -485,7 +493,7 @@ def post_snooze(
     ``until`` 省略で「今日いっぱい」。空文字の ``until=`` ではなく ``clear=1`` で解除する。
     MD には一切書かない（score への人間側の拒否権であって文書の状態ではない）。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved, err = _try_resolve(request, path)
     if err is not None or resolved is None:
         return JSONResponse(err or {"error": "unresolved_path"}, status_code=400)
@@ -496,7 +504,7 @@ def post_snooze(
         date.fromisoformat(target)
     except ValueError:
         return JSONResponse(
-            {"error": "invalid_until", "detail": f"ISO 日付ではありません: {target}"},
+            {"error": "invalid_until", "detail": t("web.invalid_iso_date", value=target)},
             status_code=400,
         )
     fs = set_snooze(project_root, resolved, target)
@@ -514,7 +522,7 @@ def post_snooze_clear(
     path: str = Form(...),
 ):
     """snooze を解除する（UX W4 / P21）。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved, err = _try_resolve(request, path)
     if err is not None or resolved is None:
         return JSONResponse(err or {"error": "unresolved_path"}, status_code=400)
@@ -536,7 +544,7 @@ def post_pin(
     pinned: bool = Form(default=True),
 ):
     """カードを列の先頭に固定する / やめる（UX W4 / P21）。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved, err = _try_resolve(request, path)
     if err is not None or resolved is None:
         return JSONResponse(err or {"error": "unresolved_path"}, status_code=400)

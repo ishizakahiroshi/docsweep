@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from ..i18n import t
 from .agent_claude import _agent_uses_central
 
 
@@ -24,9 +25,7 @@ def resolve_global_target(
         return (Path.home() / ".claude" / "CLAUDE.md").resolve()
     if agent == "codex":
         return (_codex_home() / "AGENTS.md").resolve()
-    raise ValueError(
-        f"未知の agent: {agent}（claude / codex、または --global-target で明示）"
-    )
+    raise ValueError(t("inject.agent_codex.unknown_agent", agent=agent))
 
 
 def _warn_if_shadowed(path: Path, result: Any, agent: str = "codex") -> None:
@@ -36,7 +35,4 @@ def _warn_if_shadowed(path: Path, result: Any, agent: str = "codex") -> None:
     if path.name != "AGENTS.override.md" and (
         path.parent / "AGENTS.override.md"
     ).is_file():
-        result.warnings.append(
-            f"同階層に AGENTS.override.md があります。Codex はこちらを優先し {path.name} を読みません。"
-            " 導線を効かせるには override 側に取り込むか、--global-target で override を指定してください。"
-        )
+        result.warnings.append(t("inject.agent_codex.override_shadows", name=path.name))

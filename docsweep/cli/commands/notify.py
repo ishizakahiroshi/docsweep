@@ -10,6 +10,7 @@ from ..parser import _build_config
 
 def cmd_notify(args: argparse.Namespace) -> int:
     """OS ローカル通知（UX W4 / P53）。"""
+    from ...i18n import t
     from ...notify import notify_overdue
 
     cfg = _build_config(args)
@@ -19,5 +20,5 @@ def cmd_notify(args: argparse.Namespace) -> int:
     else:
         print(f"[{res.backend}] {res.title}: {res.body}")
         if res.detail and not res.sent:
-            print(f"  detail: {res.detail}", file=sys.stderr)
+            print(t("cli_notify.detail", detail=res.detail), file=sys.stderr)
     return 0 if res.sent or getattr(args, "dry_run", False) else 1

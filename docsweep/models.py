@@ -97,15 +97,27 @@ class MoveLogEntry:
     ``batch_id`` は同一の一括操作で同時に書かれたエントリをまとめる ID（Undo に使う）。
     1 件単位の archive では None（既存挙動互換）。bulk_archive 等の services 経由は
     実行ごとに同じ ID を全件に振る。
+
+    ``ref_rewrite`` / ``ref_restore`` は移動に伴う参照の書き換えとその取り消しで、
+    ``src`` が書き換えた文書、``field`` / ``before`` / ``after`` がその中身。
+    これらの項目は値があるときだけ出力し、既存の行の形は変えない。
     """
 
     ts: str  # ISO8601 ローカル日時
-    op: str  # archive | relabel | eject | restore | promote
+    op: str  # archive | relabel | eject | restore | promote | move | ref_rewrite | ref_restore
     project: str
     status: str | None  # 移送時点の内部状態
     src: str
     dst: str | None  # relabel 等で移動を伴わない場合 None
     batch_id: str | None = None  # 同時実行バッチの識別子（Undo 用・任意）
+    field: str | None = None  # docsweep_parent | related | body
+    before: str | list[str] | None = None
+    after: str | list[str] | None = None
+    offsets: list[int] | None = None  # body: 書き換え後の本文で after が始まる位置
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        for key in ("field", "before", "after", "offsets"):
+            if data[key] is None:
+                del data[key]
+        return data

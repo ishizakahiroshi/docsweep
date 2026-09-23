@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import sqlite3
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,7 @@ from .config import (
     project_work_settings,
     resolve_work_dir,
 )
+from .i18n import t
 from .index import db_path
 from .inject import GUIDANCE_PATH, MANIFEST_PATH, list_injected
 from .work_queue import check_work_queue
@@ -117,7 +119,7 @@ def run_doctor(
             id="config",
             status="warn",
             label="config.yaml",
-            detail=f"見つかりません: {gpath}",
+            detail=t("doctor.config_not_found", path=gpath),
             fix="python -m docsweep init",
         ))
 
@@ -130,8 +132,8 @@ def run_doctor(
             items.append(CheckItem(
                 id="roots",
                 status="fail",
-                label="roots",
-                detail=f"config 読み込み失敗: {e}",
+                label=t("doctor.label_roots"),
+                detail=t("doctor.config_load_failed", error=e),
                 fix="python -m docsweep init",
             ))
             cfg = None
@@ -141,9 +143,9 @@ def run_doctor(
             items.append(CheckItem(
                 id="roots",
                 status="warn",
-                label="roots",
-                detail="スキャン root が空です",
-                fix="python -m docsweep init  # または config.yaml の roots を編集",
+                label=t("doctor.label_roots"),
+                detail=t("doctor.roots_empty"),
+                fix=t("doctor.roots_empty_fix"),
             ))
         else:
             missing = [str(r) for r in cfg.roots if not Path(r).exists()]
@@ -151,16 +153,20 @@ def run_doctor(
                 items.append(CheckItem(
                     id="roots",
                     status="fail",
-                    label="roots",
-                    detail=f"存在しない path: {', '.join(missing)}",
-                    fix="config.yaml の roots を実在ディレクトリに修正",
+                    label=t("doctor.label_roots"),
+                    detail=t("doctor.roots_missing", paths=", ".join(missing)),
+                    fix=t("doctor.roots_missing_fix"),
                 ))
             else:
                 items.append(CheckItem(
                     id="roots",
                     status="ok",
-                    label="roots",
-                    detail=f"{len(cfg.roots)} path(s): " + ", ".join(str(r) for r in cfg.roots[:5]),
+                    label=t("doctor.label_roots"),
+                    detail=t(
+                        "doctor.roots_ok",
+                        count=len(cfg.roots),
+                        paths=", ".join(str(r) for r in cfg.roots[:5]),
+                    ),
                 ))
 
         # 2b. work queue privacy.  This is read-only: it never edits .gitignore,
@@ -189,8 +195,8 @@ def run_doctor(
             items.append(CheckItem(
                 id="work_queue",
                 status="hint",
-                label="work queue",
-                detail="検査対象プロジェクトを特定できません（--project-dir または roots を指定）",
+                label=t("doctor.label_work_queue"),
+                detail=t("doctor.work_queue_no_project"),
                 fix="python -m docsweep doctor --project-dir <project>",
             ))
         else:
@@ -225,32 +231,32 @@ def run_doctor(
                             archive.relative_to(queue)
                         except ValueError:
                             queue_warnings.append(
-                                f"{candidate.name}: private queue の archive が queue 外です"
+                                t("doctor.archive_outside_queue", project=candidate.name)
                             )
                 except (OSError, ValueError, PermissionError) as exc:
-                    queue_errors.append(f"{candidate.name}: work queue を解決できません")
+                    queue_errors.append(t("doctor.work_queue_unresolved", project=candidate.name))
             if queue_errors:
                 items.append(CheckItem(
                     id="work_queue",
                     status="fail",
-                    label="work queue",
+                    label=t("doctor.label_work_queue"),
                     detail="; ".join(queue_errors[:5]),
-                    fix=".docsweep.yaml の work_dir / work_policy と Git ignore を確認",
+                    fix=t("doctor.work_queue_fail_fix"),
                 ))
             elif queue_warnings:
                 items.append(CheckItem(
                     id="work_queue",
                     status="warn",
-                    label="work queue",
+                    label=t("doctor.label_work_queue"),
                     detail="; ".join(queue_warnings[:5]),
-                    fix="private queue を使う場合は Git リポジトリと ignore ルールを確認",
+                    fix=t("doctor.work_queue_warn_fix"),
                 ))
             else:
                 items.append(CheckItem(
                     id="work_queue",
                     status="ok",
-                    label="work queue",
-                    detail=f"private/shared queue の設定と tracked 状態を検査済み ({len(seen_projects)} project(s))",
+                    label=t("doctor.label_work_queue"),
+                    detail=t("doctor.work_queue_ok", count=len(seen_projects)),
                 ))
 
     # 3. index
@@ -262,7 +268,7 @@ def run_doctor(
             id="index",
             status="warn",
             label="index.db",
-            detail=f"未作成: {db}",
+            detail=t("doctor.index_missing", path=db),
             fix="python -m docsweep index-sync",
         ))
     elif age_h >= fail_index_hours:
@@ -270,7 +276,7 @@ def run_doctor(
             id="index",
             status="fail",
             label="index.db",
-            detail=f"非常に古い ({age_h:.1f}h) | last_scanned={last or '-'} | {db}",
+            detail=t("doctor.index_very_old", hours=age_h, last=last or "-", path=db),
             fix="python -m docsweep index-sync",
         ))
     elif age_h >= warn_index_hours:
@@ -278,7 +284,7 @@ def run_doctor(
             id="index",
             status="warn",
             label="index.db",
-            detail=f"古い ({age_h:.1f}h) | last_scanned={last or '-'} | {db}",
+            detail=t("doctor.index_old", hours=age_h, last=last or "-", path=db),
             fix="python -m docsweep index-sync",
         ))
     else:
@@ -286,7 +292,7 @@ def run_doctor(
             id="index",
             status="ok",
             label="index.db",
-            detail=f"鮮度 OK ({age_h:.1f}h) | last_scanned={last or '-'} | {db}",
+            detail=t("doctor.index_fresh", hours=age_h, last=last or "-", path=db),
         ))
 
     # 4. inject
@@ -295,23 +301,23 @@ def run_doctor(
     if injected or guidance_ok:
         detail_parts = []
         if guidance_ok:
-            detail_parts.append(f"guidance: {GUIDANCE_PATH}")
+            detail_parts.append(t("doctor.inject_guidance", path=GUIDANCE_PATH))
         if injected:
-            detail_parts.append(f"manifest entries: {len(injected)}")
+            detail_parts.append(t("doctor.inject_manifest_entries", count=len(injected)))
         if MANIFEST_PATH.is_file():
-            detail_parts.append(f"manifest: {MANIFEST_PATH}")
+            detail_parts.append(t("doctor.inject_manifest", path=MANIFEST_PATH))
         items.append(CheckItem(
             id="inject",
             status="ok",
-            label="inject",
+            label=t("doctor.label_inject"),
             detail=" | ".join(detail_parts),
         ))
     else:
         items.append(CheckItem(
             id="inject",
             status="hint",
-            label="inject",
-            detail="未注入（AI セッション開始 brief 導線が効かない可能性）",
+            label=t("doctor.label_inject"),
+            detail=t("doctor.inject_missing"),
             fix="python -m docsweep inject --global",
         ))
 
@@ -327,31 +333,31 @@ def run_doctor(
         items.append(CheckItem(
             id="extras_web",
             status="hint",
-            label="extras (web)",
-            detail=f"未インストール: {', '.join(missing_web)}",
+            label=t("doctor.label_extras_web"),
+            detail=t("doctor.extras_missing", names=", ".join(missing_web)),
             fix="pip install 'docsweep[web]'",
         ))
     else:
         items.append(CheckItem(
             id="extras_web",
             status="ok",
-            label="extras (web)",
-            detail="fastapi + jinja2 利用可",
+            label=t("doctor.label_extras_web"),
+            detail=t("doctor.extras_web_ok"),
         ))
     if not extras["mcp"]:
         items.append(CheckItem(
             id="extras_mcp",
             status="hint",
-            label="extras (mcp)",
-            detail="mcp パッケージ未インストール",
+            label=t("doctor.label_extras_mcp"),
+            detail=t("doctor.extras_mcp_missing"),
             fix="pip install 'docsweep[mcp]'",
         ))
     else:
         items.append(CheckItem(
             id="extras_mcp",
             status="ok",
-            label="extras (mcp)",
-            detail="mcp 利用可",
+            label=t("doctor.label_extras_mcp"),
+            detail=t("doctor.extras_mcp_ok"),
         ))
 
     # 6. MCP 登録ヒント（検査は軽く・存在だけ）
@@ -360,11 +366,8 @@ def run_doctor(
     items.append(CheckItem(
         id="mcp_hint",
         status="hint",
-        label="MCP 登録",
-        detail=(
-            "AI ツール側に docsweep MCP を登録しているか確認してください。"
-            f" 参考: python -m docsweep mcp | claude config 付近={claude_cfg}"
-        ),
+        label=t("doctor.mcp_hint_label"),
+        detail=t("doctor.mcp_hint_detail", path=claude_cfg),
         fix="python -m docsweep mcp --help",
     ))
 
@@ -372,19 +375,30 @@ def run_doctor(
     return DoctorReport(generated_at=_now_iso(), ok=ok, items=items)
 
 
+def _pad(text: str, width: int) -> str:
+    """表示幅（全角は 2 桁）で ``width`` まで右を空白で埋める。
+
+    ``str.ljust`` は文字数で数えるので、日本語の見出しや状態名だと列がずれる。
+    """
+    used = sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
+    return text + " " * max(0, width - used)
+
+
 def format_human(report: DoctorReport) -> str:
-    """人間向けの表テキスト。"""
+    """人間向けの表テキスト。見出し・状態名・項目名は表示言語で出す（id / status は JSON 側）。"""
     lines = [
         f"docsweep doctor | {_status_emoji(report.ok)} "
-        f"{'OK' if report.ok else 'NEEDS ATTENTION'} | {report.generated_at}",
+        f"{'OK' if report.ok else t('doctor.needs_attention')} | {report.generated_at}",
         "",
-        f"{'STATUS':<6}  {'CHECK':<14}  DETAIL",
+        f"{_pad(t('doctor.header_status'), 6)}  {_pad(t('doctor.header_check'), 14)}  "
+        f"{t('doctor.header_detail')}",
         "-" * 72,
     ]
     for it in report.items:
-        lines.append(f"{it.status.upper():<6}  {it.label:<14}  {it.detail}")
+        status = _pad(t(f"doctor.status_{it.status}"), 6)
+        lines.append(f"{status}  {_pad(it.label, 14)}  {it.detail}")
         if it.fix:
-            lines.append(f"{'':6}  {'fix:':<14}  {it.fix}")
+            lines.append(f"{'':6}  {_pad(t('doctor.fix_label'), 14)}  {it.fix}")
     return "\n".join(lines) + "\n"
 
 

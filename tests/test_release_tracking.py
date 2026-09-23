@@ -236,6 +236,58 @@ def test_release_close_uses_same_dry_run_candidates_and_moves_only_eligible(tmp_
     assert "released_in: v2.3.4" in moved.read_text(encoding="utf-8")
 
 
+def test_release_close_with_mirror_layout_nests_bucket_under_subfolder(tmp_path: Path) -> None:
+    """mirror と release partition の併用は <archive_root>/<サブフォルダ>/<版>/ に入る。"""
+    project = tmp_path / "project"
+    project.mkdir()
+    _git_repo(project, tag="v2.3.4")
+    (project / ".docsweep.yaml").write_text(
+        "archive_dir: docs/local/archive\n"
+        "archive_partition: release\n"
+        "archive_layout: mirror\n"
+        "release_tracking:\n  mode: enabled\n  archive_group_by: minor\n",
+        encoding="utf-8",
+    )
+    queue = project / "docs" / "local"
+    _plan(queue / "app-a" / "plan_app_a.md", target="v2.3.x")
+    _plan(queue / "plan_root.md", target="v2.3.x")
+    cfg = _config(project)
+
+    preview = close_release(cfg, "v2.3.4", dry_run=True)
+    assert len(preview.movable) == 2
+    assert not (queue / "archive").exists()
+
+    applied = close_release(cfg, "v2.3.4")
+
+    assert len(applied.moved) == 2
+    assert (queue / "archive" / "app-a" / "v2.3.x" / "plan_app_a.md").is_file()
+    assert (queue / "archive" / "v2.3.x" / "plan_root.md").is_file()
+
+
+def test_release_close_with_mirror_layout_detects_nested_collision(tmp_path: Path) -> None:
+    """衝突判定もサブフォルダ付きの移送先で行う（平置きの同名とは衝突しない）。"""
+    project = tmp_path / "project"
+    project.mkdir()
+    _git_repo(project, tag="v2.3.4")
+    (project / ".docsweep.yaml").write_text(
+        "archive_dir: docs/local/archive\n"
+        "archive_partition: release\n"
+        "archive_layout: mirror\n"
+        "release_tracking:\n  mode: enabled\n  archive_group_by: minor\n",
+        encoding="utf-8",
+    )
+    queue = project / "docs" / "local"
+    _plan(queue / "app-a" / "plan_same.md", target="v2.3.x")
+    _plan(queue / "app-b" / "plan_same.md", target="v2.3.x")
+    _plan(queue / "archive" / "app-a" / "v2.3.x" / "plan_same.md", target="v2.3.x")
+    cfg = _config(project)
+
+    preview = close_release(cfg, "v2.3.4", dry_run=True)
+
+    assert [Path(item["path"]).parent.name for item in preview.movable] == ["app-b"]
+    assert len(preview.collision) == 1
+
+
 def test_release_archive_missing_target_fails_closed(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
@@ -720,7 +772,7 @@ def test_workspace_review_shows_final_actions_and_requires_confirmation(
     assert rc == 0
     assert "適用前の棚卸し" in output
     assert "最終的に適用する内容" in output
-    assert "action: target_release=v1.2.x" in output
+    assert "変更: target_release=v1.2.x" in output
     assert not (repo / ".docsweep.yaml").exists()
     assert "target_release:" not in doc.read_text(encoding="utf-8")
 

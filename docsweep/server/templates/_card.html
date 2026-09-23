@@ -36,7 +36,7 @@
   <div class="card-meta">
     {% if card.due %}
       <span class="due-badge due-badge-static due-{{ card.due_kind }}"
-            {% if card.due_title %}title="{{ card.due_title }}"{% endif %}>📅 {{ card.due }}{% if card.due_label %}（{{ card.due_label }}）{% endif %}</span>
+            {% if card.due_title %}title="{{ card.due_title }}"{% endif %}>📅 {{ card.due }}{% if card.due_label %}{{ T.due_label_paren.format(label=card.due_label) }}{% endif %}</span>
     {% else %}
       <span class="due-badge due-badge-static due-none">{{ T.due_none }}</span>
     {% endif %}

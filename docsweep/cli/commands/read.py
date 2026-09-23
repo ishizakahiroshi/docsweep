@@ -7,11 +7,12 @@ import json
 import sys
 from pathlib import Path
 
+from ...i18n import t
 from ..parser import _build_config
 
-def _print_records_table(records, lang: str) -> None:
+def _print_records_table(records) -> None:
     if not records:
-        print("（該当ファイルなし）")
+        print(t("cli_read.no_matches"))
         return
     for r in records:
         label = r.state_label or "[?]"
@@ -35,23 +36,42 @@ def cmd_day(args: argparse.Namespace) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
     if phase == "open":
-        print(f"day open | {payload.get('generated_at')}")
-        print(f"  overdue: {payload.get('overdue_count')} | open: {payload.get('open_count')}")
+        print(t("cli_read.day_open_header", generated_at=payload.get("generated_at")))
+        print(
+            t(
+                "cli_read.day_open_counts",
+                overdue=payload.get("overdue_count"),
+                open=payload.get("open_count"),
+            )
+        )
         tp = payload.get("today_pick")
         if tp:
-            print(f"  today_pick: {tp.get('state_label')} {tp.get('title') or tp.get('rel')}")
+            print(
+                t(
+                    "cli_read.day_today_pick",
+                    label=tp.get("state_label"),
+                    title=tp.get("title") or tp.get("rel"),
+                )
+            )
             print(f"    {tp.get('path')}")
         else:
-            print("  today_pick: （なし）")
+            print(t("cli_read.day_no_today_pick"))
         yd = payload.get("yesterday_done") or []
         if yd:
-            print(f"  yesterday_done: {len(yd)} 件")
+            print(t("cli_read.day_yesterday_done", count=len(yd)))
     else:
-        print(f"day close | {payload.get('generated_at')}")
-        print(f"  touched_today: {len(payload.get('touched_today') or [])}")
-        print(f"  incomplete_due: {len(payload.get('incomplete_due') or [])}")
+        print(t("cli_read.day_close_header", generated_at=payload.get("generated_at")))
+        print(t("cli_read.day_touched_today", count=len(payload.get("touched_today") or [])))
+        print(t("cli_read.day_incomplete_due", count=len(payload.get("incomplete_due") or [])))
         for it in (payload.get("suggest_defer") or [])[:5]:
-            print(f"    defer? {it.get('state_label')} {it.get('name')} due={it.get('due')}")
+            print(
+                t(
+                    "cli_read.day_suggest_defer",
+                    label=it.get("state_label"),
+                    name=it.get("name"),
+                    due=it.get("due"),
+                )
+            )
     return 0
 
 
@@ -65,9 +85,9 @@ def cmd_intent(args: argparse.Namespace) -> int:
         print(json.dumps(route.to_dict(), ensure_ascii=False, indent=2))
     else:
         cmdline = " ".join(["docsweep", route.command, *route.args])
-        print(f"intent: {route.intent}")
+        print(t("cli_read.intent_line", intent=route.intent))
         print(f"→ {cmdline}")
-        print(f"  ({route.reason}; confidence={route.confidence:.2f})")
+        print(t("cli_read.intent_reason", reason=route.reason, confidence=route.confidence))
     return 0
 
 
@@ -101,7 +121,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps([r.to_dict() for r in records], ensure_ascii=False, indent=2))
     else:
-        _print_records_table(records, cfg.lang)
+        _print_records_table(records)
     return 0
 
 
@@ -125,10 +145,10 @@ def cmd_triage(args: argparse.Namespace) -> int:
 
     tags = getattr(args, "tags", None) or []
     if tags:
-        want = {t.strip().lower() for t in tags if t and t.strip()}
+        want = {tag.strip().lower() for tag in tags if tag and tag.strip()}
 
         def _has_tag(item: dict) -> bool:
-            item_tags = {str(t).strip().lower() for t in (item.get("tags") or []) if t}
+            item_tags = {str(tag).strip().lower() for tag in (item.get("tags") or []) if tag}
             return bool(item_tags & want)
 
         payload = {
@@ -158,7 +178,7 @@ def _print_triage_table(payload: dict, *, show: list[str]) -> None:
     """``--show`` 指定時の人間向けテーブル出力。owner / tags 列を任意で追加する。"""
     items = payload.get("items", [])
     if not items:
-        print("（該当ファイルなし）")
+        print(t("cli_read.no_matches"))
         return
     for it in items:
         label = it.get("state") or "[?]"
@@ -174,8 +194,11 @@ def _print_triage_table(payload: dict, *, show: list[str]) -> None:
         print(f"{label:<10} {it.get('age_days', 0):>4}d  {it.get('project')}/{rel}{extra_s}")
 
 
-def _render_brief_human(result, lang: str = "ja") -> str:
-    """brief の人間向け 1 画面出力。CLI と Web で共通のフォーマット感を持つ。"""
+def _render_brief_human(result) -> str:
+    """brief の人間向け 1 画面出力。CLI と Web で共通のフォーマット感を持つ。
+
+    文言は表示言語（``t()``）で引く。言語を引数で受けない（固定の既定値を持たない）。
+    """
     lines: list[str] = []
     lines.append("docsweep brief")
     lines.append("=" * 40)
@@ -185,7 +208,7 @@ def _render_brief_human(result, lang: str = "ja") -> str:
         if proj.today_pick:
             tp = proj.today_pick
             lines.append("")
-            lines.append("  >>> 今日の 1 個")
+            lines.append(t("cli_read.brief_today_pick"))
             lines.append(f"    {tp.get('state_label') or '[?]'} {tp.get('rel')}  ({proj.project})")
             if tp.get("title"):
                 lines.append(f"    {tp['title']}")
@@ -193,33 +216,36 @@ def _render_brief_human(result, lang: str = "ja") -> str:
                 lines.append(f"    {tp['summary']}")
             score = (tp.get("score") or {}).get("total")
             if score is not None:
-                lines.append(f"    score: {score}")
+                lines.append(t("cli_read.score", score=score))
         else:
-            lines.append("  (今日着手すべきものは無し - 全件終端済 or pending のみ)")
+            lines.append(t("cli_read.brief_no_pick"))
 
         if proj.co_running:
             lines.append("")
-            lines.append("  併走:")
+            lines.append(t("cli_read.brief_co_running"))
             for d in proj.co_running:
                 lines.append(f"    {d.get('state_label') or '[?]'} {d.get('rel')}  ({d.get('age_days')}d)")
 
         if proj.watchouts:
             lines.append("")
-            lines.append("  要注意 (陳腐化/期限切れ):")
+            lines.append(t("cli_read.brief_watchouts"))
             for d in proj.watchouts:
                 flags = ",".join(d.get("flags") or [])
                 lines.append(f"    {d.get('state_label') or '[?]'} {d.get('rel')}  [{flags}]")
 
         if proj.yesterday_done:
             lines.append("")
-            lines.append("  昨日終わったこと:")
+            lines.append(t("cli_read.brief_yesterday_done"))
             for d in proj.yesterday_done:
                 lines.append(f"    {d.get('state_label') or '[?]'} {d.get('rel')}")
     return "\n".join(lines)
 
 
-def _render_activity_human(result, lang: str = "ja") -> str:
-    """activity の人間向け 1 画面出力。日付見出し＋軸ラベル（触った/期限）を明示する。"""
+def _render_activity_human(result) -> str:
+    """activity の人間向け 1 画面出力。日付見出し＋軸ラベル（触った/期限）を明示する。
+
+    文言は表示言語（``t()``）で引く。言語を引数で受けない（固定の既定値を持たない）。
+    """
     lines: list[str] = []
     lines.append("docsweep activity")
     lines.append("=" * 40)
@@ -229,20 +255,20 @@ def _render_activity_human(result, lang: str = "ja") -> str:
         if not bucket.touched and not bucket.due:
             continue
         hit = True
-        marker = "  (今日)" if iso == result.today else ""
+        marker = t("cli_read.activity_today_marker") if iso == result.today else ""
         lines.append("")
         lines.append(f"# {iso}{marker}")
         if bucket.touched:
-            lines.append("  触った:")
+            lines.append(t("cli_read.activity_touched"))
             for d in bucket.touched:
                 lines.append(f"    {d.get('state_label') or '[?]'} {d.get('project')}/{d.get('rel')}")
         if bucket.due:
-            lines.append("  期限:")
+            lines.append(t("cli_read.activity_due"))
             for d in bucket.due:
                 lines.append(f"    {d.get('state_label') or '[?]'} {d.get('project')}/{d.get('rel')}")
     if not hit:
         lines.append("")
-        lines.append("（該当ファイルなし）")
+        lines.append(t("cli_read.no_matches"))
     return "\n".join(lines)
 
 
@@ -271,7 +297,7 @@ def cmd_activity(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
-    print(_render_activity_human(result, lang=cfg.lang))
+    print(_render_activity_human(result))
     return 0
 
 
@@ -310,7 +336,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
-    print(_render_brief_human(result, lang=cfg.lang))
+    print(_render_brief_human(result))
 
     # 「続きやる?」プロンプト or --continue で即 context をクリップボードへ
     today_pick_path: str | None = None
@@ -322,7 +348,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
     elif today_pick_path and sys.stdin.isatty() and sys.stdout.isatty():
         print("")
         try:
-            ans = input("続きやる? (Y/n): ").strip().lower()
+            ans = input(t("cli_read.brief_continue_prompt")).strip().lower()
         except (EOFError, KeyboardInterrupt):
             ans = "n"
         if ans in ("", "y", "yes"):
@@ -339,13 +365,13 @@ def _copy_context_to_clipboard(file_path: str, cfg) -> None:
     try:
         bundle = collect_context(file_path, cfg)
     except (FileNotFoundError, ValueError, PermissionError) as e:
-        print(f"context 生成失敗: {e}", file=sys.stderr)
+        print(t("cli_read.context_failed", error=e), file=sys.stderr)
         return
     text = render_context(bundle, fmt="markdown")
     if to_clipboard(text):
-        print(f"context をクリップボードへコピー: {Path(file_path).name}")
+        print(t("cli_read.context_copied", name=Path(file_path).name))
     else:
-        print("クリップボードコピー失敗（OS 依存）。代わりに stdout に出力します:\n")
+        print(t("cli_read.clipboard_failed_fallback"))
         print(text)
 
 
@@ -359,7 +385,7 @@ def cmd_cross(args: argparse.Namespace) -> int:
     if getattr(args, "explain", None):
         explained = explain_score(cfg, args.explain)
         if explained is None:
-            print(f"対象が見つかりません: {args.explain}", file=sys.stderr)
+            print(t("cli_read.target_not_found", target=args.explain), file=sys.stderr)
             return 2
         print(json.dumps(explained, ensure_ascii=False, indent=2))
         return 0
@@ -375,34 +401,34 @@ def cmd_cross(args: argparse.Namespace) -> int:
     # 人間向け
     print("docsweep cross")
     print("=" * 40)
-    print(f"projects: {result.total_projects}  open: {result.total_open}")
+    print(t("cli_read.cross_totals", projects=result.total_projects, open=result.total_open))
     if result.top_pick:
         tp = result.top_pick
         print("")
-        print(f">>> 今日の 1 個 ({tp['project']}/{tp['rel']})")
+        print(t("cli_read.cross_today_pick", project=tp["project"], rel=tp["rel"]))
         print(f"    {tp.get('state_label') or '[?]'} {tp.get('title') or tp['rel']}")
         if tp.get("summary"):
             print(f"    {tp['summary']}")
-        print(f"    score: {tp.get('score')}")
+        print(t("cli_read.score", score=tp.get("score")))
     else:
-        print("(対象 open ファイル無し)")
+        print(t("cli_read.cross_no_open"))
 
     if result.runners_up:
         print("")
-        print("次点:")
+        print(t("cli_read.cross_runners_up"))
         for d in result.runners_up:
             print(f"  {d.get('state_label') or '[?]'} {d['project']}/{d['rel']}  ({d['age_days']}d, score={d.get('score')})")
 
     if result.frozen_candidates:
         print("")
-        print(f"凍結予備軍 ({len(result.frozen_candidates)} 件・archive 候補):")
+        print(t("cli_read.cross_frozen", count=len(result.frozen_candidates)))
         for d in result.frozen_candidates:
             print(f"  {d.get('state_label') or '[?]'} {d['project']}/{d['rel']}  ({d['age_days']}d)")
 
     print("")
-    print("プロジェクト別:")
+    print(t("cli_read.cross_by_project"))
     for p in result.project_summaries:
-        top_label = p.today_one["rel"] if p.today_one else "(open無し)"
+        top_label = p.today_one["rel"] if p.today_one else t("cli_read.cross_no_open_short")
         print(f"  {p.project}: open={p.open_count} stale={p.stale_count}  top={top_label}")
     return 0
 
@@ -420,7 +446,7 @@ def cmd_linkcheck(args: argparse.Namespace) -> int:
         print(f"{r.plan_name}: {r.progress_hint}")
         for f in r.declared_files:
             mark = "OK" if f.exists else "NG"
-            mention = " (commit言及)" if f.mentioned_in_commit else ""
+            mention = t("cli_read.linkcheck_commit_mention") if f.mentioned_in_commit else ""
             print(f"  {mark} {f.path}  touches={f.touches_since_plan}{mention}")
     return 0
 
@@ -459,10 +485,18 @@ def cmd_pending(args: argparse.Namespace) -> int:
         print(json.dumps(idx.pending, ensure_ascii=False, indent=2))
     else:
         if not idx.pending:
-            print("保留（pending）はありません。")
+            print(t("cli_read.pending_none"))
         for d in idx.pending:
             summary = f" - {d['summary']}" if d.get("summary") else ""
-            print(f"[保留] {d['age_days']:>4}d  {d['project']}/{Path(d['path']).name}{summary}")
+            print(
+                t(
+                    "cli_read.pending_row",
+                    age=d["age_days"],
+                    project=d["project"],
+                    name=Path(d["path"]).name,
+                    summary=summary,
+                )
+            )
     return 0
 
 
@@ -493,22 +527,24 @@ def cmd_project(args: argparse.Namespace) -> int:
                              ensure_ascii=False, indent=2))
         else:
             for r in rows:
-                mark = "ON " if r["enabled"] else "OFF"
-                print(f"[{mark}] {r['name']:<24} open~{r['open_approx']:<4} {r['root']}")
+                row_key = (
+                    "cli_read.project_row_enabled" if r["enabled"] else "cli_read.project_row_disabled"
+                )
+                print(t(row_key, name=r["name"], open=r["open_approx"], root=r["root"]))
         return 0
     if sub == "enable":
         s = enable_project(args.root)
         payload = {"enabled": True, "root": args.root, "excluded": sorted(s)}
         print(json.dumps(payload, ensure_ascii=False, indent=2) if getattr(args, "json", False)
-              else f"enabled: {args.root}")
+              else t("cli_read.project_enabled", root=args.root))
         return 0
     if sub == "disable":
         s = disable_project(args.root)
         payload = {"enabled": False, "root": args.root, "excluded": sorted(s)}
         print(json.dumps(payload, ensure_ascii=False, indent=2) if getattr(args, "json", False)
-              else f"disabled: {args.root}")
+              else t("cli_read.project_disabled", root=args.root))
         return 0
-    print("usage: docsweep project list|enable|disable", file=sys.stderr)
+    print(t("cli_read.project_usage"), file=sys.stderr)
     return 2
 
 
@@ -521,7 +557,7 @@ def cmd_history(args: argparse.Namespace) -> int:
         print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
         return 0
     if not res.entries:
-        print("履歴なし")
+        print(t("cli_read.history_none"))
         return 0
     for e in res.entries:
         print(f"{e.ts}  {e.op:<8}  {e.project}  {e.src} -> {e.dst}")
@@ -551,7 +587,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         print(json.dumps(items, ensure_ascii=False, indent=2))
     else:
         if not items:
-            print("注入済みプロジェクトはありません。")
+            print(t("cli_read.list_none"))
         for it in items:
             scope = it.get("scope", "project")
             tag = f"global:{it.get('agent')}" if scope == "global" else (it.get("preset") or "-")
@@ -574,7 +610,7 @@ def cmd_show(args: argparse.Namespace) -> int:
         name = Path(args.file).name
         target = next((r for r in records if Path(r.path).name == name), None)
     if target is None:
-        print(f"対象が見つかりません: {args.file}", file=sys.stderr)
+        print(t("cli_read.target_not_found", target=args.file), file=sys.stderr)
         return 2
     forwards = forward_records(target, records)
     backs = backref_records(target, records)
@@ -586,12 +622,12 @@ def cmd_show(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
-    print(f"対象: {target.path}")
-    print(f"  state: {target.state_label or '-'}  type: {target.type or '-'}")
-    print(f"  related (forward): {len(forwards)} 件")
+    print(t("cli_read.show_target", path=target.path))
+    print(t("cli_read.show_state_type", state=target.state_label or "-", type=target.type or "-"))
+    print(t("cli_read.show_forward", count=len(forwards)))
     for r in forwards:
         print(f"    -> {r.state_label or '[?]'} {r.type or '?':<8} {r.path}")
-    print(f"  逆参照 (backref): {len(backs)} 件")
+    print(t("cli_read.show_backref", count=len(backs)))
     for r in backs:
         print(f"    <- {r.state_label or '[?]'} {r.type or '?':<8} {r.path}")
     return 0
@@ -607,9 +643,9 @@ def cmd_stale(args: argparse.Namespace) -> int:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
     if not result.items:
-        print("stale: 対象なし")
+        print(t("cli_read.stale_none"))
         return 0
-    print(f"stale: {len(result.items)} 件")
+    print(t("cli_read.stale_count", count=len(result.items)))
     for it in result.items:
         last = f" last_reviewed={it.last_reviewed}" if it.last_reviewed else ""
         print(
@@ -638,10 +674,10 @@ def cmd_context(args: argparse.Namespace) -> int:
     if getattr(args, "clipboard", False):
         ok = to_clipboard(text)
         if not ok:
-            print("クリップボードに書き出せませんでした（フォールバックで stdout 出力します）", file=sys.stderr)
+            print(t("cli_read.clipboard_write_failed"), file=sys.stderr)
             print(text)
         else:
-            print(f"クリップボードへ書き出しました ({len(text)} chars)")
+            print(t("cli_read.clipboard_written", chars=len(text)))
         return 0
     print(text)
     return 0
@@ -679,9 +715,9 @@ def cmd_find(args: argparse.Namespace) -> int:
         print(json.dumps([r.to_dict() for r in records], ensure_ascii=False, indent=2))
         return 0
     if not records:
-        print("find: 該当なし")
+        print(t("cli_read.find_none"))
         return 0
-    _print_records_table(records, cfg.lang)
+    _print_records_table(records)
     return 0
 
 
@@ -710,9 +746,9 @@ def cmd_export(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
-    print(f"OKF export: {result.file_count} files -> {result.out_path}")
+    print(t("cli_read.export_done", count=result.file_count, path=result.out_path))
     if result.include_archive:
-        print("  (archive/ 配下も含めました)")
+        print(t("cli_read.export_included_archive"))
     return 0
 
 
@@ -736,11 +772,18 @@ def cmd_okf_check(args: argparse.Namespace) -> int:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     else:
         status = "OK" if result.ok else "NG"
-        print(f"OKF check: {status} / {result.files_checked} files / profile {profile.spec_version}")
+        print(
+            t(
+                "cli_read.okf_check_summary",
+                status=status,
+                count=result.files_checked,
+                version=profile.spec_version,
+            )
+        )
         for issue in result.errors:
-            print(f"  [error] {issue.path}: {issue.message}")
+            print(t("cli_read.okf_check_error", path=issue.path, message=issue.message))
         for issue in result.warnings:
-            print(f"  [warning] {issue.path}: {issue.message}")
+            print(t("cli_read.okf_check_warning", path=issue.path, message=issue.message))
     return 0 if result.ok else 1
 
 
@@ -783,14 +826,29 @@ def cmd_closeout_check(args: argparse.Namespace) -> int:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     else:
         print(f"closeout-check: {result.verdict} ({result.target_state})")
-        print(f"parent: {result.parent.get('relative_path', result.parent.get('path'))}")
-        print(f"children: {len(result.children)}")
+        print(
+            t(
+                "cli_read.closeout_parent",
+                path=result.parent.get("relative_path", result.parent.get("path")),
+            )
+        )
+        print(t("cli_read.closeout_children", count=len(result.children)))
         for blocker in result.blockers:
-            print(f"  [blocker] {blocker.get('message', blocker.get('code'))}")
+            print(
+                t(
+                    "cli_read.closeout_blocker",
+                    message=blocker.get("message", blocker.get("code")),
+                )
+            )
         for check in result.manual_checks:
-            print(f"  [manual] {check.get('description', check.get('section'))}")
+            print(
+                t(
+                    "cli_read.closeout_manual",
+                    message=check.get("description", check.get("section")),
+                )
+            )
         if result.suggested_order:
-            print("suggested order:")
+            print(t("cli_read.closeout_suggested_order"))
             for path in result.suggested_order:
                 print(f"  {path}")
     return {

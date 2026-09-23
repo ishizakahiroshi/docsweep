@@ -14,6 +14,8 @@ from pathlib import Path
 
 from fastapi import HTTPException, Request
 
+from ..i18n import t
+
 
 TOKEN_COOKIE = "docsweep_token"
 TOKEN_HEADER = "x-docsweep-token"
@@ -24,12 +26,13 @@ def check_token(
     token_q: str | None,
     *,
     status_code: int = 401,
-    detail: str = "token required",
+    detail: str | None = None,
 ) -> None:
     """Cookie / header / query のいずれかに正しい token があれば認証する。
 
     hybrid 移行中は不正な上位候補があっても下位候補を試す。たとえば古い Cookie が
-    残っていても、正しい初回 URL token で再認証できる。
+    残っていても、正しい初回 URL token で再認証できる。``detail`` を省くと
+    表示言語の「token が必要です」を返す。
     """
     expected = request.app.state.docsweep.token
     candidates = (
@@ -42,7 +45,7 @@ def check_token(
         for candidate in candidates
     ):
         return
-    raise HTTPException(status_code=status_code, detail=detail)
+    raise HTTPException(status_code=status_code, detail=detail or t("web.token_required"))
 
 
 def _is_under(child: Path, parent: Path) -> bool:

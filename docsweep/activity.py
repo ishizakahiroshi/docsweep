@@ -14,6 +14,7 @@ from pathlib import Path
 from .brief.service import _detect_cwd_project, _resolve_target_projects
 from .config import Config
 from .engine import scan_records
+from .i18n import t
 from .models import FileRecord
 from .record_view import masked_title
 from .services.due import DueParseError, resolve_relative_offset
@@ -25,17 +26,17 @@ class ActivityDateError(ValueError):
 
 def _resolve_date_token(token: str, *, today: date) -> date:
     """``--date`` の 1 トークンを解決する（today/yesterday/tomorrow/YYYY-MM-DD）。"""
-    t = token.strip().lower()
-    if t == "today":
+    word = token.strip().lower()
+    if word == "today":
         return today
-    if t == "yesterday":
+    if word == "yesterday":
         return today - timedelta(days=1)
-    if t == "tomorrow":
+    if word == "tomorrow":
         return today + timedelta(days=1)
     try:
         return date.fromisoformat(token.strip())
     except ValueError as e:
-        raise ActivityDateError(f"--date を解釈できません: {token!r}") from e
+        raise ActivityDateError(t("activity.invalid_date", token=token)) from e
 
 
 def resolve_target_dates(

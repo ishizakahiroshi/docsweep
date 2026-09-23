@@ -17,16 +17,19 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .config import Config
+from .doc_vocab import heading_variants
 from .engine import scan_records
 from .models import FileRecord
 
-# plan の「変更予定ファイル」セクションを切り出すマーカー。
+# plan の「変更予定ファイル」セクションを切り出すマーカー。見出しは日本語・英語
+# （``Files to change``）どちらの表記も受け付ける（語彙は ``doc_vocab``）。
+_SECTION_NAMES = "|".join(re.escape(name) for name in heading_variants("files_to_change"))
 _SECTION_RE = re.compile(
-    r"^##\s*変更予定ファイル\s*$.*?(?=^##\s|\Z)",
+    rf"^##\s*(?:{_SECTION_NAMES})\s*$.*?(?=^##\s|\Z)",
     re.MULTILINE | re.DOTALL,
 )
 _DETAIL_SECTION_RE = re.compile(
-    r"^####\s*変更予定ファイル\s*$.*?(?=^#{1,4}\s|\Z)",
+    rf"^####\s*(?:{_SECTION_NAMES})\s*$.*?(?=^#{{1,4}}\s|\Z)",
     re.MULTILINE | re.DOTALL,
 )
 

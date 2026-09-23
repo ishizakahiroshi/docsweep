@@ -23,8 +23,11 @@ from .config import (
     TemplateSection,
     resolve_work_dir,
 )
+from .doc_vocab import column, heading, placeholder
+from .i18n import current_lang, t
 from .okf import bundled_okf_profile
 from .release import validate_release_label
+from .states import StateModel
 from .work_queue import ensure_write_allowed
 
 
@@ -132,11 +135,19 @@ def _append_template_sections(
     for section in sections:
         if section.heading in reserved:
             raise ValueError(
-                f"template_sections.{doc_type} の heading '{section.heading}' は既定見出しと重複しています"
+                t(
+                    "templates_gen.section_heading_reserved",
+                    doc_type=doc_type,
+                    heading=section.heading,
+                )
             )
         if section.heading in seen:
             raise ValueError(
-                f"template_sections.{doc_type} の heading '{section.heading}' が重複しています"
+                t(
+                    "templates_gen.section_heading_duplicate",
+                    doc_type=doc_type,
+                    heading=section.heading,
+                )
             )
         seen.add(section.heading)
         rendered.append(f"## {section.heading}\n\n{section.body.strip()}")
@@ -160,7 +171,7 @@ def okf_frontmatter(
     """
     state = _INITIAL_STATE.get(doc_type)
     if state is None:
-        raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
+        raise ValueError(t("templates_gen.unknown_type", doc_type=doc_type))
     base = today or date.today()
     resolved = _resolve_initial_due(doc_type, due=due, offset_days=offset_days, today=base)
     return _okf_frontmatter(
@@ -190,6 +201,39 @@ def _resolve_owner(owner: str | None, config: Config | None = None) -> str:
         return ""
 
 
+def _h1(state_key: str, title: str, lang: str) -> str:
+    """H1 行。ラベルは状態モデルの辞書から文書の言語で引く（``[計画]`` / ``[Planned]``）。"""
+    state = StateModel().by_key(state_key)
+    label = state.label(lang) if state else state_key
+    return f"# [{label}] {title}\n\n"
+
+
+def _context_table(lang: str) -> str:
+    """``## context配分`` の節（見出しと 1 行目の C1）。"""
+    header = " | ".join(
+        ["C"] + [column(key, lang) for key in ("status", "description", "notes")]
+    )
+    return (
+        f"## {heading('context', lang)}\n\n"
+        f"| {header} |\n|---|---|---|---|\n| C1 | planned | <TODO> | — |\n\n"
+    )
+
+
+def _sections(keys: tuple[str, ...], lang: str, *, level: int = 2, last: str = "<TODO>") -> str:
+    """見出しと ``<TODO>`` だけの節を並べる。最後の節の本文は ``last``。"""
+    marks = "#" * level
+    parts = [f"{marks} {heading(key, lang)}\n\n<TODO>" for key in keys[:-1]]
+    parts.append(f"{marks} {heading(keys[-1], lang)}\n\n{last}")
+    return "\n\n".join(parts) + "\n"
+
+
+# 委譲 plan の C ごとの節（配布物の pre-commit hook が 8 見出しを検査する）
+_DELEGATE_SECTIONS = (
+    "goal", "current_impl", "work", "files_to_change", "keep", "out_of_scope",
+    "how_to_verify", "completion",
+)
+
+
 def _plan_body(
     title: str,
     *,
@@ -198,31 +242,34 @@ def _plan_body(
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
     owner: str = "",
     target_release: str | None = None,
+    lang: str,
 ) -> str:
     delegation = "external" if delegate else None
     detail = ""
     if delegate:
         detail = (
-            "## C 詳細\n\n"
-            "### C1 <TODO: 短い目的>\n\n"
-            "#### 目的\n\n<TODO>\n\n"
-            "#### 調査で確認した現在の実装\n\n<TODO>\n\n"
-            "#### 作業内容\n\n<TODO>\n\n"
-            "#### 変更予定ファイル\n\n<TODO>\n\n"
-            "#### 維持する仕様\n\n<TODO>\n\n"
-            "#### スコープ外\n\n<TODO>\n\n"
-            "#### 検証方法\n\n<TODO>\n\n"
-            "#### 完了条件\n\n<TODO>\n"
+            f"## {heading('c_details', lang)}\n\n"
+            f"### C1 {placeholder('c_goal', lang)}\n\n"
+            + _sections(_DELEGATE_SECTIONS, lang, level=4)
         )
+    # closeout-check は plan に「完了条件」と「検証」の節を必須にするので、最初から置く
+    # （無いと、作った plan が人が書き足すまで closeout-check で止まる）。設定の
+    # template_sections に同じ見出しがあれば、そちらを使い二重にしない。
+    configured = {section.heading for section in (template_sections or {}).get("plan", ())}
+    closing = "".join(
+        f"\n## {heading(key, lang)}\n\n{placeholder(f'plan_{key}', lang)}\n"
+        for key in ("completion", "verification")
+        if heading(key, lang) not in configured
+    )
     body = (
         _okf_frontmatter(
             doc_type="plan", state="planned", due=due, delegation=delegation,
             owner=owner, target_release=target_release,
         )
-        + f"# [計画] {title}\n\n"
-        "## context配分\n\n"
-        "| C | 種別 | 内容 | 備考/注意点 |\n|---|---|---|---|\n| C1 | planned | <TODO> | — |\n\n"
-        "## 概要\n\n<TODO: 何をしようとしているか>\n"
+        + _h1("planned", title, lang)
+        + _context_table(lang)
+        + f"## {heading('summary', lang)}\n\n{placeholder('plan_summary', lang)}\n"
+        + closing
         + ("\n" + detail if detail else "")
     )
     return _append_template_sections(
@@ -238,6 +285,7 @@ def _bugfix_body(
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
     owner: str = "",
     target_release: str | None = None,
+    lang: str,
 ) -> str:
     # bugfix は新規時に `due:` を入れない（[様子見] へ移した時に services/status.py が付ける）。
     # 引数 due は受け取るが、本ビルダーでは無視する（呼び出し側の一貫性のため）。
@@ -248,15 +296,15 @@ def _bugfix_body(
             target_release=target_release,
         )
         # 2026-06-23 改修: [対応中] を [実行中] に統合（active 廃止）。
-        + f"# [実行中] {title}\n\n"
+        + _h1("in-progress", title, lang)
         # 2026-08-27 改修: bugfix にも context配分 表を持たせる（列順は plan と同じ）。
         # 事後記録でも「切り分け → 修正 → 検証」を C で分けたい場面があり、表が無いと
         # provenance の C 単位記録（start --context C1）が使えないため。
         # ただし H1 ラベルは表から自動導出しない（bugfix のラベルは手で付ける）。
-        "## context配分\n\n"
-        "| C | 種別 | 内容 | 備考/注意点 |\n|---|---|---|---|\n| C1 | planned | <TODO> | — |\n\n"
-        "## 症状\n\n<TODO>\n\n## 根本原因\n\n<TODO>\n\n## 修正内容\n\n<TODO>\n\n"
-        "## 変更ファイル\n\n<TODO>\n\n## 検証\n\n<TODO>\n\n## 備忘\n\n<TODO>\n"
+        + _context_table(lang)
+        + _sections(
+            ("symptoms", "root_cause", "fix", "changed_files", "verification", "notes"), lang
+        )
     )
     return _append_template_sections(
         body, doc_type="bugfix", template_sections=template_sections
@@ -271,6 +319,7 @@ def _pending_body(
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
     owner: str = "",
     target_release: str | None = None,
+    lang: str,
 ) -> str:
     _ = delegate
     body = (
@@ -278,8 +327,9 @@ def _pending_body(
             doc_type="pending", state="pending", due=due, owner=owner,
             target_release=target_release,
         )
-        + f"# [保留] {title}\n\n"
-        "## 概要\n\n<TODO: 何を止めたか>\n\n## 保留理由\n\n<TODO>\n\n## 着手条件\n\n- <TODO>\n"
+        + _h1("pending", title, lang)
+        + f"## {heading('summary', lang)}\n\n{placeholder('pending_summary', lang)}\n\n"
+        + _sections(("pending_reason", "resume_when"), lang, last="- <TODO>")
     )
     return _append_template_sections(
         body, doc_type="pending", template_sections=template_sections
@@ -376,7 +426,7 @@ def new_doc(
             ``""`` で明示的に空。
     """
     if doc_type not in _BUILDERS:
-        raise ValueError(f"未知の種別 '{doc_type}'（plan|bugfix|pending）")
+        raise ValueError(t("templates_gen.unknown_type", doc_type=doc_type))
     out_dir = _placement_dir(project_dir, config=config, work_dir=work_dir)
     resolved_due = _resolve_initial_due(doc_type, due=due, offset_days=offset_days)
     resolved_target = _resolve_target_release(target_release, config=config)
@@ -387,6 +437,8 @@ def new_doc(
         template_sections=config.template_sections if config is not None else None,
         owner=_resolve_owner(owner, config),
         target_release=resolved_target,
+        # 文書の言語: 設定の lang（project → global）、無ければ表示言語
+        lang=config.document_lang() if config is not None else current_lang(),
     )
     if config is not None:
         ensure_write_allowed(
@@ -472,7 +524,7 @@ def _child_topic(topic: str, index: int, short: str | None) -> str:
     """子 plan の topic を親子命名規約 ``<親topic>_c<N>[_<short>]`` で組む。
 
     区切りは **アンダースコア**。``closeout.py`` の子判定フォールバックが
-    ``^<親stem>_c\d+(?:_|$)`` を見ており、ハイフンだと生成器の出力が同じ
+    ``^<親stem>_c\\d+(?:_|$)`` を見ており、ハイフンだと生成器の出力が同じ
     リポジトリ内の判定と一致しない（``docsweep_parent`` がある間は表面化しないが、
     明示の親参照を失った md で親子が切れる）。
     """
@@ -502,10 +554,12 @@ def new_split_plans(
     ``plan_<親topic>_c<N>_<short>.md`` になり、ファイル名だけでどの子が何を担当するかが読める。
     """
     if n < 1 or n > 20:
-        raise ValueError("--split は 1〜20")
+        raise ValueError(t("templates_gen.split_out_of_range"))
     titles = list(child_titles or [])
     if titles and len(titles) != n:
-        raise ValueError(f"--titles は --split と同じ件数で指定してください（{n} 件に対し {len(titles)} 件）")
+        raise ValueError(
+            t("templates_gen.titles_count_mismatch", expected=n, actual=len(titles))
+        )
     parent_title = title or topic
     created: list[NewDoc] = []
     try:

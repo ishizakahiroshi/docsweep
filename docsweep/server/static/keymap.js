@@ -54,7 +54,7 @@
       body.replaceChildren();
       const failed = document.createElement("p");
       failed.className = "settings-note";
-      failed.textContent = "failed: " + String(res.status);
+      failed.textContent = DS_T("suggestions_failed", String(res.status));
       body.appendChild(failed);
       return;
     }
@@ -62,7 +62,7 @@
     if (!items.length) {
       body.replaceChildren();
       const emptyTitle = document.createElement("h3");
-      emptyTitle.textContent = "提案トレイ";
+      emptyTitle.textContent = DS_T("suggestions_title");
       const empty = document.createElement("p");
       empty.className = "settings-note";
       empty.textContent = DS_T("suggestions_empty");
@@ -71,7 +71,7 @@
     }
     body.replaceChildren();
     const title = document.createElement("h3");
-    title.textContent = "提案トレイ";
+    title.textContent = DS_T("suggestions_title");
     const list = document.createElement("ul");
     list.className = "suggestions-list";
     items.forEach(function (s, i) {
@@ -92,7 +92,7 @@
       summary.appendChild(code);
       const reason = document.createElement("div");
       reason.className = "settings-note";
-      reason.textContent = String(s.reason || "") + " (c=" + String(s.confidence || 0) + ")";
+      reason.textContent = DS_T("suggestion_reason", String(s.reason || ""), String(s.confidence || 0));
       const actions = document.createElement("div");
       actions.className = "tp-actions";
       const accept = document.createElement("button");
@@ -171,7 +171,7 @@
       showToast(DS_T("inject_failed", (json && json.detail) || res.status), { undoable: false });
       return;
     }
-    showToast(DS_T("injected", json && json.yaml ? `（${basename(json.yaml)}）` : ""), { undoable: false, duration: 6000 });
+    showToast(DS_T("injected", json && json.yaml ? DS_T("paren", basename(json.yaml)) : ""), { undoable: false, duration: 6000 });
     refreshSettings();
   }
   async function settingsEject(opts) {
@@ -207,7 +207,7 @@
         resolve(dlg.returnValue === "ok" ? input.value : null);
       };
       dlg.addEventListener("close", onClose);
-      try { dlg.showModal(); } catch (e) { resolve(window.prompt("YYYY-MM-DD", input.value)); }
+      try { dlg.showModal(); } catch (e) { resolve(window.prompt(DS_T("date_prompt"), input.value)); }
     });
   }
 
@@ -379,11 +379,11 @@
   (function showTip() {
     try {
       const tips = [
-        "u キーで Undo（archive 直後）",
-        "docsweep intent \"昨日何やった\" でコマンド候補",
-        "設定でプロジェクトを OFF にできる",
-        "find --q で本文検索",
-        "day open / day close で 1 日を儀式化",
+        DS_T("tip_undo"),
+        DS_T("tip_intent"),
+        DS_T("tip_projects_off"),
+        DS_T("tip_find"),
+        DS_T("tip_day"),
       ];
       const week = Math.floor(Date.now() / (7 * 864e5));
       const tip = tips[week % tips.length];
@@ -392,8 +392,8 @@
         const span = document.createElement("span");
         span.id = "daily-tip";
         span.className = "health-chip";
-        span.title = "今日の tips";
-        span.textContent = "tip: " + tip;
+        span.title = DS_T("tips_title");
+        span.textContent = DS_T("tip_label", tip);
         bar.appendChild(span);
       }
     } catch (err) { /* ignore */ }
@@ -589,7 +589,7 @@
     Object.keys(SECTION_LABELS).forEach((k) => {
       if (counts[k]) parts.push(`${SECTION_LABELS[k]} ${counts[k]}`);
     });
-    return parts.length > 0 ? `（${parts.join(" / ")}）` : "";
+    return parts.length > 0 ? DS_T("paren", parts.join(" / ")) : "";
   }
 
   function getProjectBreakdown() {
@@ -1278,7 +1278,7 @@
       expected_mtime: mtime,
     });
     if (!ok) {
-      const msg = (json && json.detail) ? json.detail : ("status " + status);
+      const msg = (json && json.detail) ? json.detail : DS_T("http_status", status);
       await confirmDialog(DS_T("status_change_failed", msg));
       return;
     }
@@ -1298,7 +1298,7 @@
       expected_mtime: mtime,
     });
     if (!ok) {
-      const msg = (json && json.detail) ? json.detail : ("status " + status);
+      const msg = (json && json.detail) ? json.detail : DS_T("http_status", status);
       await confirmDialog(DS_T("due_change_failed", msg));
       return;
     }

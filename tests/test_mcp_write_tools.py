@@ -23,6 +23,7 @@ import pytest
 pytest.importorskip("mcp.server.fastmcp")
 
 from docsweep.config import load_config  # noqa: E402
+from docsweep.i18n import t as tr  # noqa: E402
 from docsweep.mcp_server import build_server  # noqa: E402
 
 
@@ -373,7 +374,8 @@ def test_archive_done_rejects_watching_when_specified(tmp_path: Path):
     server = build_server(_cfg(root))
     res = _tools(server)["archive_done"](paths=[str(f)])
     assert res["moved"] == []
-    assert any("not archivable" in s["reason"] for s in res["skipped"])
+    reason = tr("services_archive.skip_not_archivable", label="[様子見]")
+    assert any(s["reason"] == reason for s in res["skipped"])
 
 
 def test_archive_done_empty_when_no_paths_and_no_auto(tmp_path: Path):

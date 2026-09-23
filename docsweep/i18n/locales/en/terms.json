@@ -1,0 +1,265 @@
+{
+  "doc.heading.context": "Context allocation",
+  "doc.heading.summary": "Summary",
+  "doc.heading.symptoms": "Symptoms",
+  "doc.heading.root_cause": "Root cause",
+  "doc.heading.fix": "Fix",
+  "doc.heading.changed_files": "Changed files",
+  "doc.heading.verification": "Verification",
+  "doc.heading.notes": "Notes",
+  "doc.heading.pending_reason": "Why it is on hold",
+  "doc.heading.resume_when": "When to resume",
+  "doc.heading.c_details": "C details",
+  "doc.heading.goal": "Goal",
+  "doc.heading.current_impl": "Current implementation (from investigation)",
+  "doc.heading.work": "Work",
+  "doc.heading.files_to_change": "Files to change",
+  "doc.heading.keep": "Behavior to keep",
+  "doc.heading.out_of_scope": "Out of scope",
+  "doc.heading.how_to_verify": "How to verify",
+  "doc.heading.completion": "Completion criteria",
+  "doc.column.status": "Status",
+  "doc.column.description": "Description",
+  "doc.column.notes": "Notes",
+  "doc.column.ai_execution": "AI execution",
+  "doc.column.execution_model": "Execution model",
+  "doc.placeholder.plan_summary": "<TODO: what you are trying to do>",
+  "doc.placeholder.plan_completion": "<TODO: what must be true for this to be done>",
+  "doc.placeholder.plan_verification": "<TODO: how it was checked (the commands run and their results)>",
+  "doc.placeholder.pending_summary": "<TODO: what was put on hold>",
+  "doc.placeholder.c_goal": "<TODO: short goal>",
+  "state.label.planned": "Planned",
+  "state.label.in-progress": "In Progress",
+  "state.label.watching": "Watching",
+  "state.label.done": "Done",
+  "state.label.discarded": "Discarded",
+  "state.label.pending": "Pending",
+  "state.alias.in-progress": [
+    "Active"
+  ],
+  "doc.heading.acceptance": "Acceptance criteria",
+  "intent.keywords.activity": [
+    "yesterday",
+    "what did i do",
+    "look back",
+    "recap"
+  ],
+  "intent.keywords.brief": [
+    "today",
+    "brief",
+    "morning",
+    "one thing"
+  ],
+  "intent.keywords.cross": [
+    "cross",
+    "across projects",
+    "rotting",
+    "overall health"
+  ],
+  "intent.keywords.doctor": [
+    "doctor",
+    "diagnose",
+    "diagnosis",
+    "broken",
+    "health check",
+    "not working"
+  ],
+  "intent.keywords.init": [
+    "init",
+    "setup",
+    "set up",
+    "install"
+  ],
+  "intent.keywords.undo": [
+    "undo",
+    "revert",
+    "roll back",
+    "rollback"
+  ],
+  "intent.keywords.day_open": [
+    "day open",
+    "open the day",
+    "start the day"
+  ],
+  "intent.keywords.day_close": [
+    "day close",
+    "close the day",
+    "end the day"
+  ],
+  "intent.keywords.sweep": [
+    "archive",
+    "sweep",
+    "clean up",
+    "cleanup",
+    "tidy"
+  ],
+  "intent.keywords.promote": [
+    "promote",
+    "watching",
+    "graduate"
+  ],
+  "intent.keywords.capture": [
+    "capture",
+    "conversation",
+    "write out"
+  ],
+  "intent.keywords.triage": [
+    "triage",
+    "needs decision",
+    "decision",
+    "decide"
+  ],
+  "intent.keywords.index_sync": [
+    "index",
+    "index-sync",
+    "sync"
+  ],
+  "intent.keywords.serve": [
+    "serve",
+    "web",
+    "board",
+    "kanban"
+  ],
+  "intent.keywords.graph": [
+    "graph",
+    "related",
+    "relation"
+  ],
+  "intent.keywords.resurrect": [
+    "resurrect",
+    "revive",
+    "similar"
+  ],
+  "intent.keywords.find": [
+    "search",
+    "find",
+    "look for"
+  ],
+  "intent.keywords.inject": [
+    "inject",
+    "guidance"
+  ],
+  "capture.marker_match": "word",
+  "capture.markers.plan": [
+    "decided",
+    "decision",
+    "implement",
+    "todo",
+    "next step",
+    "let's",
+    "we will"
+  ],
+  "capture.markers.bugfix": [
+    "bug",
+    "broken",
+    "reproduce",
+    "repro",
+    "error",
+    "crash",
+    "crashes",
+    "fails",
+    "failing"
+  ],
+  "capture.markers.pending": [
+    "on hold",
+    "later",
+    "postpone",
+    "postponed",
+    "defer",
+    "deferred",
+    "shelve"
+  ],
+  "capture.mock_markers.plan": [
+    "decided",
+    "implement",
+    "todo"
+  ],
+  "capture.mock_markers.bugfix": [
+    "bug",
+    "broken",
+    "error"
+  ],
+  "capture.mock_markers.pending": [
+    "on hold",
+    "later"
+  ],
+  "closeout.words.todo": [
+    "\\bTODO\\b",
+    "\\bTBD\\b"
+  ],
+  "closeout.words.failure": [
+    "(?<![-\\w])(?:failed|failures?|errors?)(?![-\\w])"
+  ],
+  "closeout.words.count_to_failure": [
+    "\\s*"
+  ],
+  "closeout.words.failure_to_count": [
+    "\\s*[:=]?\\s*"
+  ],
+  "closeout.words.count_suffix": [
+    "\\s*"
+  ],
+  "closeout.words.zero_failure": [
+    "no\\s+(?:failed|failures?|errors?)(?![-\\w])",
+    "(?<![-\\w])(?:failed|failures?|errors?)(?![-\\w])\\s*[:=]?\\s*none"
+  ],
+  "closeout.words.asserted_failure": [
+    "(?<![-\\w])(?:failed|failing|errored)(?![-\\w])\\s*[:：]",
+    "did\\s+not\\s+pass",
+    "does\\s+not\\s+pass",
+    "\\b(?:tests?|checks?|builds?|ci|it)\\s+(?:failed|errored)\\b"
+  ],
+  "closeout.words.not_run": [
+    "not[ _-]?run",
+    "not[ _-]?tested",
+    "not[ _-]?(?:yet[ _-]?)?(?:verified|checked|confirmed)",
+    "\\bun(?:verified|confirmed|tested)\\b"
+  ],
+  "closeout.words.automatic": [
+    "automated?",
+    "static[ _-]?(?:check|analysis)",
+    "\\blint(?:er|ing)?\\b"
+  ],
+  "closeout.words.manual": [
+    "manual",
+    "browser",
+    "visual(?:ly)?",
+    "real[ _-]?device",
+    "production"
+  ],
+  "closeout.words.success": [
+    "\\bpass(?:ed|es|ing)?\\b",
+    "\\bsucceeded\\b",
+    "\\bsuccess(?:ful(?:ly)?)?\\b",
+    "\\bverified\\b",
+    "\\bconfirmed\\b",
+    "\\bok\\b",
+    "\\bdone\\b"
+  ],
+  "closeout.heading.completion": [
+    "completion[ _-]?criteria",
+    "definition[ _-]?of[ _-]?done"
+  ],
+  "closeout.heading.verification": [
+    "verification",
+    "verify",
+    "\\btest(?:s|ing)?\\b"
+  ],
+  "closeout.heading.acceptance": [
+    "acceptance"
+  ],
+  "closeout.heading.changed_files": [
+    "changed?[ _-]?files?",
+    "files?[ _-]?to[ _-]?change"
+  ],
+  "export.type_description.plan": "Plan / investigation note / design note (work before or during implementation)",
+  "export.type_description.bugfix": "Record of a fix after the incident (symptoms / root cause / fix)",
+  "export.type_description.pending": "On hold / future work (waiting for the condition to start)",
+  "export.index.concepts": "Concepts",
+  "doc_links.doc.cli.unknown_command": "README.en.md#usage",
+  "doc_links.doc.config.yaml_parse": "templates/.docsweep.yaml",
+  "doc_links.doc.console.encoding": "README.en.md#windows",
+  "doc_links.doc.naming.work_md": "docs/conventions.md",
+  "doc_links.doc.closeout.parent_only": "docs/conventions.md",
+  "doc_links.doc.states.label": "docs/conventions.md"
+}

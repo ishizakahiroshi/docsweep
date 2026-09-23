@@ -6,11 +6,12 @@
   <section class="settings-section">
     <h4>{{ T.settings_lang_heading }}</h4>
     <p class="settings-note">{{ T.settings_lang_note }}</p>
+    {# 対応言語（locales/ のフォルダ）ごとに 1 つ。名前はその言語自身の ui.lang_name。 #}
     <div class="settings-row settings-lang" role="group" aria-label="{{ T.settings_lang_heading }}">
-      <button type="button" class="{{ 'primary' if lang == 'ja' else 'ghost' }}"
-              data-action="settings-set-lang" data-lang="ja" {% if lang == 'ja' %}disabled{% endif %}>日本語</button>
-      <button type="button" class="{{ 'primary' if lang == 'en' else 'ghost' }}"
-              data-action="settings-set-lang" data-lang="en" {% if lang == 'en' %}disabled{% endif %}>English</button>
+      {% for choice in lang_choices %}
+      <button type="button" class="{{ 'primary' if lang == choice.code else 'ghost' }}"
+              data-action="settings-set-lang" data-lang="{{ choice.code }}" {% if lang == choice.code %}disabled{% endif %}>{{ choice.name }}</button>
+      {% endfor %}
     </div>
   </section>
 
@@ -43,9 +44,9 @@
       </span>
       {% if settings.global_claude %}
         <span class="settings-version" title="{{ T.settings_version_title }}">v{{ settings.global_claude_version or '?' }}</span>
-        <button type="button" class="ghost" data-action="settings-eject-global" data-agent="claude">eject</button>
+        <button type="button" class="ghost" data-action="settings-eject-global" data-agent="claude">{{ T.settings_eject_btn }}</button>
       {% else %}
-        <button type="button" class="primary" data-action="settings-inject-global" data-agent="claude">inject</button>
+        <button type="button" class="primary" data-action="settings-inject-global" data-agent="claude">{{ T.settings_inject_btn }}</button>
       {% endif %}
     </div>
     <div class="settings-row">
@@ -55,19 +56,19 @@
       </span>
       {% if settings.global_codex %}
         <span class="settings-version" title="{{ T.settings_version_title }}">v{{ settings.global_codex_version or '?' }}</span>
-        <button type="button" class="ghost" data-action="settings-eject-global" data-agent="codex">eject</button>
+        <button type="button" class="ghost" data-action="settings-eject-global" data-agent="codex">{{ T.settings_eject_btn }}</button>
       {% else %}
-        <button type="button" class="primary" data-action="settings-inject-global" data-agent="codex">inject</button>
+        <button type="button" class="primary" data-action="settings-inject-global" data-agent="codex">{{ T.settings_inject_btn }}</button>
       {% endif %}
     </div>
   </section>
 
   <section class="settings-section">
     <h4>{{ T.settings_project_heading }}</h4>
-    <p class="settings-note">{{ T.settings_preset_note }} <code>{{ settings.default_preset }}</code>（presets: {{ settings.presets|join(' / ') }}）</p>
+    <p class="settings-note">{{ T.settings_preset_note }} <code>{{ settings.default_preset }}</code>{{ T.settings_presets_list.format(presets=settings.presets|join(' / ')) }}</p>
     <table class="settings-projects">
       <thead>
-        <tr><th>{{ T.settings_col_project }}</th><th>{{ T.settings_col_state }}</th><th>preset</th><th>version</th><th>{{ T.settings_col_actions }}</th></tr>
+        <tr><th>{{ T.settings_col_project }}</th><th>{{ T.settings_col_state }}</th><th>{{ T.settings_col_preset }}</th><th>{{ T.settings_col_version }}</th><th>{{ T.settings_col_actions }}</th></tr>
       </thead>
       <tbody>
         {% for p in settings.projects %}
@@ -89,9 +90,9 @@
               {{ T.settings_project_on if p.enabled else T.settings_project_off }}
             </button>
             {% if p.injected %}
-              <button type="button" class="ghost" data-action="settings-eject" data-project="{{ p.root }}">eject</button>
+              <button type="button" class="ghost" data-action="settings-eject" data-project="{{ p.root }}">{{ T.settings_eject_btn }}</button>
             {% else %}
-              <button type="button" class="primary" data-action="settings-inject" data-project="{{ p.root }}">inject</button>
+              <button type="button" class="primary" data-action="settings-inject" data-project="{{ p.root }}">{{ T.settings_inject_btn }}</button>
             {% endif %}
           </td>
         </tr>

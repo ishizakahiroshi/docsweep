@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import sys
 
+from .i18n import t
 from .provenance import ENV_FIELDS
 
 
@@ -33,12 +34,9 @@ def warn_if_unresolved(metadata, *, config, command: str, stream=None) -> bool:
                "--ai-model-display / --ai-model-source",
         "provenance start": "--agent / --runtime / --provider / --model-id / "
                             "--model-display / --model-source",
-    }.get(command, "--agent 等")
+    }.get(command) or t("provenance_hint.flags_fallback")
     envs = " / ".join(ENV_FIELDS[name] for name in ("agent", "runtime", "provider"))
     out = stream or sys.stderr
-    print(
-        f"warning: 作成 AI が unknown のまま記録されます（{command}）。"
-        f"{flags} を渡すか、環境変数（{envs} 等）を設定すると実値で残ります",
-        file=out,
-    )
+    message = t("provenance_hint.author_unknown", command=command, flags=flags, envs=envs)
+    print(t("common.warning", message=message), file=out)
     return True

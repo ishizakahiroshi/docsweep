@@ -85,6 +85,18 @@ AI がこれを扱うときの注意:
 - `sweep` は様子見を対象にしない。寝かせ中の文書を自動移送する経路は存在しない
 - 期限切れを理由に `[廃止]` へ倒さない。廃止は人または AI の明示的な意思決定でのみ行う
 
+### queue の中で文書を移す
+
+作業文書をフォルダへ整理するときは、シェルの `mv` / `Move-Item` ではなく `docsweep mv` を使います。
+移した文書を指す `docsweep_parent`・パス形式の `related`・本文中の repo 相対パスが一緒に書き換わります。
+
+```bash
+python -m docsweep mv docs/local/plan_x.md --to docs/local/app-a --dry-run --json   # 予定を下見する
+python -m docsweep mv docs/local/plan_x.md --to docs/local/app-a --json             # 移す
+```
+
+archive の中でも同じフォルダ構成を保ちたい場合は、`.docsweep.yaml` に `archive_layout: mirror` を書きます。
+
 ---
 
 ## 各 AI 向けセットアップ

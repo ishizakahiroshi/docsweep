@@ -52,6 +52,19 @@ plan, bugfix, or pending file under the configured `work_dir`, linked from the a
 2. `work_dir` 未設定時の既定は `docs/local/`（`docs/` の有無で暗黙に切り替えない）
 3. 会話履歴の草案保存（`capture` / `capture_save`）も同じ queue を使う
 
+### 文書の言語（日本語 / 英語）
+
+作業文書は日本語でも英語でも書けます。見出し・表の列名・H1 ラベルは言語ごとに決まった表記を使い、
+docsweep はどちらの言語の文書も同じように読みます（例: `## 概要` と `## Summary`、
+`## context配分` と `## Context allocation`、`[計画]` と `[Planned]`。全対応は
+docsweep の `docsweep/i18n/locales/<言語>/terms.json`）。
+
+- `python -m docsweep new` が作る文書の言語は、`.docsweep.yaml` の `lang` → `~/.docsweep/config.yaml` の
+  `lang` → 表示言語（`--lang` / 環境変数 `DOCSWEEP_LANG` / OS）の順で決まります。
+  複数人で使うリポジトリは `.docsweep.yaml` に `lang` を書いて固定してください（各自の表示言語に左右されない）。
+- 状態ラベルを書き換えるときは、その文書にすでにあるラベルの言語で書かれます（1 つの文書に日英を混ぜない）。
+- 1 つの文書の中では、見出しの言語をそろえてください。
+
 ### プロジェクト固有の本文節
 
 プロジェクト固有の必須情報を毎回の作業文書へ含めたい場合は、`.docsweep.yaml` の
@@ -111,6 +124,9 @@ docsweep はこのラベルを読み取って自動アーカイブ・要判断�
   `released_in` は `release close` が実在確認した正確な Git tag である。たとえば
   `released_in: v0.9.1` でも、minor 集約先は `archive/v0.9.x/` になるが、frontmatter の
   正確な tag 自体は変えない。設定なし・disabled・flat は従来の archive 経路を保つ。
+- queue をフォルダで分ける場合、archive の中でも同じ構成を保つには `archive_layout: mirror` を設定する。
+  queue の中で文書を移すときは `python -m docsweep mv <src> --to <dir>` を使う（他の文書からの
+  `docsweep_parent`・パス形式の `related`・本文中のパスも書き換わる）。
 - `> ステータス:` 行は**書かない**（状態は H1 ラベルに集約）。状態が変わったら H1 ラベルを書き換える。
 - ラベル語彙はプロジェクト設定（`.docsweep.yaml` の `states:`）で追加・改名・言語追加できる。
   上表は内蔵デフォルト。`python -m docsweep inject` は `states:` からこのラベル節を生成する（設定と検出が常に同期）。
@@ -242,8 +258,9 @@ zip 内の通常 md は frontmatter を Bundle 内だけ正規化し、`index.md
 frontmatter 不整合（空の type、lifecycle / docsweep_state の誤記、related で存在しない md 指定、
 review_status が許容外）をコミット時に止める hook を opt-in で配置できます。未知の type は
 OKF の許容範囲なので hook でも拒否しません。
-スクリプトは自身と同じ場所の `.githooks/docsweep-check.py` を `.git/hooks/pre-commit` へ
-コピーするだけなので、パスはこのテンプレ一式（`install-hooks.*` + `.githooks/`）を
+スクリプトは自身と同じ場所の `.githooks/docsweep-check.py` を `.git/hooks/pre-commit` へ、
+hook の文言と見出しの語彙（日本語・英語）を持つ `.githooks/docsweep-check.i18n.json` を
+その隣へコピーするだけなので、パスはこのテンプレ一式（`install-hooks.*` + `.githooks/`）を
 置いた場所に読み替えてください:
 
 ```bash
@@ -383,6 +400,9 @@ global の `plan-closeout` skill が導入済みなら補助に使ってよい�
      **`## 受入条件` が無い場合は blocker にせず manual check（`missing_acceptance_section`）
      として報告する**。この規約より前に書かれた plan を機械的に止めないため。
      `--to watching` では受入条件を求めない。
+  - `python -m docsweep new plan <topic>` は `## 概要` の後に `## 完了条件` と `## 検証` を
+    `<TODO>` 入りで置く。中身を書くまでは closeout-check が `evidence_missing` で止まる。
+    同じ見出しを別に書き足した場合、`<TODO>` のまま残った生成済みの節は数えない。
 
 ### 実装を別 AI へ委譲する plan（`docsweep_delegation: external`）
 
@@ -450,15 +470,17 @@ plan は破綻します**。一方で 1 ファイル修正の plan まで重く�
 `### C<N>` の見出し文言と、plan 内の他の H2 / H3 見出しに次の語を**含めない**こと。
 
 `完了条件` / `検証` / `受入` / `変更予定ファイル` / `変更ファイル` /
-`completion criteria` / `changed files`
+`completion criteria` / `changed files` / `files to change` / `verification` / `verify` /
+`tests` / `testing` / `acceptance`
 
 `docsweep closeout-check` は見出しタイトルの**部分一致**でセクションを分類します。
 これらを見出し文言に含めると、その見出しが完了条件や変更予定ファイルとして誤って集計されます。
 
 例外は 3 つ。**正規セクションそのもの**（`## 完了条件` / `## 検証` / `## 受入条件`、
-bugfix の `## 変更ファイル`、委譲 plan の `## 変更予定ファイル`）、**上表の H4 8 項目**
-（level 4 なので走査対象外）、そして plan 全体をまとめる
-**`## 全体の検証手順`**（分類させること自体が目的の正規節）です。それ以外の H2 / H3 で
+bugfix の `## 変更ファイル`、委譲 plan の `## 変更予定ファイル`。英語の文書では
+`## Completion criteria` / `## Verification` / `## Acceptance criteria` / `## Changed files` /
+`## Files to change`）、**上表の H4 8 項目**（level 4 なので走査対象外）、そして plan 全体をまとめる
+**`## 全体の検証手順`**（英語は `## Overall verification steps`。分類させること自体が目的の正規節）です。それ以外の H2 / H3 で
 分類語を使わないでください。たとえば `### 索引の鮮度（C3 の検証に影響する）` は
 `### 索引の鮮度（C3 の実測に影響する）` と書きます。
 

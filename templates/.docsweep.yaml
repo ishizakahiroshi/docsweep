@@ -64,6 +64,10 @@
 # repo 直下 archive/ を従来どおり使いたい場合は下行を有効にして明示する。
 # archive_dir: archive
 
+# archive の中のフォルダ構成。flat（既定）は archive 直下へ平置き、mirror は queue 内の
+# サブフォルダを保つ（docs/local/app-a/plan_x.md → docs/local/archive/app-a/plan_x.md）。
+# archive_layout: mirror
+
 # --- Git release tracking（opt-in。未設定なら従来の flat archive を維持） ---
 # archive_partition: release
 # release_tracking:

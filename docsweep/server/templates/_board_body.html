@@ -30,8 +30,8 @@
 {# 2026-06-23 改修: 独立ボタン「着手」「廃止」「完了」を全廃。状態変更はすべて
    「ラベル変更▾」ピッカー（_label_picker.html）に集約。[廃止] [完了] も同ピッカーから選ぶ。 #}
 {% set OPS_DEFAULT = [
-  {"kind": "due",          "op": "due",    "spec": "+1d", "label": "+1d", "title": T.sec_plus1d_title},
-  {"kind": "due",          "op": "due",    "spec": "+1w", "label": "+1w", "title": T.sec_plus1w_title},
+  {"kind": "due",          "op": "due",    "spec": "+1d", "label": T.sec_plus1d, "title": T.sec_plus1d_title},
+  {"kind": "due",          "op": "due",    "spec": "+1w", "label": T.sec_plus1w, "title": T.sec_plus1w_title},
   {"kind": "label-picker", "label": T.change_label, "title": T.sec_label_title},
 ] %}
 {% set OPS_GRADUATE = OPS_DEFAULT %}
@@ -39,8 +39,9 @@
   {"kind": "archive",   "op": "archive", "label": T.to_archive, "title": T.to_archive_title},
 ] %}
 
-<div class="filter-chips" id="filter-chips" role="group" aria-label="filters">
-  <button type="button" class="fchip on" data-filter="all">all</button>
+{# plan / bugfix / overdue / needs_decision は種別名・フラグ名そのもの（検索の type: / flag: と同じ語）。 #}
+<div class="filter-chips" id="filter-chips" role="group" aria-label="{{ T.filters_aria }}">
+  <button type="button" class="fchip on" data-filter="all">{{ T.filter_all }}</button>
   <button type="button" class="fchip" data-filter="type:plan">plan</button>
   <button type="button" class="fchip" data-filter="type:bugfix">bugfix</button>
   <button type="button" class="fchip" data-filter="flag:overdue">overdue</button>
@@ -56,7 +57,7 @@
     <span class="tp-state">{{ data.today_pick.state_label }}</span>
     <strong class="tp-title">{{ data.today_pick.title or data.today_pick.name }}</strong>
     {% if data.today_pick.score_total is not none %}
-      <span class="tp-score" title="score">{{ '%.2f'|format(data.today_pick.score_total) }}</span>
+      <span class="tp-score" title="{{ T.score_title }}">{{ '%.2f'|format(data.today_pick.score_total) }}</span>
     {% endif %}
   </div>
   {% if data.today_pick.summary %}
@@ -75,7 +76,7 @@
     <h2 class="col-head"><span class="col-emoji">🔴</span> {{ T.col_overdue }} <span class="col-count">{{ data.counts.overdue }}</span>
       {{ section_actions("overdue", OPS_DEFAULT) }}
     </h2>
-    <ol class="col-cards">
+    <ol class="col-cards" data-empty-text="{{ T.search_no_match }}">
       {% for card in data.cols.overdue %}{% include "_card.html" %}{% else %}
       <li class="col-empty">{{ T.empty_overdue }}</li>
       {% endfor %}
@@ -85,7 +86,7 @@
     <h2 class="col-head"><span class="col-emoji">🟡</span> {{ T.col_today }} <span class="col-count">{{ data.counts.today }}</span>
       {{ section_actions("today", OPS_DEFAULT) }}
     </h2>
-    <ol class="col-cards">
+    <ol class="col-cards" data-empty-text="{{ T.search_no_match }}">
       {% for card in data.cols.today %}{% include "_card.html" %}{% else %}
       <li class="col-empty">{{ T.empty_today }}</li>
       {% endfor %}
@@ -95,7 +96,7 @@
     <h2 class="col-head"><span class="col-emoji">🟢</span> {{ T.col_active }} <span class="col-count">{{ data.counts.active }}</span>
       {{ section_actions("active", OPS_DEFAULT) }}
     </h2>
-    <ol class="col-cards">
+    <ol class="col-cards" data-empty-text="{{ T.search_no_match }}">
       {% for card in data.cols.active %}{% include "_card.html" %}{% else %}
       <li class="col-empty">{{ T.empty_active }}</li>
       {% endfor %}
@@ -107,7 +108,7 @@
   <summary>▼ {{ T.sec_graduate }} <span class="fold-count">{{ data.counts.graduate }}</span>
     {{ section_actions("graduate", OPS_GRADUATE) }}
   </summary>
-  <ol class="col-cards">
+  <ol class="col-cards" data-empty-text="{{ T.search_no_match }}">
     {% for card in data.cols.graduate %}{% include "_card.html" %}{% endfor %}
   </ol>
 </details>
@@ -116,7 +117,7 @@
   <summary>▶ {{ T.sec_future }} <span class="fold-count">{{ data.counts.future }}</span>
     {{ section_actions("future", OPS_DEFAULT) }}
   </summary>
-  <ol class="col-cards">
+  <ol class="col-cards" data-empty-text="{{ T.search_no_match }}">
     {% for card in data.cols.future %}{% include "_card.html" %}{% endfor %}
   </ol>
 </details>
@@ -125,7 +126,7 @@
   <summary>▶ {{ T.sec_no_due }} <span class="fold-count">{{ data.counts.no_due }}</span>
     {{ section_actions("no_due", OPS_DEFAULT) }}
   </summary>
-  <ol class="col-cards">
+  <ol class="col-cards" data-empty-text="{{ T.search_no_match }}">
     {% for card in data.cols.no_due %}{% include "_card.html" %}{% endfor %}
   </ol>
 </details>
@@ -134,7 +135,7 @@
   <summary>▶ {{ T.sec_archivable }} <span class="fold-count">{{ data.counts.archivable }}</span>
     {{ section_actions("archivable", OPS_ARCHIVE) }}
   </summary>
-  <ol class="col-cards">
+  <ol class="col-cards" data-empty-text="{{ T.search_no_match }}">
     {% for card in data.cols.archivable %}{% include "_card.html" %}{% endfor %}
   </ol>
 </details>

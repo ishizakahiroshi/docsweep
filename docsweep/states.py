@@ -13,8 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# サポートする検出言語（ラベル辞書のキー）。
-LANGS = ("ja", "en")
+from .i18n import MESSAGES, SUPPORTED_LANGS, current_lang, t, variants
+
+# サポートする検出言語（ラベル辞書のキー）。言語別 JSON のフォルダで決まる。
+LANGS = SUPPORTED_LANGS
 
 
 @dataclass(frozen=True)
@@ -37,8 +39,9 @@ class State:
     icon: str | None = None
     extra_aliases: tuple[str, ...] = ()
 
-    def label(self, lang: str = "ja") -> str:
-        return self.labels.get(lang) or next(iter(self.labels.values()))
+    def label(self, lang: str | None = None) -> str:
+        """``lang`` の表記のラベル。省くと表示言語。その言語の表記が無ければ最初の表記。"""
+        return self.labels.get(lang or current_lang()) or next(iter(self.labels.values()))
 
     def aliases(self) -> set[str]:
         """全言語のラベル文字列 + extra_aliases（すべて小文字化）。検出時のエイリアス照合に使う。"""
@@ -57,19 +60,29 @@ class State:
 # 読み取り時にマッチさせる（既存ファイルは書き換えない）。
 # 経緯: docs/local/kanban-card-ux-options/index.html、設計プラン
 # docs/local/archive/v0.5.x/plan_state-tag-orthogonalization.md（改訂版）
+#
+# ラベルの語は言語別の JSON（docsweep/i18n/locales/<言語>/terms.json の ``state.label.<key>``、
+# 読み取りだけ受け付ける旧ラベル・別名は ``state.alias.<key>``）に置く。言語を足すと
+# その言語のラベルも自動で読み書きできる。
+def _default_state(key: str, *, archive: bool = False, auto_move: bool = False) -> State:
+    alias_key = f"state.alias.{key}"
+    return State(
+        key,
+        {lang: t(f"state.label.{key}", lang=lang) for lang in SUPPORTED_LANGS},
+        archive=archive,
+        auto_move=auto_move,
+        # 旧 bugfix 用ラベル [対応中] 等を読み取り側のエイリアスとして吸収する。
+        extra_aliases=variants(alias_key) if alias_key in MESSAGES else (),
+    )
+
+
 DEFAULT_STATES: tuple[State, ...] = (
-    State("planned", {"ja": "計画", "en": "Planned"}, archive=False, auto_move=False),
-    State(
-        "in-progress",
-        {"ja": "実行中", "en": "In Progress"},
-        archive=False, auto_move=False,
-        # 旧 bugfix 用ラベル [対応中] を読み取り側のエイリアスとして吸収。
-        extra_aliases=("対応中", "Active"),
-    ),
-    State("watching", {"ja": "様子見", "en": "Watching"}, archive=False, auto_move=False),
-    State("done", {"ja": "完了", "en": "Done"}, archive=True, auto_move=True),
-    State("discarded", {"ja": "廃止", "en": "Discarded"}, archive=True, auto_move=True),
-    State("pending", {"ja": "保留", "en": "Pending"}, archive=False, auto_move=False),
+    _default_state("planned"),
+    _default_state("in-progress"),
+    _default_state("watching"),
+    _default_state("done", archive=True, auto_move=True),
+    _default_state("discarded", archive=True, auto_move=True),
+    _default_state("pending"),
 )
 
 
@@ -91,6 +104,29 @@ class StateModel:
     def by_key(self, key: str) -> State | None:
         return self._by_key.get(key)
 
+    def label_lang(self, token: str | None) -> str | None:
+        """ラベル文字列がどの言語の表記か（``ja`` / ``en`` 等）。内部キー・別名・不明は None。
+
+        状態を書き換えるとき、文書にすでにある表記の言語へそろえるために使う（``[計画]`` の
+        文書を ``--lang en`` で動かしても ``[Watching]`` を混ぜない）。末尾一致は ``match`` と同じ。
+        """
+        if not token:
+            return None
+        text = token.strip().lower()
+        pairs = sorted(
+            ((label.strip().lower(), code) for s in self.states for code, label in s.labels.items()),
+            key=lambda pair: len(pair[0]),
+            reverse=True,
+        )
+        for label, code in pairs:
+            if not label:
+                continue
+            if text == label:
+                return code
+            if text.endswith(label) and len(text) > len(label) and not text[-len(label) - 1].isalnum():
+                return code
+        return None
+
     def match(self, token: str | None) -> State | None:
         """ラベル文字列または内部キーから state を引く（言語非依存）。
 
@@ -101,16 +137,16 @@ class StateModel:
         """
         if not token:
             return None
-        t = token.strip().lower()
+        text = token.strip().lower()
         # 1. 完全一致
-        if t in self._by_alias:
-            return self._by_alias[t]
+        if text in self._by_alias:
+            return self._by_alias[text]
         # 2. 末尾一致（長い alias から順に試して最初に当たったものを採用）
         for alias in sorted(self._by_alias.keys(), key=len, reverse=True):
             if not alias:
                 continue
-            if t.endswith(alias) and len(t) > len(alias):
-                boundary = t[-len(alias) - 1]
+            if text.endswith(alias) and len(text) > len(alias):
+                boundary = text[-len(alias) - 1]
                 if not boundary.isalnum():
                     return self._by_alias[alias]
         return None
@@ -143,11 +179,11 @@ def build_state_model(states_cfg: list[dict] | None) -> StateModel:
         key = raw["key"]
         labels = dict(raw.get("labels") or {})
         if not labels:
-            raise ValueError(f"state '{key}' に labels がありません")
+            raise ValueError(t("states.labels_missing", state=key))
         # 重複は後勝ちで dict 上書きされ、ラベルが別 state（archive 可否が違う）に解決されて
         # 静かに誤判定するため、設定構築時に fail-fast で弾く。
         if key in seen_keys:
-            raise ValueError(f"state key '{key}' が重複しています")
+            raise ValueError(t("states.duplicate_key", state=key))
         seen_keys.add(key)
         st = State(
             key=key,
@@ -160,7 +196,7 @@ def build_state_model(states_cfg: list[dict] | None) -> StateModel:
         for a in st.aliases() | {key.lower()}:
             if a in seen_aliases and seen_aliases[a] != key:
                 raise ValueError(
-                    f"ラベル '{a}' が state '{seen_aliases[a]}' と '{key}' で重複しています"
+                    t("states.duplicate_label", label=a, first=seen_aliases[a], second=key)
                 )
             seen_aliases.setdefault(a, key)
         states.append(st)

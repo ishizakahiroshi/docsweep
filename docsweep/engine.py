@@ -12,16 +12,21 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path, PureWindowsPath
 
-from .archive import _now_iso, append_move_log, archive_file
+from .archive import _now_iso, append_move_log, archive_file, new_batch_id
 from .atomic import ConflictError, write_atomic
 from .config import (
     Config,
     archive_dir_for_project,
+    archive_layout_for_project,
     archive_partition_for_project,
     archive_route_for_project,
+    project_work_settings,
     release_tracking_for_project,
+    resolve_work_dir,
 )
+from . import move_refs
 from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
+from .i18n import t
 from .models import Action, Flag, FileRecord, MoveLogEntry
 from .release import (
     ReleaseTrackingError,
@@ -30,7 +35,12 @@ from .release import (
     release_tag_exists,
 )
 from .scan import ScannedDoc, _build_doc, detect_project_root, scan
-from .services.status import update_status, validate_state_transition
+from .services.status import (
+    UpdateStatusResult,
+    log_state_rewrite,
+    update_status,
+    validate_state_transition,
+)
 
 
 def classify(doc: ScannedDoc, config: Config) -> None:
@@ -127,12 +137,18 @@ class MoveBatchResult(list[MoveLogEntry]):
         *,
         failed: list[dict] | None = None,
         routes: list[dict] | None = None,
+        ref_updates: list[dict] | None = None,
+        ref_failed: list[dict] | None = None,
     ) -> None:
         super().__init__(moved or [])
         self.failed = list(failed or [])
         # 移送先とその選択根拠。dry-run だけで destination contract を判断できるように、
         # 「どこへ」だけでなく「なぜそこか」を返す。
         self.routes = list(routes or [])
+        # 移送に伴って書き換えた（dry-run では書き換える予定の）他文書の参照。
+        # 文書そのものの移送失敗（failed）とは分けて返す。
+        self.ref_updates = list(ref_updates or [])
+        self.ref_failed = list(ref_failed or [])
 
 
 def run_scan(config: Config) -> ScanResult:
@@ -149,7 +165,7 @@ def run_scan(config: Config) -> ScanResult:
         # 詳細な例外や設定内容は返さず、呼び出し側が扱える明示的なエラーだけ残す。
         return ScanResult(
             docs=[],
-            errors=["excluded 設定を検証できないため、安全側で scan 結果を非表示にしました"],
+            errors=[t("engine.excluded_unverifiable")],
         )
     return ScanResult(docs=docs)
 
@@ -285,6 +301,10 @@ def auto_sweep(
         {"path": None, "error": error} for error in result.errors
     ]
     routes = _archive_routes(result, config, project=project)
+    ref_moves: list[tuple[move_refs.Move, str, Path, str]] = []
+    # 1 回の sweep を 1 バッチとして記録し、``docsweep undo`` で参照の書き換えごと戻せるようにする
+    # （Web の archive・``mv`` と同じ）。dry-run は移動ログを書かないので ID も作らない。
+    batch_id = None if dry_run else new_batch_id()
     for doc in result.auto_movable():
         rec = doc.record
         if project and rec.project != project:
@@ -295,22 +315,34 @@ def auto_sweep(
             dst = archive_file(
                 src=Path(rec.path), project_dir=project_dir, archive_dir=archive_dir,
                 root=root, project=rec.project, status=rec.state, dry_run=dry_run,
+                batch_id=batch_id,
             )
         except (OSError, UnicodeError, ValueError) as exc:
             failed.append({"path": rec.path, "error": str(exc)})
             continue
         moved.append(MoveLogEntry(
             ts="(dry-run)" if dry_run else "", op="archive", project=rec.project,
-            status=rec.state, src=rec.path, dst=dst.as_posix(),
+            status=rec.state, src=rec.path, dst=dst.as_posix(), batch_id=batch_id,
         ))
-    return MoveBatchResult(moved, failed=failed, routes=routes)
+        ref_moves.append((move_refs.Move(Path(rec.path), dst), rec.project_root, root, rec.project))
+    refs = move_refs.rewrite_refs_by_project(
+        ref_moves, config=config, batch_id=batch_id, dry_run=dry_run
+    )
+    return MoveBatchResult(
+        moved, failed=failed, routes=routes,
+        ref_updates=[u.to_dict() for u in refs.updates], ref_failed=refs.failed,
+    )
 
 
 def archive_doc(
     doc: ScannedDoc, config: Config, *, dry_run: bool = False, batch_id: str | None = None,
-    strict_collision: bool = False,
+    strict_collision: bool = False, rewrite_refs: bool = True,
 ) -> MoveLogEntry:
-    """1 ファイルを（ラベル書換なしで）そのまま archive へ移送する。"""
+    """1 ファイルを（ラベル書換なしで）そのまま archive へ移送する。
+
+    ``rewrite_refs=False`` は、複数の文書をまとめて移す呼び出し側が、最後に 1 回だけ
+    参照を書き換えるためのもの（親と子を同じ操作で移したとき、子の参照も新しい場所へ向ける）。
+    """
     rec = doc.record
     project_dir, root = _project_dir_for(doc, config)
     dst = archive_file(
@@ -318,6 +350,11 @@ def archive_doc(
         root=root, project=rec.project, status=rec.state, op="archive", dry_run=dry_run,
         batch_id=batch_id, strict_collision=strict_collision,
     )
+    if rewrite_refs and not dry_run:
+        move_refs.rewrite_refs(
+            [move_refs.Move(Path(rec.path), dst)], project_root=Path(rec.project_root),
+            config=config, root=root, project=rec.project, batch_id=batch_id,
+        )
     return MoveLogEntry(
         ts="", op="archive", project=rec.project, status=rec.state,
         src=rec.path, dst=dst.as_posix(), batch_id=batch_id,
@@ -335,18 +372,21 @@ def promote_state(
     対象にする安全側の絞り込みで、通常の promote の後方互換挙動は維持する。
     """
     if due_expired_only and from_state != "watching":
-        raise ValueError("--due-expired は昇格元 watching と組み合わせてください")
+        raise ValueError(t("engine.due_expired_requires_watching"))
     result = run_scan(config)
     sm = config.state_model
     target = sm.by_key(to_state)
     # 未知の to_state（タイプミス等）だと relabel されないまま archive 移送され、
     # ラベルと配置が矛盾する。移送前に弾く。
     if target is None:
-        raise ValueError(f"未知の to_state: {to_state}")
+        raise ValueError(t("engine.unknown_to_state", state=to_state))
     moved: list[MoveLogEntry] = []
     failed: list[dict] = [
         {"path": None, "error": error} for error in result.errors
     ]
+    ref_moves: list[tuple[move_refs.Move, str, Path, str]] = []
+    # 1 回の promote を 1 バッチとして記録する（``docsweep undo`` で参照の書き換えごと戻す）。
+    batch_id = None if dry_run else new_batch_id()
     for doc in result.docs:
         rec = doc.record
         if rec.state != from_state:
@@ -364,21 +404,33 @@ def promote_state(
             # 下見が「移送できる」と予告した文書を本実行が拒否し、予告と結果が食い違う
             # （2026-09-11 実測: 予告 9 件に対し実移送 7 件。pending 種別は done へ遷移できない）。
             validate_state_transition(rec.type, to_state)
-            if not dry_run:
-                _update_doc_state(doc, to_state, config)
+            status_change: UpdateStatusResult | None = (
+                None if dry_run else _update_doc_state(doc, to_state, config)
+            )
             dst = archive_file(
                 src=Path(rec.path), project_dir=project_dir,
                 archive_dir=_archive_dir_for(doc, config), root=root,
                 project=rec.project, status=to_state, op="promote", dry_run=dry_run,
+                batch_id=batch_id,
             )
         except (OSError, UnicodeError, ValueError) as exc:
             failed.append({"path": rec.path, "error": str(exc)})
             continue
+        if status_change is not None:
+            # undo で場所と一緒にラベルも戻す（戻さないと次の sweep でまた移る）。
+            log_state_rewrite(root, rec.project, status_change, batch_id=batch_id)
         moved.append(MoveLogEntry(
             ts="(dry-run)" if dry_run else "", op="promote", project=rec.project,
-            status=to_state, src=rec.path, dst=dst.as_posix(),
+            status=to_state, src=rec.path, dst=dst.as_posix(), batch_id=batch_id,
         ))
-    return MoveBatchResult(moved, failed=failed)
+        ref_moves.append((move_refs.Move(Path(rec.path), dst), rec.project_root, root, rec.project))
+    refs = move_refs.rewrite_refs_by_project(
+        ref_moves, config=config, batch_id=batch_id, dry_run=dry_run
+    )
+    return MoveBatchResult(
+        moved, failed=failed,
+        ref_updates=[u.to_dict() for u in refs.updates], ref_failed=refs.failed,
+    )
 
 
 def _due_reached(rec: FileRecord) -> bool:
@@ -415,6 +467,9 @@ def _archive_routes(
             "archive_partition": archive_partition_for_project(
                 config, Path(rec.project_root)
             ),
+            "archive_layout": archive_layout_for_project(
+                config, Path(rec.project_root)
+            ),
         }
         tracking = release_tracking_for_project(config, Path(rec.project_root))
         entry["release_tracking"] = tracking.mode
@@ -422,11 +477,10 @@ def _archive_routes(
             entry["release_bucket"] = tracking.archive_group_by
         if route.legacy_root:
             entry["legacy_root"] = route.legacy_root
-            entry["warning"] = (
-                f"repo 直下の {route.legacy_root}/ に既存の archive があります。"
-                f"今後は {route.archive_dir}/ へ移送します。"
-                f"従来どおり {route.legacy_root}/ を使うなら .docsweep.yaml に "
-                f"archive_dir: {route.legacy_root} を明示してください"
+            entry["warning"] = t(
+                "engine.legacy_archive_root",
+                legacy=route.legacy_root,
+                archive_dir=route.archive_dir,
             )
         seen[rec.project] = entry
     return list(seen.values())
@@ -442,9 +496,16 @@ def _archive_dir_for(doc: ScannedDoc, config: Config) -> str:
         # --project-dir フラグに依存せず、どこから実行しても各プロジェクトの設定が効く。
         archive_dir = archive_dir_for_project(project_dir, config)
 
+    subdir = None
+    if archive_layout_for_project(config, project_dir) == "mirror":
+        subdir = _queue_subdir_for(doc, project_dir, config)
+
     tracking = release_tracking_for_project(config, project_dir)
     partition = archive_partition_for_project(config, project_dir)
     if not tracking.enabled or partition != "release":
+        if subdir:
+            flat_root = str(archive_dir).rstrip("/\\")
+            return f"{flat_root}/{subdir}"
         return archive_dir
 
     archive_dir = release_archive_root(archive_dir)
@@ -455,22 +516,51 @@ def _archive_dir_for(doc: ScannedDoc, config: Config) -> str:
     windows_path = PureWindowsPath(str(archive_dir).replace("/", "\\"))
     if windows_path.is_absolute() or windows_path.drive or ".." in windows_path.parts:
         raise ReleaseTrackingError(
-            f"release archive の archive_dir がプロジェクト相対ではありません: {archive_dir!r}"
+            t("engine.release_archive_dir_not_relative", archive_dir=archive_dir)
         )
     if doc.record.released_in and not release_tag_exists(
         project_dir, doc.record.released_in
     ):
         raise ReleaseTrackingError(
-            "released_in の Git tag が対象 project に存在しません: "
-            f"{doc.record.released_in!r} ({doc.record.path})"
+            t(
+                "release.released_in_tag_missing",
+                tag=doc.record.released_in,
+                path=doc.record.path,
+            )
         )
     bucket = release_bucket_for_record(
         doc.record, config, project_dir=project_dir
     )
-    if not bucket:
-        return archive_dir
     archive_root = str(archive_dir).rstrip("/\\")
+    if subdir:
+        # アプリごとに版の箱が並ぶよう、サブフォルダを版より外側に置く。
+        archive_root = f"{archive_root}/{subdir}"
+    if not bucket:
+        return archive_root if subdir else archive_dir
     return f"{archive_root}/{bucket}"
+
+
+def _queue_subdir_for(doc: ScannedDoc, project_dir: Path, config: Config) -> str | None:
+    """``archive_layout: mirror`` で archive 先へ付ける、queue 内の親フォルダを返す。
+
+    queue 直下と queue の外（共有 policy の ``docs/`` 等）は ``None``（今と同じ平置き）。
+    queue を junction でリポジトリ外へ出している構成では、文書のパスが実体側で
+    届くため、queue と文書の両方を ``resolve()`` してから比べる。
+    """
+    work_dir = project_work_settings(project_dir, config)[0]
+    queue = resolve_work_dir(project_dir, work_dir).resolve()
+    parent = Path(doc.record.path).resolve().parent
+    try:
+        relative = parent.relative_to(queue)
+    except ValueError:
+        return None
+    if not relative.parts:
+        return None
+    subdir = relative.as_posix()
+    windows_path = PureWindowsPath(subdir.replace("/", "\\"))
+    if windows_path.is_absolute() or windows_path.drive or ".." in relative.parts:
+        raise ValueError(t("engine.mirror_subdir_not_relative", subdir=subdir))
+    return subdir
 
 
 def _update_doc_state(
@@ -480,10 +570,10 @@ def _update_doc_state(
     *,
     allow_type_override: bool = False,
     watching_days: int | None = None,
-) -> None:
+) -> UpdateStatusResult:
     """Update H1 and docsweep frontmatter through the shared status service."""
     try:
-        update_status(
+        return update_status(
             Path(doc.record.path),
             target_key,
             project_root=Path(doc.record.project_root),
@@ -496,7 +586,9 @@ def _update_doc_state(
             watching_days=watching_days,
         )
     except (ConflictError, OSError, UnicodeError, ValueError) as exc:
-        raise ValueError(f"状態を書き換えられません: {doc.record.path}: {exc}") from exc
+        raise ValueError(
+            t("engine.state_update_failed", path=doc.record.path, error=exc)
+        ) from exc
 
 
 def apply_action(
@@ -508,10 +600,13 @@ def apply_action(
     dry_run: bool = False,
     allow_type_override: bool = False,
     watching_days: int | None = None,
+    batch_id: str | None = None,
 ) -> MoveLogEntry:
     """triage の閉じた action を 1 ファイルへ機械実行する。
 
     ``watching_days`` は ``relabel --to watching`` の今回だけの due 上書き。
+    ``batch_id`` は discard / promote の移送を ``docsweep undo`` で戻す単位。複数の文書を 1 回の
+    操作で動かす呼び出し側が同じ ID を渡す。省くとこの 1 件だけのバッチになる。
     """
     rec = doc.record
     project_dir, root = _project_dir_for(doc, config)
@@ -519,7 +614,14 @@ def apply_action(
     path = Path(rec.path)
 
     if action not in rec.allowed_actions:
-        raise ValueError(f"action '{action}' は {rec.path} に許可されていません（{rec.allowed_actions}）")
+        raise ValueError(
+            t(
+                "engine.action_not_allowed",
+                action=action,
+                path=rec.path,
+                allowed=rec.allowed_actions,
+            )
+        )
     if (
         watching_days is not None
         and (
@@ -528,9 +630,9 @@ def apply_action(
             or watching_days < 0
         )
     ):
-        raise ValueError("watching_days は 0 以上の整数で指定してください")
+        raise ValueError(t("engine.watching_days_invalid"))
     if watching_days is not None and action != Action.RELABEL.value:
-        raise ValueError("watching_days は relabel --to watching と組み合わせてください")
+        raise ValueError(t("engine.watching_days_requires_watching"))
 
     if action == Action.KEEP.value:
         return MoveLogEntry(ts="", op="keep", project=rec.project, status=rec.state, src=rec.path, dst=None)
@@ -539,22 +641,33 @@ def apply_action(
         # docsweep_policy: never_archive は明示 discard/promote でも archive しない。
         # 手動 apply でも policy を尊重する（Web UI の三点メニューからでも同じ挙動）。
         if rec.docsweep_policy == "never_archive":
-            raise ValueError(
-                f"docsweep_policy: never_archive のため archive 移送できません: {rec.path}"
-            )
+            raise ValueError(t("engine.never_archive_policy", path=rec.path))
         target_key = "discarded" if action == Action.DISCARD.value else "done"
         st = sm.by_key(target_key)
+        status_change: UpdateStatusResult | None = None
         if st and not dry_run:
             # ラベルを書き換えられない（H1 が無い/読めない）まま移送すると、配置と
             # frontmatter が矛盾した archive ファイルになるため共通状態経路を先に通す。
-            _update_doc_state(
+            status_change = _update_doc_state(
                 doc, target_key, config, allow_type_override=allow_type_override
             )
+        batch = None if dry_run else (batch_id or new_batch_id())
         dst = archive_file(
             src=path, project_dir=project_dir, archive_dir=_archive_dir_for(doc, config),
             root=root, project=rec.project, status=target_key, op=action, dry_run=dry_run,
+            batch_id=batch,
         )
-        return MoveLogEntry(ts="", op=action, project=rec.project, status=target_key, src=rec.path, dst=dst.as_posix())
+        if status_change is not None:
+            log_state_rewrite(root, rec.project, status_change, batch_id=batch)
+        if not dry_run:
+            move_refs.rewrite_refs(
+                [move_refs.Move(path, dst)], project_root=Path(rec.project_root),
+                config=config, root=root, project=rec.project, batch_id=batch,
+            )
+        return MoveLogEntry(
+            ts="", op=action, project=rec.project, status=target_key, src=rec.path,
+            dst=dst.as_posix(), batch_id=batch,
+        )
 
     if action == Action.RESUME.value:
         # 2026-06-23 改修: active/対応中 を in-progress に統合。種別による振り分けは不要に。
@@ -569,17 +682,17 @@ def apply_action(
 
     if action == Action.RELABEL.value:
         if not to:
-            raise ValueError("relabel には to（ラベル名）が必要です")
+            raise ValueError(t("engine.relabel_requires_to"))
         token = str(to).strip()
         if token.startswith("[") and token.endswith("]"):
             token = token[1:-1].strip()
         st = sm.match(token)
         if st is None:
-            raise ValueError(f"未知の state label: {to}")
+            raise ValueError(t("engine.unknown_state_label", label=to))
         if watching_days is not None and st.key != "watching":
-            raise ValueError("watching_days は relabel --to watching と組み合わせてください")
+            raise ValueError(t("engine.watching_days_requires_watching"))
         if not dry_run:
-            _update_doc_state(
+            relabeled = _update_doc_state(
                 doc,
                 st.key,
                 config,
@@ -587,9 +700,14 @@ def apply_action(
                 watching_days=watching_days,
             )
             append_move_log(root, MoveLogEntry(ts=_now_iso(), op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None))
+            if batch_id is not None and st.key in {"done", "discarded"}:
+                # 続けて同じバッチで archive へ移す呼び出し側（triage --review 等）のため、undo で
+                # 書き戻せるように残す。archive へ向かう遷移では期日は変わらないので、ラベルと
+                # frontmatter の値だけで元に戻る。
+                log_state_rewrite(root, rec.project, relabeled, batch_id=batch_id)
         return MoveLogEntry(ts="", op="relabel", project=rec.project, status=(st.key if st else None), src=rec.path, dst=None)
 
-    raise ValueError(f"未知の action: {action}")
+    raise ValueError(t("engine.unknown_action", action=action))
 
 
 def relabel_file(path: Path, new_label: str, config: Config) -> bool:

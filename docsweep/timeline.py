@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import Config
+from .i18n import t
 from .models import FileRecord
 from .services.frontmatter import read_frontmatter
 
@@ -144,16 +145,17 @@ def build_timeline(config: Config, topic: str) -> TimelineResult:
 
 def render_timeline(result: TimelineResult, *, fmt: str = "markdown") -> str:
     if fmt not in ("markdown", "plain", "json"):
-        raise ValueError(f"未知の format: {fmt}")
+        raise ValueError(t("timeline.unknown_format", format=fmt))
     if fmt == "json":
         return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
     lines: list[str] = []
+    heading = t("timeline.heading", topic=result.topic)
     if fmt == "markdown":
-        lines.append(f"# timeline: {result.topic}\n")
+        lines.append(f"# {heading}\n")
     else:
-        lines.append(f"timeline: {result.topic}")
+        lines.append(heading)
     if not result.entries:
-        lines.append("（該当ファイルなし）")
+        lines.append(t("timeline.no_entries"))
         return "\n".join(lines)
     for e in result.entries:
         label = e.state_label or "[?]"

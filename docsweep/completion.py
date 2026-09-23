@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 from .config import Config
+from .i18n import t
 
 SUPPORTED_SHELLS: tuple[str, ...] = ("bash", "zsh", "pwsh")
 
 # 全サブコマンド集合（cli.py の build_parser と揃える）。
 _SUBCOMMANDS: tuple[str, ...] = (
-    "scan", "triage", "apply", "sweep", "serve", "promote", "index", "pending",
+    "scan", "triage", "apply", "sweep", "mv", "serve", "promote", "index", "pending",
     "report", "summary", "new", "provenance", "review", "inject", "eject", "list", "mcp",
     "migrate-frontmatter", "fix-related", "show", "stale", "context", "claim",
     "config", "timeline", "find", "completion", "closeout-check",
@@ -148,7 +149,11 @@ def render_completion(shell: str, config: Config) -> str:
     s = shell.strip().lower()
     if s not in SUPPORTED_SHELLS:
         raise ValueError(
-            f"未対応のシェル: {shell!r}（対応: {', '.join(SUPPORTED_SHELLS)}）"
+            t(
+                "completion.unsupported_shell",
+                shell=shell,
+                supported=", ".join(SUPPORTED_SHELLS),
+            )
         )
     if s == "bash":
         return _bash(config)

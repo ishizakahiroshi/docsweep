@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .config import Config, TypeDef, project_work_settings, resolve_work_dir
 from .detect import Detection, detect_status, extract_summary
+from .i18n import t
 from .models import FileRecord
 from .secrets_guard import high_confidence_hits, scan_secrets
 
@@ -100,7 +101,7 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
     # 集合化する。ネスト指定（例 "docs/archive"）は末尾 "archive" だけを刈り、中間の "docs"
     # ツリー全体を誤って消さない。各プロジェクトの archive/ は任意の深さに出るため basename 判定。
     archive_names = set()
-    for ad in (config.archive_dir, *(t.archive_dir for t in config.types)):
+    for ad in (config.archive_dir, *(type_def.archive_dir for type_def in config.types)):
         if ad:
             seg = ad.strip("/").split("/")
             if seg and seg[-1]:
@@ -901,13 +902,9 @@ def sync_index(
     # 実際に掃除した時だけ 1 行出す。空になった project 行が残っているだけの状態で
     # 毎回鳴らすと、常時 stderr を汚すだけで行動につながらない。
     if cleaned:
-        detail = ", ".join(f"{pid}（{n} 件）" for pid, n in sorted(cleaned))
-        print(
-            f"warning: 実体を失った索引行を削除しました: {detail}"
-            " - project_id と実ファイルから再導出した project が食い違う旧採番の残骸です。"
-            "空になった project 行ごと消すなら"
-            " `docsweep index-sync --prune-projects`",
-            file=sys.stderr,
+        detail = ", ".join(
+            t("scan.stale_rows_item", project=pid, count=n) for pid, n in sorted(cleaned)
         )
+        print(t("scan.stale_rows_removed", detail=detail), file=sys.stderr)
 
     return stats

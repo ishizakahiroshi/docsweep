@@ -14,6 +14,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from docsweep.config import load_config  # noqa: E402
+from docsweep.i18n import t  # noqa: E402
 from docsweep.server.app import create_app  # noqa: E402
 from docsweep.state import get_postpone_count  # noqa: E402
 
@@ -190,7 +191,7 @@ def test_bulk_archive_skips_non_archivable(client):
     body = r.json()
     assert len(body["moved"]) == 1  # plan_done.md のみ
     assert len(body["skipped"]) == 1
-    assert "not archivable" in body["skipped"][0]["reason"]
+    assert body["skipped"][0]["reason"] == t("services_archive.skip_not_archivable", label="[計画]")
     # 元ファイル plan_a.md は残る
     assert (proj / "plan_a.md").exists()
 

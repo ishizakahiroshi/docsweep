@@ -17,14 +17,15 @@
   {# OKF（plan_okf-adoption_2026-06-29.md C4）拡張: tags / owner / related / review_status の
      インライン編集ブロック。値ゼロのカードでもそのまま編集できる（書き込みは frontmatter のみ）。 #}
   <section class="ep-okf" data-bind-section="okf" hidden>
-    <h3 class="ep-okf-title">frontmatter（OKF）</h3>
+    {# owner / tags / related / review_status / last_reviewed は frontmatter のキー名そのもの。 #}
+    <h3 class="ep-okf-title">{{ T.okf_heading }}</h3>
     <div class="ep-okf-grid">
       <label class="ep-okf-row">
         <span class="ep-okf-label">owner</span>
         <span class="ep-okf-inputwrap">
           <input type="text" data-bind="owner" class="ep-okf-input" placeholder="{{ T.not_set }}" />
-          <button type="button" class="ep-okf-btn" data-action="claim" title="{{ T.claim_title }}">claim</button>
-          <button type="button" class="ep-okf-btn" data-action="unclaim" title="{{ T.unclaim_title }}">unclaim</button>
+          <button type="button" class="ep-okf-btn" data-action="claim" title="{{ T.claim_title }}">{{ T.claim_btn }}</button>
+          <button type="button" class="ep-okf-btn" data-action="unclaim" title="{{ T.unclaim_title }}">{{ T.unclaim_btn }}</button>
         </span>
       </label>
       <label class="ep-okf-row">

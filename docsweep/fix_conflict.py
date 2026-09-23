@@ -15,6 +15,7 @@ from typing import Any, Literal
 from .config import Config
 from .detect import detect_h1_state
 from .engine import scan_records
+from .i18n import t
 from .interactive import _update_frontmatter_status
 from .okf import is_okf_lifecycle_status
 from .models import Flag
@@ -147,7 +148,9 @@ def fix_conflicts(
 
         path = Path(r.path)
         if not path.is_file():
-            items.append(ConflictFix(path=r.path, fixed=False, detail="file missing"))
+            items.append(
+                ConflictFix(path=r.path, fixed=False, detail=t("fix_conflict.detail_file_missing"))
+            )
             continue
 
         h1_label = r.state_label
@@ -175,7 +178,7 @@ def fix_conflicts(
                 continue
             if not h1_state:
                 items.append(ConflictFix(
-                    path=r.path, fixed=False, detail="H1 state unknown",
+                    path=r.path, fixed=False, detail=t("fix_conflict.detail_h1_unknown"),
                     old_h1=h1_label, old_fm=str(fm_status) if fm_status else None,
                 ))
                 continue
@@ -187,7 +190,7 @@ def fix_conflicts(
             current_match = config.state_model.match(current_raw) if current_raw else None
             if current_match is not None and current_match.key == h1_state:
                 items.append(ConflictFix(
-                    path=r.path, fixed=False, detail="already in sync",
+                    path=r.path, fixed=False, detail=t("fix_conflict.detail_in_sync"),
                     old_h1=h1_label, old_fm=str(fm_status) if fm_status else None,
                 ))
                 continue
@@ -195,7 +198,7 @@ def fix_conflicts(
             if dry_run:
                 items.append(ConflictFix(
                     path=r.path, fixed=True,
-                    detail="dry-run: frontmatter status ← H1",
+                    detail=t("fix_conflict.detail_dry_run_status_from_h1"),
                     old_h1=h1_label, old_fm=str(fm_status) if fm_status else None,
                     new_value=h1_state,
                 ))
@@ -203,7 +206,11 @@ def fix_conflicts(
             ok = _update_frontmatter_status(path, h1_state, state_model=config.state_model)
             items.append(ConflictFix(
                 path=r.path, fixed=ok,
-                detail="frontmatter status ← H1 state" if ok else "no frontmatter status line",
+                detail=(
+                    t("fix_conflict.detail_status_from_h1")
+                    if ok
+                    else t("fix_conflict.detail_no_status_line")
+                ),
                 old_h1=h1_label, old_fm=str(fm_status) if fm_status else None,
                 new_value=h1_state,
             ))
@@ -216,14 +223,14 @@ def fix_conflicts(
             target_key = matched.key if matched else (raw or None)
             if not target_key:
                 items.append(ConflictFix(
-                    path=r.path, fixed=False, detail="no frontmatter status",
+                    path=r.path, fixed=False, detail=t("fix_conflict.detail_no_status"),
                     old_h1=h1_label, old_fm=None,
                 ))
                 continue
             if dry_run:
                 items.append(ConflictFix(
                     path=r.path, fixed=True,
-                    detail="dry-run: H1 ← frontmatter",
+                    detail=t("fix_conflict.detail_dry_run_h1_from_status"),
                     old_h1=h1_label, old_fm=str(fm_status),
                     new_value=target_key,
                 ))
@@ -237,7 +244,7 @@ def fix_conflicts(
                 )
                 items.append(ConflictFix(
                     path=r.path, fixed=True,
-                    detail="H1 ← frontmatter status",
+                    detail=t("fix_conflict.detail_h1_from_status"),
                     old_h1=h1_label, old_fm=str(fm_status),
                     new_value=target_key,
                 ))
@@ -247,8 +254,7 @@ def fix_conflicts(
     unmatched = [orig for key, orig in want.items() if key not in matched_keys] if want else []
     if unmatched:
         print(
-            f"warning: --path の指定 {len(unmatched)} 件は conflict 一覧に一致しませんでした"
-            "（パス誤り、またはそのファイルに frontmatter <-> H1 の食い違いが無い）:",
+            t("common.warning", message=t("fix_conflict.unmatched_paths", count=len(unmatched))),
             file=sys.stderr,
         )
         for orig in unmatched:

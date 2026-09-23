@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 
+from ...i18n import t
 from ..parser import _build_config
 
 def cmd_review_week(args: argparse.Namespace) -> int:
@@ -24,7 +25,7 @@ def cmd_review_week(args: argparse.Namespace) -> int:
     conflict = [r for r in records if Flag.CONFLICT.value in (r.flags or [])]
     suggestions = suggest_transitions(cfg).suggestions
     hints: list[str] = [
-        "docsweep project list  # 不要プロジェクトを disable",
+        t("cli_excluded.hint_project_list"),
         "docsweep fix-conflict --list",
         "docsweep auto-triage --suggest",
         "docsweep promote --due-expired --dry-run",
@@ -48,13 +49,13 @@ def cmd_review_week(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print("review-week")
-        print(f"  watching: {payload['watching_count']}")
-        print(f"  planned>=90d: {payload['old_planned_count']}")
-        print(f"  conflict: {payload['conflict_count']}")
-        print(f"  auto-triage suggestions: {payload['suggestion_count']}")
+        print(t("cli_excluded.review_week_title"))
+        print(t("cli_excluded.review_week_watching", count=payload["watching_count"]))
+        print(t("cli_excluded.review_week_old_planned", count=payload["old_planned_count"]))
+        print(t("cli_excluded.review_week_conflict", count=payload["conflict_count"]))
+        print(t("cli_excluded.review_week_suggestions", count=payload["suggestion_count"]))
         for h in hints:
-            print(f"  next: {h}")
+            print(t("cli_excluded.review_week_next", hint=h))
     return 0
 
 
@@ -80,7 +81,7 @@ def cmd_config(args: argparse.Namespace) -> int:
         else:
             for k in sorted(settings):
                 v = settings[k]
-                print(f"{k} = {v if v is not None else '(未設定)'}")
+                print(f"{k} = {v if v is not None else t('cli_excluded.unset_value')}")
         return 0
     if getattr(args, "get_key", None):
         key = args.get_key
@@ -101,31 +102,27 @@ def cmd_config(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(str(e), file=sys.stderr)
             return 2
-        print(f"unset: {key}")
+        print(t("cli_excluded.unset_done", key=key))
         return 0
     key = args.key
     value = args.value
     if not key:
-        print(f"使い方: docsweep config <key> [<value>]  /  --list  /  --get KEY  /  --unset KEY  （許可キー: {sorted(SETTABLE_KEYS)}）")
+        print(t("cli_excluded.config_usage", keys=sorted(SETTABLE_KEYS)))
         return 2
     if getattr(args, "from_github", False):
         # GitHub アカウントは 1 つしかなく、リポジトリ単位で上書きできる git config user.name より
         # 識別子として安定している。ただし解決はここ 1 回だけで、生成のたびに gh は叩かない。
         if key != "user.name":
-            print("--from-github は user.name にだけ使えます", file=sys.stderr)
+            print(t("cli_excluded.from_github_user_name_only"), file=sys.stderr)
             return 2
         if value is not None:
-            print("--from-github と値の同時指定はできません", file=sys.stderr)
+            print(t("cli_excluded.from_github_with_value"), file=sys.stderr)
             return 2
         from ...services.frontmatter import github_login
 
         login = github_login()
         if not login:
-            print(
-                "gh からアカウント名を取得できませんでした（gh 未導入 / 未ログイン / オフライン）。"
-                "`gh auth status` を確認するか、値を直接指定してください。",
-                file=sys.stderr,
-            )
+            print(t("cli_excluded.from_github_failed"), file=sys.stderr)
             return 1
         value = login
     if value is None:
@@ -141,5 +138,5 @@ def cmd_config(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
-    print(f"設定: {key} = {value}  ({path})")
+    print(t("cli_excluded.config_set", name=key, value=value, path=path))
     return 0

@@ -8,6 +8,8 @@
   デモを見るときは `--root <生成先>` を明示して各コマンドを叩く。
 - 中身は状態が散らばった 8 本。overdue / 今日 / 未来 / 期日なし / 保留 / 完了 が
   1 画面で揃うので、`triage` も看板も「空っぽ」にならない。
+- 文書は表示言語（``--lang`` / ``DOCSWEEP_LANG`` / OS）で作り、``.docsweep.yaml`` に
+  ``lang`` を書いて、そのデモ project の文書の言語を固定する。
 """
 
 from __future__ import annotations
@@ -18,33 +20,39 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
+from .doc_vocab import column, heading
+from .i18n import current_lang, normalize_lang, t, texts
+from .states import StateModel
+
 DEMO_DIR_PREFIX = "docsweep-demo-"
 
-# (ファイル名, H1 ラベル, タイトル, docsweep_state, due オフセット日 or None, 概要)
-# type は必ずファイル名の接頭辞から取る（frontmatter と filename の食い違い warning を出さない）。
-_SEEDS: list[tuple[str, str, str, str, int | None, str]] = [
-    ("plan_search-relevance.md", "[実行中]", "検索の関連度を作り直す", "in-progress", -3,
-     "全文検索の並びが古い順のままで、探しているものが下に沈む。"),
-    ("plan_onboarding-flow.md", "[計画]", "初回オンボーディングの導線", "planned", 0,
-     "初回起動から最初の価値到達までが 5 手かかっている。"),
-    ("bugfix_login-timeout_2026-05-02.md", "[実行中]", "ログインが 30 秒で切れる", "in-progress", -9,
-     "セッション延長が効かず、作業中にログイン画面へ戻される。"),
-    ("bugfix_csv-encoding_2026-05-20.md", "[様子見]", "CSV 取り込みの文字化け", "watching", 5,
-     "cp932 の CSV を取り込むと一部の列が化ける。直したが再発を見ている。"),
-    ("plan_billing-rework.md", "[計画]", "課金まわりの作り直し", "planned", 21,
-     "プラン変更の日割りが仕様化されていない。"),
-    ("pending_mobile-app.md", "[保留]", "モバイルアプリを出すかの判断", "pending", None,
-     "着手条件は Web の月間利用が安定してから。"),
-    ("pending_i18n.md", "[保留]", "多言語対応の範囲を決める", "pending", None,
-     "英語だけ先に出すか、最初から 3 言語そろえるか。"),
-    ("plan_weekly-report.md", "[完了]", "週次レポートの自動生成", "done", None,
-     "毎週月曜に前週分をまとめて配信するところまで完了。"),
-]
 
-_CONFIG_YAML = """# docsweep demo project（使い捨て）
-work_dir: docs/local
-work_policy: private
-"""
+@dataclass(frozen=True)
+class _Seed:
+    name: str
+    state: str
+    due_offset: int | None
+
+    def text(self, part: str, lang: str) -> str:
+        """タイトル・概要（``part`` = ``title`` / ``summary``）。サンプルの中身なので
+        言語ごとに ``docsweep/i18n/locales/<言語>/demo.json`` の ``demo.seed.<ファイル名の stem>.*`` に置く。"""
+        return t(f"demo.seed.{Path(self.name).stem}.{part}", lang=lang)
+
+
+# type は必ずファイル名の接頭辞から取る（frontmatter と filename の食い違い warning を出さない）。
+_SEEDS: tuple[_Seed, ...] = (
+    _Seed("plan_search-relevance.md", "in-progress", -3),
+    _Seed("plan_onboarding-flow.md", "planned", 0),
+    _Seed("bugfix_login-timeout_2026-05-02.md", "in-progress", -9),
+    _Seed("bugfix_csv-encoding_2026-05-20.md", "watching", 5),
+    _Seed("plan_billing-rework.md", "planned", 21),
+    _Seed("pending_mobile-app.md", "pending", None),
+    _Seed("pending_i18n.md", "pending", None),
+    _Seed("plan_weekly-report.md", "done", None),
+)
+
+# 表と完了条件・検証の中身（サンプルなので空に近い）は demo.json の ``demo.table_rows`` /
+# ``demo.completion_item`` / ``demo.verification_item``、設定のコメントは ``demo.config_comment``。
 
 
 @dataclass
@@ -89,30 +97,37 @@ def _frontmatter(doc_type: str, state: str, due: str | None, today: date) -> str
     return "\n".join(lines)
 
 
-def _body(title: str, summary: str) -> str:
+def _body(doc_type: str, summary: str, lang: str) -> str:
+    # 概要の見出しは種別の規約に合わせる（bugfix は「症状」。scan の概要抽出がこれを読む）
+    summary_key = "symptoms" if doc_type == "bugfix" else "summary"
+    header = " | ".join(["C"] + [column(key, lang) for key in ("status", "description", "notes")])
+    rows = "\n".join(texts("demo.table_rows", lang=lang))
     return (
-        "\n## 概要\n\n"
+        f"\n## {heading(summary_key, lang)}\n\n"
         f"{summary}\n\n"
-        "## context配分\n\n"
-        "| C | 種別 | 内容 | 備考/注意点 |\n"
+        f"## {heading('context', lang)}\n\n"
+        f"| {header} |\n"
         "|---|---|---|---|\n"
-        "| C1 | planned | 現状を実測する | デモ用のサンプルなので中身は空 |\n"
-        "| C2 | planned | 直す | |\n\n"
-        "## 完了条件\n\n"
-        "- [ ] デモ用のサンプルなので完了条件は入っていない\n\n"
-        "## 検証\n\n"
-        "- [ ] 未実施\n"
+        f"{rows}\n\n"
+        f"## {heading('completion', lang)}\n\n"
+        f"{t('demo.completion_item', lang=lang)}\n\n"
+        f"## {heading('verification', lang)}\n\n"
+        f"{t('demo.verification_item', lang=lang)}\n"
     )
 
 
-def build_demo(target: Path | None = None, *, today: date | None = None) -> DemoResult:
+def build_demo(
+    target: Path | None = None, *, today: date | None = None, lang: str | None = None
+) -> DemoResult:
     """サンプル project を作って ``DemoResult`` を返す。
 
     Args:
         target: 生成先。``None`` なら一時ディレクトリに新規作成する。
         today: due 計算の基準日（テスト用）。
+        lang: 文書の言語（対応言語のコード）。省く・対応外なら表示言語。
     """
     today = today or date.today()
+    lang = normalize_lang(lang) or current_lang()
     created_dir = False
     if target is None:
         target = Path(tempfile.mkdtemp(prefix=DEMO_DIR_PREFIX))
@@ -124,17 +139,28 @@ def build_demo(target: Path | None = None, *, today: date | None = None) -> Demo
 
     work = target / "docs" / "local"
     work.mkdir(parents=True, exist_ok=True)
-    (target / ".docsweep.yaml").write_text(_CONFIG_YAML, encoding="utf-8")
+    (target / ".docsweep.yaml").write_text(
+        f"{t('demo.config_comment', lang=lang)}\nwork_dir: docs/local\nwork_policy: private\nlang: {lang}\n",
+        encoding="utf-8",
+    )
 
+    states = StateModel()
     written: list[Path] = []
-    for name, label, title, state, offset, summary in _SEEDS:
-        due = (today + timedelta(days=offset)).isoformat() if offset is not None else None
-        text = (
-            _frontmatter(_doc_type(name), state, due, today)
-            + f"\n\n# {label} {title}\n"
-            + _body(title, summary)
+    for seed in _SEEDS:
+        due = (
+            (today + timedelta(days=seed.due_offset)).isoformat()
+            if seed.due_offset is not None
+            else None
         )
-        p = work / name
+        state = states.by_key(seed.state)
+        label = state.label(lang) if state else seed.state
+        doc_type = _doc_type(seed.name)
+        text = (
+            _frontmatter(doc_type, seed.state, due, today)
+            + f"\n\n# [{label}] {seed.text('title', lang)}\n"
+            + _body(doc_type, seed.text("summary", lang), lang)
+        )
+        p = work / seed.name
         p.write_text(text, encoding="utf-8")
         written.append(p)
 
@@ -143,16 +169,16 @@ def build_demo(target: Path | None = None, *, today: date | None = None) -> Demo
 
 def render_demo(result: DemoResult) -> str:
     lines = [
-        f"demo project を作りました: {result.root}",
-        f"  md {len(result.files)} 本 / .docsweep.yaml 1 本",
+        t("demo.created", root=result.root),
+        t("demo.file_counts", count=len(result.files)),
         "",
-        "そのまま試すコマンド（--root を付ける限り、ほかのプロジェクトには触りません）:",
+        t("demo.try_commands"),
     ]
     for cmd in result.to_dict()["next"]:
         lines.append(f"  $ {cmd}")
     lines += [
         "",
-        "使い終わったらフォルダごと消してかまいません（グローバル設定には登録していません）。",
+        t("demo.cleanup"),
     ]
     return "\n".join(lines)
 

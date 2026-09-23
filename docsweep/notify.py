@@ -10,6 +10,7 @@ from typing import Any
 
 from .config import Config
 from .engine import scan_records
+from .i18n import t
 from .models import Flag
 
 
@@ -31,10 +32,10 @@ def build_overdue_message(config: Config) -> tuple[str, str]:
     n = len(overdue)
     title = "docsweep"
     if n == 0:
-        body = "やり忘れは 0 件です"
+        body = t("notify.no_overdue")
     else:
         sample = "[sensitive]" if overdue[0].sensitive else (overdue[0].title or Path_name(overdue[0].path))
-        body = f"やり忘れ {n} 件（例: {sample}）"
+        body = t("notify.overdue", count=n, sample=sample)
     return title, body
 
 
@@ -92,7 +93,7 @@ def send_os_notification(title: str, body: str) -> tuple[bool, str, str]:
             return proc.returncode == 0, "notify-send", ""
         except (OSError, subprocess.SubprocessError) as e:
             return False, "notify-send", str(e)
-    return False, "none", "no notification backend"
+    return False, "none", t("notify.no_backend")
 
 
 def _ps_quote(s: str) -> str:
@@ -106,6 +107,8 @@ def _escape_as(s: str) -> str:
 def notify_overdue(config: Config, *, dry_run: bool = False) -> NotifyResult:
     title, body = build_overdue_message(config)
     if dry_run:
-        return NotifyResult(sent=False, title=title, body=body, backend="dry-run", detail="not sent")
+        return NotifyResult(
+            sent=False, title=title, body=body, backend="dry-run", detail=t("notify.not_sent")
+        )
     ok, backend, detail = send_os_notification(title, body)
     return NotifyResult(sent=ok, title=title, body=body, backend=backend, detail=detail)

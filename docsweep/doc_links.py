@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .i18n import t
+
 DOC_BASE = "https://github.com/ishizakahiroshi/docsweep/blob/main/"
 
 
@@ -18,11 +20,21 @@ DOC_BASE = "https://github.com/ishizakahiroshi/docsweep/blob/main/"
 class DocLink:
     """1 つの help id に対応する読み先。"""
 
-    doc: str
-    """リポジトリ相対のドキュメントパス（アンカー付き可）。"""
+    help_id: str
 
-    hint: str
-    """1 行で「何をすればいいか」。"""
+    @property
+    def doc(self) -> str:
+        """リポジトリ相対のドキュメントパス（アンカー付き可）を表示言語で返す。
+
+        読み先は言語ごとに terms.json の ``doc_links.doc.<help id>`` に置く（英語版がある
+        文書は英語の表示言語で英語版の節へ飛ばす。無い文書は全言語で同じパス）。
+        """
+        return t(f"doc_links.doc.{self.help_id}")
+
+    @property
+    def hint(self) -> str:
+        """1 行で「何をすればいいか」（messages.json の ``doc_links.<help id>``）。"""
+        return t(f"doc_links.{self.help_id}")
 
     @property
     def url(self) -> str:
@@ -30,30 +42,15 @@ class DocLink:
 
 
 LINKS: dict[str, DocLink] = {
-    "cli.unknown_command": DocLink(
-        "README.md#使い方",
-        "サブコマンド名を確認してください（`docsweep cookbook` に状況別の例があります）",
-    ),
-    "config.yaml_parse": DocLink(
-        "templates/.docsweep.yaml",
-        ".docsweep.yaml の書式を確認してください（テンプレートが正本です）",
-    ),
-    "console.encoding": DocLink(
-        "README.md#windows",
-        "PYTHONIOENCODING=utf-8 を指定するか、--json 以外の出力を使ってください",
-    ),
-    "naming.work_md": DocLink(
-        "docs/conventions.md",
-        "作業 md の命名は plan_ / bugfix_ / pending_ の接頭辞で決まります",
-    ),
-    "closeout.parent_only": DocLink(
-        "docs/conventions.md",
-        "closeout-check は親子構造を持つ plan_*.md だけを対象にします",
-    ),
-    "states.label": DocLink(
-        "docs/conventions.md",
-        "H1 のステータスラベルは docsweep/states.py の DEFAULT_STATES が正本です",
-    ),
+    help_id: DocLink(help_id)
+    for help_id in (
+        "cli.unknown_command",
+        "config.yaml_parse",
+        "console.encoding",
+        "naming.work_md",
+        "closeout.parent_only",
+        "states.label",
+    )
 }
 
 
@@ -64,7 +61,12 @@ def doc_hint(help_id: str, *, enabled: bool = True) -> str | None:
     link = LINKS.get(help_id)
     if link is None:
         return None
-    return f"hint: {link.hint}\n  → {link.url}  (help id: {help_id})"
+    # 「ヒント:」と「ヘルプ ID」の見出しも表示言語で出す（help_id 自体は機械向けの識別子）
+    return (
+        t("hints.line", text=link.hint)
+        + "\n"
+        + t("hints.doc_link_line", url=link.url, help_id=help_id)
+    )
 
 
 def known_ids() -> list[str]:

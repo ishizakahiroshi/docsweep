@@ -262,6 +262,13 @@ python -m docsweep scan --all --json        # Everything as machine-readable JSO
 python -m docsweep sweep --dry-run
 python -m docsweep sweep
 
+# Move documents inside the work queue. References to them are rewritten too: docsweep_parent,
+# path-style related entries, relative Markdown links, and exact repo-relative paths in bodies
+# (--no-body skips bodies). Archiving also keeps relative links working
+python -m docsweep mv docs/local/plan_x.md --to docs/local/app-a --dry-run
+python -m docsweep mv docs/local/plan_x.md --to docs/local/app-a
+python -m docsweep undo                     # Undo the latest archive / mv, including rewritten references and labels
+
 # Regenerate the cross-project INDEX (.docsweep/INDEX.md and INDEX.json)
 python -m docsweep index
 python -m docsweep pending                  # Show only [Pending] items across all projects at once
@@ -341,6 +348,13 @@ The Japanese label set (`[保留]` → `[計画]` → `[実行中]` → `[様子
   root `archive/` for `shared`. This keeps private work documents out of a Git-tracked location
   by default. `python -m docsweep sweep --dry-run --json` reports the destination and why it was
   chosen under `archive_routes`.
+- If the queue is split into folders, set `archive_layout: mirror` to keep the same folders inside
+  the archive (`docs/local/app-a/plan_x.md` → `docs/local/archive/app-a/plan_x.md`). The default
+  `flat` puts everything directly under the archive. Combined with `archive_partition: release`,
+  the order is `archive/app-a/v0.9.x/`.
+- Archiving rewrites other documents' `docsweep_parent` and path-style `related` entries that
+  point at the moved document (bare-name `related` entries are left alone). The rewrites are
+  listed under `ref_updates` in `--json` output.
 - The label vocabulary, archivability, and auto-archive eligibility come from the `states:`
   config — **the single source of truth** — from which detection, the Web display, and the
   injection templates are all derived.
@@ -392,6 +406,26 @@ For a **one-off scan** you can also pass positional arguments without writing an
 ```bash
 python -m docsweep triage ~/dev/foo ~/projects/bar
 ```
+
+### Display language and document language (Japanese / English)
+
+Errors, output, `--help`, the Web UI, and MCP tool descriptions use the **display language**:
+`--lang ja|en` → the `DOCSWEEP_LANG` environment variable → `lang` in the config (only when you set it)
+→ the OS display language → `en`. On Windows the OS UI language is used (the `LANG=en_US.UTF-8` that
+Git Bash sets does not change it). In the Web UI you can switch from the settings modal or with
+`?lang=en`; the choice is kept in a cookie.
+
+Templates created by `docsweep new`, injected rules, and status labels are written in the
+**document language**: `lang` in `.docsweep.yaml` → `lang` in `~/.docsweep/config.yaml` → the display
+language. For repositories shared by several people, pin it with `lang` in `.docsweep.yaml`.
+docsweep reads documents in either language (`## 概要` and `## Summary`, `[計画]` and `[Planned]`, etc.).
+
+```yaml
+lang: en   # documents in this project are English, regardless of each person's display language
+```
+
+Texts and terms are not in the code; they live in `docsweep/i18n/locales/<language>/*.json`.
+Adding a language is adding one folder (missing keys fall back to English).
 
 ### Work queue and private documents
 

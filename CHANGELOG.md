@@ -17,8 +17,44 @@
   永続化する。
 - 未設定repoからの対話TTY `new` に初回設定を追加し、workspace reviewは棚卸しと最終actionを
   表示してから明示確認した場合だけapplyする。
+- `archive_layout: mirror` を追加した。作業 queue 内のサブフォルダ構成を archive 側でも保つ
+  （`docs/local/app-a/plan_x.md` → `docs/local/archive/app-a/plan_x.md`）。`archive_partition: release`
+  と併用すると `archive/<サブフォルダ>/<版>/` に入る。既定の `flat` は従来どおり archive 直下。
+- `docsweep mv <src>... --to <dir>` を追加した。作業 queue の中で文書を移し、その文書を指す
+  `docsweep_parent`・パス形式の `related`・本文の Markdown の相対リンク・本文中の repo 相対パス（完全一致）を
+  新しいパスへ書き換える（`--no-body` で本文は触らない）。git で追跡されているファイルと archive の中は動かさない。
+  `--dry-run` で予定だけを出し、`docsweep undo` で参照ごと戻せる。
+- 利用者に見える文言をすべて日本語・英語で切り替えられるようにした（CLI の出力・エラー・`--help`・
+  argparse 自身の文言・JSON の理由文・MCP の応答とツール説明・Web UI・注入するルール文・`demo`）。
+  表示言語は `--lang` → `DOCSWEEP_LANG` → 設定の `lang`（書いたときだけ）→ OS の表示言語 → `en`。
+- 文言と用語をコードから外し、言語ごとの JSON（`docsweep/i18n/locales/<言語>/*.json`）に置いた。
+  言語はフォルダを足すと増やせる（`--lang` の選択肢・Web の言語ボタンも自動で増える）。
+- 英語の作業文書に対応した。`docsweep new` / capture / demo は文書の言語（`.docsweep.yaml` の
+  `lang` → global の `lang` → 表示言語）でテンプレートを作り、概要・変更予定ファイル・完了条件・検証・
+  `context配分` の表などの解析は日英どちらの見出しも受け付ける。pre-commit hook も英語の委譲 plan を
+  検査でき、文言は隣の `docsweep-check.i18n.json`（`install-hooks` が一緒にコピーする）に置く。
 
 ### Changed
+
+- archive へ移送したとき、同じ project の queue にある他の文書の `docsweep_parent`・パス形式の
+  `related`・本文の Markdown の相対リンク（`[text](plan_x.md)` など）を新しいパスへ書き換えるようにした。
+  移した文書自身の本文の相対リンクも、移した後の場所から同じ先を指すように直す（bare name の `related`・
+  コードの中・URL・もともと切れていたリンクは触らない）。書き換えは
+  `sweep` / `promote` / `release close` の JSON の `ref_updates` に出て、移動ログへ `ref_rewrite` として残る。
+  `undo` はファイルを戻す前に参照も戻す。
+- `undo` は、移す直前に書き換えた状態ラベル（H1 と frontmatter の `docsweep_state` / 旧形式の `status`）も
+  元へ戻す。これまでは `promote` / `discard` / Web で `[完了]` にしたときの自動 archive などを undo すると、
+  文書が `[完了]` / `[廃止]` のまま queue へ戻り、次の `sweep` でまた archive へ移っていた。archive の後に
+  人がラベルを変えていたら、その値は上書きしない。
+- `--lang` は表示言語だけを変える。設定で `lang` を決めたリポジトリの文書の言語は変えない。
+  状態ラベルを書き換えるときは、文書にすでにあるラベルの言語で書く（1 つの文書に日英を混ぜない）。
+- `init` と `inject` の言語の既定を固定の `ja` から、表示言語（`inject` はそのプロジェクトの文書の言語）
+  にした。英語の環境で `init --yes` を実行すると `lang: en` が書かれる。
+- Web UI で `?lang=` を指定すると cookie に残し、再描画や API のエラーも同じ言語で出す。
+  サブページ（graph / brief / cross / resurrect / capture）も `?lang=` に従う。
+- 修正: `docsweep context` の出力で、対象・パス・タイトル・状態の 4 行が改行なしで連結されていた。
+- 修正: `eject` が日本語の警告文の文字列で UTF-8 の読み取り失敗を判定しており、英語表示では
+  `.docsweep.yaml` を purge してしまう経路があった。
 
 - 設定なし、`release_tracking.mode: disabled`、または `archive_partition: flat` のプロジェクトは
   従来の archive 経路を維持する。
@@ -38,6 +74,26 @@
   返すため `docsweep new` の release tracking 初回確認と workspace migration の `--review` が
   対話と誤判定して止まっていた。Windows ではコンソールかどうか（GetConsoleMode）まで確かめ、
   非対話なら確認を出さずに警告だけで続ける。
+- `sweep`（CLI / MCP / Web の一括）・`promote`・`apply --action discard|promote`・`auto-triage` の
+  提案の適用（Web の提案パネルも）・`triage --review`・`--review` のチェックリスト・`release close` が
+  移動ログに batch_id を記録していなかったため、
+  `docsweep undo` で戻せなかった（sweep は直後に undo を案内し、`undo --help` も promote を戻せると
+  書いていた）。利用者の 1 回の操作を 1 バッチとして記録し、参照の書き換えも含めて undo で戻せるようにした。
+- `docsweep new plan` の文書に、`closeout-check` が必須にする `## 完了条件` と `## 検証` が無く、
+  人が節を書き足すまで `missing_section` で止まっていた。`## 概要` の後に両方を置く
+  （設定の `template_sections` に同じ見出しがあればそちらを使い、二重にしない）。生成された節を
+  埋めずに同じ見出しを書き足した plan は、`<TODO>` のまま残った節を closeout-check が数えない。
+- 文書を archive へ移送したり `docsweep mv` で移したりしても provenance 台帳の `work_path` が移す前の
+  場所のままで、`provenance check` が「台帳のwork_pathが現在pathと異なります」と警告し続けていた。
+  移送と `undo` のたびに、その文書の `work_id` を持ち移す前の場所を指す行を移動先へ付け替える
+  （台帳の不具合で移動は止めず、stderr に 1 行警告する）。既にずれた行は
+  `docsweep provenance check --path <md> --fix-work-path` で今の場所へ直せる。
+- `docsweep review` のチェックリストで `docsweep_policy: never_archive` の文書を含めて選ぶと、例外で
+  止まり、その前に選んだ文書だけが移送されて件数も出なかった。移せなかった文書は `  ! <パス>: <理由>`
+  の行で知らせて残りを続け、最後に移送件数と移せなかった件数を出す（`triage --review` と同じ扱い）。
+- `triage --review` で md を開けなかったときの文が `開けませんでした: 起動に失敗しました: ...` と
+  二重に包まれていた。入力が終わったとき（パイプで流したキーが尽きた等）の終了の案内が、プロンプトと
+  同じ行に続いていた。どちらも直した。
 
 ## [0.6.0] - 2026-09-11
 

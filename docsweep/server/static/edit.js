@@ -99,7 +99,7 @@
       workpackBtn.dataset.path = currentPath || "";
     }
     const mtimeLabel = $(".ep-mtime");
-    if (mtimeLabel) mtimeLabel.textContent = "mtime=" + currentMtime;
+    if (mtimeLabel) mtimeLabel.textContent = DS_T("mtime_label", currentMtime);
 
     // プレビュー / 生 MD / OKF 詳細を並列取得（最後のは C4 で新設）。
     const [html, raw, detail] = await Promise.all([
@@ -119,7 +119,7 @@
         // raw の mtime を優先する（カードの dataset.mtime は board レンダリング時点・最新ではない）。
         if (raw.mtime) {
           currentMtime = String(raw.mtime);
-          if (mtimeLabel) mtimeLabel.textContent = "mtime=" + currentMtime;
+          if (mtimeLabel) mtimeLabel.textContent = DS_T("mtime_label", currentMtime);
         }
       } else if (previewEl) {
         // フォールバック: raw が取れなければプレビューテキスト（保存はできるが構造劣化警告を出す）。
@@ -159,8 +159,8 @@
     if (originalContent !== ta.value) {
       const d = simpleDiffPreview(originalContent, ta.value);
       const msg = (d.changed
-        ? ("変更 " + d.changed + " 行付近:\n\n" + (d.text || "(構造差分)") + "\n\n")
-        : "") + "この内容で保存しますか？";
+        ? (DS_T("save_diff_head", d.changed) + "\n\n" + (d.text || DS_T("save_diff_structural")) + "\n\n")
+        : "") + DS_T("save_confirm");
       if (!window.confirm(msg)) return;
     }
     const sp = new URLSearchParams();
@@ -179,11 +179,11 @@
       return;
     }
     if (!res.ok) {
-      window.alert(DS_T("save_failed", body && body.detail ? body.detail : ("status " + res.status)));
+      window.alert(DS_T("save_failed", body && body.detail ? body.detail : DS_T("http_status", res.status)));
       return;
     }
     if (body && body.warnings && body.warnings.length) {
-      window.alert("保存しました（警告）:\n" + body.warnings.join("\n"));
+      window.alert(DS_T("saved_with_warnings") + "\n" + body.warnings.join("\n"));
     }
     currentMtime = body && body.new_mtime ? body.new_mtime : currentMtime;
     originalContent = ta.value;
@@ -213,7 +213,7 @@
       return null;
     }
     if (!res.ok) {
-      window.alert(DS_T("fm_save_failed", body && body.detail ? body.detail : ("status " + res.status)));
+      window.alert(DS_T("fm_save_failed", body && body.detail ? body.detail : DS_T("http_status", res.status)));
       return null;
     }
     if (body && body.new_mtime) currentMtime = String(body.new_mtime);
@@ -255,7 +255,7 @@
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
-      window.alert(DS_T("claim_failed", body && body.detail ? body.detail : ("status " + res.status)));
+      window.alert(DS_T("claim_failed", body && body.detail ? body.detail : DS_T("http_status", res.status)));
       return;
     }
     if (body && body.new_mtime) currentMtime = String(body.new_mtime);

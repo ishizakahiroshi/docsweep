@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from ..config import Config
+from ..doc_vocab import heading_variants
 from ..engine import scan_records
 from ..models import FileRecord
 from .embedding import EmbeddingUnavailable, encode
@@ -55,10 +56,20 @@ def _extract_title(text: str) -> str | None:
     return None
 
 
+_SUMMARY_NAMES = "|".join(
+    re.escape(name) for key in ("summary", "symptoms") for name in heading_variants(key)
+)
+_SUMMARY_SECTION_RE = re.compile(
+    rf"^##\s*(?:{_SUMMARY_NAMES})\s*$.*?(?=^##\s|\Z)", re.MULTILINE | re.DOTALL
+)
+
+
 def _extract_summary(text: str) -> str:
-    """概要セクション先頭の意味行を返す（類似度用テキスト）。"""
-    section_re = re.compile(r"^##\s*(?:概要|症状)\s*$.*?(?=^##\s|\Z)", re.MULTILINE | re.DOTALL)
-    m = section_re.search(text)
+    """概要（bugfix は症状）セクション先頭の意味行を返す（類似度用テキスト）。
+
+    見出しは日本語・英語どちらの表記も受け付ける（語彙は ``doc_vocab``）。
+    """
+    m = _SUMMARY_SECTION_RE.search(text)
     body = m.group(0) if m else text
     return body.strip()[:1000]
 

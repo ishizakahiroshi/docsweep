@@ -18,6 +18,7 @@ import yaml
 
 from ..atomic import write_atomic
 from ..config import GLOBAL_CONFIG_PATH
+from ..i18n import t
 
 # トップレベル ``roots:`` キーのブロック。続き行はリスト項目だけでなく、その間に挟まった
 # インデント付きコメント行も含める。空行は次キーとの境界として残す。
@@ -64,7 +65,7 @@ def update_global_roots(roots: list[Path], *, config_path: Path | None = None) -
 
     parsed = yaml.safe_load(new_text)
     if not isinstance(parsed, dict) or "roots" not in parsed:
-        raise ValueError("roots 置換後の config.yaml が不正です（書き込みを中止しました）")
+        raise ValueError(t("web.config_roots_invalid"))
 
     write_atomic(path, new_text, encoding="utf-8")
     return path

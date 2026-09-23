@@ -23,6 +23,7 @@ from .config import (
     archive_partition_for_project,
     release_tracking_for_project,
 )
+from .i18n import t
 from .models import FileRecord
 from .scan import ScannedDoc
 
@@ -89,6 +90,9 @@ class ReleaseCloseResult:
     collision: list[dict] = field(default_factory=list)
     moved: list[dict] = field(default_factory=list)
     failed: list[dict] = field(default_factory=list)
+    # 移送に伴って書き換えた（dry-run では書き換える予定の）他文書の参照。
+    ref_updates: list[dict] = field(default_factory=list)
+    ref_failed: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         categories = {
@@ -105,42 +109,50 @@ class ReleaseCloseResult:
             "moved": self.moved,
             "failed": self.failed,
         }
-        return {
+        data = {
             "tag": self.tag,
             "dry_run": self.dry_run,
             "target_tag": self.target_tag,
             **categories,
             "counts": {name: len(items) for name, items in categories.items()},
+            "ref_updates": self.ref_updates,
         }
+        if self.ref_failed:
+            data["ref_failed"] = self.ref_failed
+        return data
 
 
-def validate_release_label(value: str, *, field: str = "release label") -> str:
+def validate_release_label(value: str, *, field: str | None = None) -> str:
     """Validate a label before it is used as an archive directory name.
 
     Labels such as ``v0.9.x`` and ``2026-Q3`` are allowed.  Path syntax,
     control characters, Windows device names and names normalized by Windows
     are rejected.  A label is returned unchanged apart from surrounding
     whitespace removal so the exact user value is retained in frontmatter.
+
+    ``field`` は設定キー名（``default_target`` 等）。省くとエラー文には表示言語の
+    「リリースラベル」を出す。
     """
+    field = field or t("release.field_release_label")
     if not isinstance(value, str):
-        raise ReleaseTrackingError(f"{field} は文字列で指定してください")
+        raise ReleaseTrackingError(t("release.value_not_string", field=field))
     label = value.strip()
     if not label:
-        raise ReleaseTrackingError(f"{field} は空にできません")
+        raise ReleaseTrackingError(t("release.value_empty", field=field))
     if label in {".", ".."}:
-        raise ReleaseTrackingError(f"{field} に '.' / '..' は指定できません")
+        raise ReleaseTrackingError(t("release.label_dot", field=field))
     if any(ord(char) < 32 for char in label):
-        raise ReleaseTrackingError(f"{field} に制御文字は指定できません")
+        raise ReleaseTrackingError(t("release.label_control_chars", field=field))
     if any(char in label for char in ("/", "\\", ":", "<", ">", '"', "|", "?", "*")):
-        raise ReleaseTrackingError(f"{field} にパスとして危険な文字は指定できません: {label!r}")
+        raise ReleaseTrackingError(t("release.label_unsafe_chars", field=field, value=label))
     if label.endswith((".", " ")):
-        raise ReleaseTrackingError(f"{field} の末尾に '.' / 空白は指定できません")
+        raise ReleaseTrackingError(t("release.label_trailing", field=field))
     if label.casefold().split(".", 1)[0] in _WINDOWS_RESERVED:
-        raise ReleaseTrackingError(f"{field} に Windows 予約名は指定できません: {label!r}")
+        raise ReleaseTrackingError(t("release.label_reserved_name", field=field, value=label))
     return label
 
 
-def validate_git_tag(value: str, *, field: str = "Git tag") -> str:
+def validate_git_tag(value: str, *, field: str | None = None) -> str:
     """Validate a Git tag without treating its legal ``/`` as a filesystem path.
 
     A release tag is an exact Git ref, not an archive directory name.  GitHub
@@ -148,22 +160,25 @@ def validate_git_tag(value: str, *, field: str = "Git tag") -> str:
     those here would make the non-SemVer diagnostic path unreachable.  The
     value is still checked against the ref characters that Git forbids before
     it is passed as an argument to a subprocess.
+
+    ``field`` を省くとエラー文には表示言語の「Git タグ」を出す。
     """
+    field = field or t("release.field_git_tag")
     if not isinstance(value, str):
-        raise ReleaseTrackingError(f"{field} は文字列で指定してください")
+        raise ReleaseTrackingError(t("release.value_not_string", field=field))
     tag = value.strip()
     if not tag:
-        raise ReleaseTrackingError(f"{field} は空にできません")
+        raise ReleaseTrackingError(t("release.value_empty", field=field))
     if tag in {".", ".."} or ".." in tag or "@{" in tag:
-        raise ReleaseTrackingError(f"{field} に Git ref として危険な表記があります: {tag!r}")
+        raise ReleaseTrackingError(t("release.tag_unsafe_ref", field=field, value=tag))
     if any(ord(char) < 32 for char in tag) or any(
         char in tag for char in (" ", "~", "^", ":", "?", "*", "[", "\\")
     ):
-        raise ReleaseTrackingError(f"{field} に Git ref として使えない文字があります: {tag!r}")
+        raise ReleaseTrackingError(t("release.tag_invalid_chars", field=field, value=tag))
     if tag.startswith("/") or tag.endswith("/") or "//" in tag:
-        raise ReleaseTrackingError(f"{field} の階層区切りが不正です: {tag!r}")
+        raise ReleaseTrackingError(t("release.tag_bad_separator", field=field, value=tag))
     if tag.startswith(".") or tag.endswith("."):
-        raise ReleaseTrackingError(f"{field} は '.' で始めたり終えたりできません: {tag!r}")
+        raise ReleaseTrackingError(t("release.tag_dot_edge", field=field, value=tag))
     return tag
 
 
@@ -196,7 +211,7 @@ def parse_release_tag(
             match = re.fullmatch(policy.tag_pattern, tag)
         except re.error as exc:
             raise ReleaseTrackingError(
-                f"tag_pattern が正しい正規表現ではありません: {policy.tag_pattern!r}"
+                t("release.tag_pattern_invalid_regex", pattern=policy.tag_pattern)
             ) from exc
         if match is None or not {"major", "minor", "patch"} <= set(match.groupdict()):
             return None
@@ -224,7 +239,7 @@ def parse_release_tag(
     if expected_prefix == "none" and prefix:
         return None
     if expected_prefix not in RELEASE_TAG_PREFIXES:
-        raise ReleaseTrackingError(f"tag_prefix が未対応です: {expected_prefix!r}")
+        raise ReleaseTrackingError(t("release.tag_prefix_unsupported", value=expected_prefix))
     return ReleaseTag(
         original=tag,
         major=int(match.group("major")),
@@ -238,7 +253,7 @@ def parse_release_tag(
 def archive_bucket_for_tag(tag: ReleaseTag, group_by: str) -> str:
     """Return the release bucket for ``patch``, ``minor`` or ``major``."""
     if group_by not in RELEASE_ARCHIVE_GROUPS:
-        raise ReleaseTrackingError(f"archive_group_by が未対応です: {group_by!r}")
+        raise ReleaseTrackingError(t("release.group_by_unsupported", value=group_by))
     prefix = tag.prefix
     if group_by == "patch":
         bucket = tag.original
@@ -248,7 +263,7 @@ def archive_bucket_for_tag(tag: ReleaseTag, group_by: str) -> str:
         bucket = f"{prefix}{tag.major}.x"
     # Custom tag patterns may expose a prefix containing '/'.  Never let a
     # user-supplied regex turn a release bucket into a path traversal.
-    return validate_release_label(bucket, field="release archive bucket")
+    return validate_release_label(bucket, field=t("release.field_archive_bucket"))
 
 
 def release_bucket_for_record(
@@ -274,28 +289,19 @@ def release_bucket_for_record(
         exact = validate_git_tag(record.released_in, field="released_in")
         if not release_tag_exists(project, exact):
             raise ReleaseTrackingError(
-                "released_in の Git tag が対象 project に存在しません: "
-                f"{exact!r} ({record.path})"
+                t("release.released_in_tag_missing", tag=exact, path=record.path)
             )
         parsed = parse_release_tag(exact, tracking)
         if parsed is None:
-            raise ReleaseTrackingError(
-                f"released_in が設定されたタグパターンに一致しません: {exact!r}"
-            )
+            raise ReleaseTrackingError(t("release.released_in_pattern_mismatch", tag=exact))
         if parsed.is_prerelease and not tracking.include_prerelease:
-            raise ReleaseTrackingError(
-                f"プレリリースタグは設定で許可されていません: {exact!r}"
-            )
+            raise ReleaseTrackingError(t("release.prerelease_not_allowed", tag=exact))
         return archive_bucket_for_tag(parsed, tracking.archive_group_by)
 
     if record.target_release:
         return validate_release_label(record.target_release, field="target_release")
 
-    raise ReleaseTrackingError(
-        "target_release / released_in が無いため archive 先を決められません: "
-        f"{record.path}。docsweep target-release set --path {record.path} --to <label> "
-        "で補正してください"
-    )
+    raise ReleaseTrackingError(t("release.archive_target_unknown", path=record.path))
 
 
 def _close_item(record: FileRecord, *, reason: str | None = None) -> dict:
@@ -338,10 +344,12 @@ def close_release(
     therefore expose the same candidate lists; apply only performs the listed
     ``movable`` operations after the tag and target checks have passed.
     """
-    from .engine import run_scan
+    from . import move_refs
+    from .archive import new_batch_id
+    from .engine import _project_dir_for, run_scan
     from .services.frontmatter import update_frontmatter_field
 
-    exact_tag = validate_git_tag(tag, field="Git tag")
+    exact_tag = validate_git_tag(tag)
     result = ReleaseCloseResult(tag=exact_tag, dry_run=dry_run)
     scan_result = run_scan(config)
     if scan_result.errors:
@@ -357,6 +365,7 @@ def close_release(
 
     docs_to_move: list[ScannedDoc] = []
     planned_destinations: set[str] = set()
+    planned_moves: list[tuple[move_refs.Move, str, Path, str]] = []
     for project_root, docs in sorted(by_project.items()):
         project_path = Path(project_root)
         tracking = release_tracking_for_project(config, project_path)
@@ -464,13 +473,28 @@ def close_release(
             planned_destinations.add(destination_key)
             result.movable.append(_close_item(rec, reason="release_target"))
             docs_to_move.append(doc)
+            planned_moves.append(
+                (
+                    move_refs.Move(Path(rec.path), destination),
+                    rec.project_root,
+                    _project_dir_for(doc, config)[1],
+                    rec.project,
+                )
+            )
 
     result.target_tag.setdefault("tag", exact_tag)
     if dry_run:
+        refs = move_refs.rewrite_refs_by_project(planned_moves, config=config, dry_run=True)
+        result.ref_updates = [u.to_dict() for u in refs.updates]
+        result.ref_failed = refs.failed
         return result
 
+    done_moves: list[tuple[move_refs.Move, str, Path, str]] = []
+    # 1 回の release close を 1 バッチとして記録し、``docsweep undo`` で参照の書き換えごと戻せるようにする。
+    batch_id = new_batch_id()
     for doc in docs_to_move:
         rec = doc.record
+        log_root = _project_dir_for(doc, config)[1]
         previous_released_in = rec.released_in
         source_path = Path(rec.path)
         original_source_text: str | None = None
@@ -485,8 +509,16 @@ def close_release(
                 )
                 metadata_mtime = metadata.new_mtime
                 rec.released_in = exact_tag
-            move = _archive_doc_for_release(doc, config)
+            move = _archive_doc_for_release(doc, config, batch_id=batch_id)
             result.moved.append(move.to_dict())
+            done_moves.append(
+                (
+                    move_refs.Move(Path(move.src), Path(move.dst or "")),
+                    rec.project_root,
+                    log_root,
+                    rec.project,
+                )
+            )
         except (OSError, UnicodeError, ValueError) as exc:
             failure: dict[str, object] = {"path": rec.path, "error": str(exc)}
             try:
@@ -512,17 +544,13 @@ def close_release(
                     and details.get("source_exists") is False
                 ):
                     failure["reason"] = "moved_unlogged"
-                    failure["recovery"] = "destination remains; restore it before retrying"
+                    failure["recovery"] = t("release.recovery_restore_destination")
             if metadata_mtime is not None:
                 try:
                     if details.get("destination_exists") is True:
-                        raise OSError(
-                            "archive destination remains; source rollback is not safe"
-                        )
+                        raise OSError(t("release.rollback_destination_remains"))
                     if original_source_text is None or not source_path.is_file():
-                        raise OSError(
-                            "source file is unavailable for released_in rollback"
-                        )
+                        raise OSError(t("release.rollback_source_unavailable"))
                     update_frontmatter_field(
                         source_path,
                         "released_in",
@@ -539,14 +567,21 @@ def close_release(
                 except (OSError, UnicodeError, ValueError) as rollback_exc:
                     failure["released_in_rollback_error"] = str(rollback_exc)
             result.failed.append(failure)
+    # 親と子を同じリリースで移しても子の参照が新しい場所を向くよう、移し終えてから書き換える。
+    refs = move_refs.rewrite_refs_by_project(done_moves, config=config, batch_id=batch_id)
+    result.ref_updates = [u.to_dict() for u in refs.updates]
+    result.ref_failed = refs.failed
     return result
 
 
-def _archive_doc_for_release(doc: ScannedDoc, config: Config):
+def _archive_doc_for_release(doc: ScannedDoc, config: Config, *, batch_id: str):
     """Local import wrapper to keep release helpers independent of engine import time."""
     from .engine import archive_doc
 
-    return archive_doc(doc, config, dry_run=False, strict_collision=True)
+    return archive_doc(
+        doc, config, dry_run=False, strict_collision=True, rewrite_refs=False,
+        batch_id=batch_id,
+    )
 
 
 def git_tags(project_root: Path) -> list[str]:

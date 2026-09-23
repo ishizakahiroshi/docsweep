@@ -27,14 +27,14 @@
 
 {% for proj in brief.projects %}
 <section class="project-block">
-  <h2>{{ proj.project }} <span class="meta">(open {{ proj.open_count }} / stale {{ proj.stale_count }})</span></h2>
+  <h2>{{ proj.project }} <span class="meta">{{ T.brief_counts.format(open=proj.open_count, stale=proj.stale_count) }}</span></h2>
 
   {% if proj.today_pick %}
   <div class="today-pick">
     <div class="label">{{ T.brief_today_pick }}</div>
     <div class="title">{{ proj.today_pick.state_label or '[?]' }} {{ proj.today_pick.title or proj.today_pick.rel }}</div>
     {% if proj.today_pick.summary %}<div class="summary">{{ proj.today_pick.summary }}</div>{% endif %}
-    <div class="meta">{{ proj.today_pick.rel }} · {{ proj.today_pick.age_days }}d</div>
+    <div class="meta">{{ proj.today_pick.rel }} · {{ T.days_short.format(n=proj.today_pick.age_days) }}</div>
     <div class="actions">
       <button type="button" data-action="copy-context" data-path="{{ proj.today_pick.path }}">{{ T.brief_copy_context }}</button>
     </div>
@@ -47,7 +47,7 @@
   <h3>{{ T.brief_co_running }}</h3>
   <ul class="cards">
     {% for d in proj.co_running %}
-    <li>{{ d.state_label or '[?]' }} {{ d.rel }} <span class="meta">({{ d.age_days }}d)</span></li>
+    <li>{{ d.state_label or '[?]' }} {{ d.rel }} <span class="meta">({{ T.days_short.format(n=d.age_days) }})</span></li>
     {% endfor %}
   </ul>
   {% endif %}

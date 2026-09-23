@@ -4,7 +4,7 @@
     <div class="ph-line">
       <span class="state-badge state-{{ record.state }}">{{ record.state_label or '[?]' }}</span>
       <span class="ph-name">{{ record.path.split('/')[-1] }}</span>
-      <span class="ph-age">{{ record.age_days }}d</span>
+      <span class="ph-age">{{ T.days_short.format(n=record.age_days) }}</span>
       <span class="ph-proj">{{ record.project }}</span>
       <button class="act act-open" data-action="open" data-path="{{ path }}">{{ T.open_editor }}</button>
       <button class="act act-open" data-action="reveal" data-path="{{ path }}">{{ T.open_folder }}</button>

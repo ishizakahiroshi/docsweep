@@ -13,10 +13,15 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
+from .archive import new_batch_id
 from .config import Config
 from .engine import apply_action, run_scan
+from .i18n import current_lang, t
 from .linkcheck import linkcheck
 from .models import FileRecord, Flag
+from .states import DEFAULT_STATES
+
+_DONE_STATE = next(state for state in DEFAULT_STATES if state.key == "done")
 
 
 @dataclass
@@ -60,8 +65,10 @@ def _ruleset_decide(rec: FileRecord, lc_progress: str | None) -> TriageSuggestio
         return TriageSuggestion(
             path=rec.path, project=rec.project, current_state=rec.state,
             proposed_action="relabel",
-            proposed_to="[完了]",
-            reason="linkcheck で「変更予定ファイル」がほぼ実装済み + commit 言及あり",
+            # 提案として画面に出すので表示言語のラベル。relabel はどちらの言語のラベルも
+            # 受け付け、ファイルへは文書の既存ラベルの言語で書く（services/status.py）。
+            proposed_to=f"[{_DONE_STATE.label(current_lang())}]",
+            reason=t("auto_triage.reason_implemented"),
             confidence=0.75,
         )
 
@@ -70,7 +77,7 @@ def _ruleset_decide(rec: FileRecord, lc_progress: str | None) -> TriageSuggestio
             path=rec.path, project=rec.project, current_state=rec.state,
             proposed_action="discard",
             proposed_to=None,
-            reason=f"陳腐化フラグが立ってから 180 日超 (age={age}d) - 廃止判断を提案",
+            reason=t("auto_triage.reason_stale", age=age),
             confidence=0.6,
         )
 
@@ -78,9 +85,9 @@ def _ruleset_decide(rec: FileRecord, lc_progress: str | None) -> TriageSuggestio
     watching_legacy_old = rec.state == "watching" and not rec.due and age > 14
     if rec.state == "watching" and (watching_due_reached or watching_legacy_old):
         reason = (
-            "様子見の due 到来（当日を含む）- 昇格候補"
+            t("auto_triage.reason_watching_due")
             if watching_due_reached
-            else f"様子見 → 完了 へ昇格候補 (age={age}d, release sweep に該当)"
+            else t("auto_triage.reason_watching_legacy", age=age)
         )
         return TriageSuggestion(
             path=rec.path, project=rec.project, current_state=rec.state,
@@ -116,8 +123,8 @@ def suggest_transitions(
         rec = doc.record
         if target:
             from pathlib import Path
-            t = Path(target)
-            if rec.path != str(t) and Path(rec.path).name != t.name:
+            target_path = Path(target)
+            if rec.path != str(target_path) and Path(rec.path).name != target_path.name:
                 continue
         s = _ruleset_decide(rec, lc_map.get(rec.path))
         if s is not None:
@@ -156,23 +163,25 @@ def apply_suggestions(
     applied: list[dict] = []
     skipped: list[dict] = []
     failed: list[dict] = []
+    # 承認した提案をまとめて 1 バッチにし、``docsweep undo`` 1 回で archive へ移した分を戻せるようにする。
+    batch_id = None if dry_run else new_batch_id()
 
     for d in decisions:
         path = d.get("path")
         action = d.get("action")
         to = d.get("to")
         if not path or not action:
-            failed.append({"path": path, "reason": "path/action 欠落"})
+            failed.append({"path": path, "reason": t("auto_triage.missing_path_action")})
             continue
         doc = by_path.get(path)
         if doc is None:
-            failed.append({"path": path, "reason": "対象ファイルが見つからない"})
+            failed.append({"path": path, "reason": t("auto_triage.target_not_found")})
             continue
         if action == "skip":
             skipped.append({"path": path})
             continue
         try:
-            entry = apply_action(doc, action, config, to=to, dry_run=dry_run)
+            entry = apply_action(doc, action, config, to=to, dry_run=dry_run, batch_id=batch_id)
             applied.append(entry.to_dict())
         except ValueError as e:
             failed.append({"path": path, "reason": str(e)})

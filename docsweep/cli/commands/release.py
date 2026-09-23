@@ -11,6 +11,7 @@ from ..parser import _build_config
 
 def cmd_release_close(args: argparse.Namespace) -> int:
     """Run the deterministic release close preview/apply operation."""
+    from ...i18n import t
     from ...release import close_release
 
     try:
@@ -45,7 +46,14 @@ def cmd_release_close(args: argparse.Namespace) -> int:
             "collision",
             "failed",
         ):
-            print(f"  {key}: {len(payload.get(key) or [])}")
+            # 区分名は --json の payload キー（機械向け）。人に見せる名前は辞書から引く
+            print(
+                t(
+                    "cli_release.count_row",
+                    label=t(f"cli_release.category.{key}"),
+                    count=len(payload.get(key) or []),
+                )
+            )
 
     if not result.dry_run and result.moved and config.roots:
         from ...aggregate_index import write_index

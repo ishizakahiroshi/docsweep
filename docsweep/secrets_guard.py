@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from .i18n import t
+
 
 class SensitiveContentError(PermissionError):
     """秘密情報ポリシーにより本文の保存・表示を拒否した。"""
@@ -106,7 +108,11 @@ def high_confidence_hits(hits: list[dict]) -> list[dict]:
 def format_warnings(hits: list[dict]) -> list[str]:
     """本文を含まない、人間向けの警告文を返す。"""
     return [
-        f"possible secret detected ({h.get('kind', 'unknown')}, {h.get('confidence', 'unknown')} confidence)"
+        t(
+            "secrets_guard.possible_secret",
+            kind=h.get("kind", "unknown"),
+            confidence=h.get("confidence", "unknown"),
+        )
         for h in hits
     ]
 
@@ -135,8 +141,5 @@ def enforce_secret_policy(
     high = high_confidence_hits(hits)
     if normalized == "block" and high and not allow_sensitive:
         kinds = ", ".join(sorted({str(h.get("kind", "unknown")) for h in high}))
-        raise SensitiveContentError(
-            f"秘密情報らしき本文を保存できません（検出種別: {kinds}）。"
-            "安全確認後に --allow-sensitive で明示的に許可できます。"
-        )
+        raise SensitiveContentError(t("secrets_guard.blocked", kinds=kinds))
     return hits

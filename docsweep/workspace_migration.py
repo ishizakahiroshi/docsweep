@@ -28,6 +28,7 @@ from .config import (
     project_work_settings,
     resolve_work_dir,
 )
+from .i18n import t
 from .release import (
     ReleaseTrackingError,
     git_tags,
@@ -176,8 +177,8 @@ def _nested_reparse_points(root: Path) -> list[Path]:
         dirnames[:] = keep
     if errors:
         raise WorkQueueError(
-            "configured_work_queue_unreadable",
-            f"configured work queue cannot be read: {root}: {errors[0]}",
+            reason="configured_work_queue_unreadable",
+            message=t("workspace_migration.queue_unreadable", path=root, error=errors[0]),
             path=root,
         )
     return points
@@ -190,15 +191,15 @@ def _resolve_configured_queue(repo: Path, config: Config) -> WorkQueue:
         logical_root = resolve_work_dir(repo, work_dir)
     except (OSError, ValueError) as exc:
         raise WorkQueueError(
-            "configured_work_queue_unavailable",
-            f"configured work queue cannot be resolved for {repo}: {exc}",
+            reason="configured_work_queue_unavailable",
+            message=t("workspace_migration.queue_unresolvable", repo=repo, error=exc),
         ) from exc
 
     logical_root = _lexical(logical_root)
     if not logical_root.is_dir():
         raise WorkQueueError(
-            "configured_work_queue_unavailable",
-            f"configured work queue does not exist or is not a directory: {logical_root}",
+            reason="configured_work_queue_unavailable",
+            message=t("workspace_migration.queue_not_directory", path=logical_root),
             path=logical_root,
         )
 
@@ -206,28 +207,28 @@ def _resolve_configured_queue(repo: Path, config: Config) -> WorkQueue:
     unexpected = [point for point in points if point != logical_root]
     if unexpected:
         raise WorkQueueError(
-            "queue_parent_reparse_point",
-            f"configured work queue path crosses an unapproved reparse point: {unexpected[0]}",
+            reason="queue_parent_reparse_point",
+            message=t("workspace_migration.queue_parent_reparse", path=unexpected[0]),
             path=unexpected[0],
         )
     try:
         physical_root = logical_root.resolve(strict=True)
         if not physical_root.is_dir():
-            raise OSError("resolved path is not a directory")
+            raise OSError(t("workspace_migration.resolved_not_directory"))
         with os.scandir(logical_root):
             pass
     except (OSError, RuntimeError) as exc:
         raise WorkQueueError(
-            "configured_work_queue_unreadable",
-            f"configured work queue cannot be read: {logical_root}: {exc}",
+            reason="configured_work_queue_unreadable",
+            message=t("workspace_migration.queue_unreadable", path=logical_root, error=exc),
             path=logical_root,
         ) from exc
 
     nested = _nested_reparse_points(logical_root)
     if nested:
         raise WorkQueueError(
-            "nested_reparse_point",
-            f"configured work queue contains an unapproved nested reparse point: {nested[0]}",
+            reason="nested_reparse_point",
+            message=t("workspace_migration.queue_nested_reparse", path=nested[0]),
             path=nested[0],
         )
     return WorkQueue(
@@ -669,8 +670,8 @@ def _inventory_repository(
         expected_queue = resolve_work_dir(repo, work_dir)
     except (OSError, ValueError) as exc:
         queue_error = WorkQueueError(
-            "configured_work_queue_unavailable",
-            f"configured work queue cannot be resolved for {repo}: {exc}",
+            reason="configured_work_queue_unavailable",
+            message=t("workspace_migration.queue_unresolvable", repo=repo, error=exc),
         )
     if queue_error is None:
         try:
@@ -754,7 +755,7 @@ def _inventory_repository(
                     "scope": "archive",
                     "precondition": _file_precondition(path, field="target_release"),
                     "reason": "archive_bucket_inference",
-                    "evidence": f"archive directory: {bucket}",
+                    "evidence": t("workspace_migration.evidence_archive_bucket", bucket=bucket),
                     "confidence": "high",
                 }
             )
@@ -790,7 +791,7 @@ def _inventory_repository(
                         Path(item["path"]), field="target_release"
                     ),
                     "reason": "repository_default_target",
-                    "evidence": "repository/default_target configuration",
+                    "evidence": t("workspace_migration.evidence_default_target"),
                     "confidence": "high",
                 }
             )
@@ -841,7 +842,9 @@ def _inventory_repository(
     unreadable_active = [item for item in docs if not item["readable"]]
     if unreadable_active:
         status = "needs_review"
-        diagnostics.append(f"{len(unreadable_active)} active document(s) are unreadable")
+        diagnostics.append(
+            t("workspace_migration.diag_unreadable_documents", count=len(unreadable_active))
+        )
         review_items.append(
             {
                 "kind": "active-document",
@@ -852,7 +855,7 @@ def _inventory_repository(
         )
     if cfg.release_tracking.mode == "disabled":
         status = "disabled"
-        diagnostics.append("project release_tracking.mode is disabled")
+        diagnostics.append(t("workspace_migration.diag_tracking_disabled"))
         actions = []
         config_action = None
     if queue_error is not None:
@@ -861,7 +864,7 @@ def _inventory_repository(
         config_action = None
     elif missing_target and not effective_default:
         status = "needs_review"
-        diagnostics.append("active documents have no target_release and no default_target is available")
+        diagnostics.append(t("workspace_migration.diag_no_target"))
         review_items.append(
             {
                 "kind": "target",
@@ -871,14 +874,14 @@ def _inventory_repository(
             }
         )
     elif versioned_suffix is not None:
-        diagnostics.append(f"archive_dir ends with a release bucket: {versioned_suffix}")
+        diagnostics.append(
+            t("workspace_migration.diag_versioned_archive_dir", suffix=versioned_suffix)
+        )
     if review_items and status == "ready":
-        diagnostics.append(f"{len(review_items)} review item(s) require manual confirmation")
+        diagnostics.append(t("workspace_migration.diag_review_items", count=len(review_items)))
     if not _safe_archive_root(archive_dir):
         status = "needs_review"
-        diagnostics.append(
-            "archive_dir is absolute or parent-traversing and cannot be migrated automatically"
-        )
+        diagnostics.append(t("workspace_migration.diag_unsafe_archive_dir"))
         review_items.append(
             {
                 "kind": "archive-route",
@@ -1037,17 +1040,17 @@ def _config_after_text(path: Path, action: dict) -> str:
             raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except (OSError, UnicodeError, yaml.YAMLError) as exc:
             raise ReleaseTrackingError(
-                f"project config を安全に読み直せません: {path}: {exc}"
+                t("workspace_migration.config_reread_failed", path=path, error=exc)
             ) from exc
         if not isinstance(raw, dict):
             raise ReleaseTrackingError(
-                f"project config のルートが map ではありません: {path}"
+                t("workspace_migration.config_root_not_mapping", path=path)
             )
     else:
         raw = {}
     current_tracking = raw.get("release_tracking")
     if isinstance(current_tracking, dict) and str(current_tracking.get("mode", "")).strip().lower() == "disabled":
-        raise ReleaseTrackingError(f"project config is disabled and cannot be overwritten: {path}")
+        raise ReleaseTrackingError(t("workspace_migration.config_disabled", path=path))
     if not isinstance(current_tracking, dict):
         current_tracking = {}
     desired_tracking = dict(current_tracking)
@@ -1057,8 +1060,7 @@ def _config_after_text(path: Path, action: dict) -> str:
     if action.get("archive_dir"):
         if not _safe_archive_root(str(action["archive_dir"])):
             raise ReleaseTrackingError(
-                "archive_dir はプロジェクト相対の安全なパスだけ指定できます: "
-                f"{action['archive_dir']!r}"
+                t("workspace_migration.archive_dir_unsafe", value=action["archive_dir"])
             )
         raw["archive_dir"] = action["archive_dir"]
     return yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
@@ -1081,33 +1083,33 @@ def _manifest_action_path(
     path = _lexical(Path(str(action.get("path", ""))))
     if not _is_under(path, root) or path.suffix.lower() not in {".md", ".markdown"}:
         raise ReleaseTrackingError(
-            f"manifest path is outside repository or not Markdown: {path}"
+            t("workspace_migration.path_outside_repository", path=path)
         )
     scope = str(action.get("scope") or "queue").strip().lower()
     if scope == "queue":
         if not _is_under(path, queue.logical_root):
             raise ReleaseTrackingError(
-                f"manifest action is outside the configured work queue: {path}"
+                t("workspace_migration.action_outside_queue", path=path)
             )
     elif scope == "archive":
         if not _is_under(path, archive_root):
             raise ReleaseTrackingError(
-                f"manifest action is outside the configured archive root: {path}"
+                t("workspace_migration.action_outside_archive", path=path)
             )
     elif scope == "explicit_override":
         if action.get("allow_outside_queue") is not True:
             raise ReleaseTrackingError(
-                f"queue-outside action requires an explicit file override: {path}"
+                t("workspace_migration.outside_queue_needs_override", path=path)
             )
     else:
-        raise ReleaseTrackingError(f"unknown manifest action scope: {scope}")
+        raise ReleaseTrackingError(t("workspace_migration.unknown_action_scope", scope=scope))
     if _path_crosses_reparse(
         path,
         root,
         allowed_reparse_roots=(queue.logical_root,),
     ):
         raise ReleaseTrackingError(
-            f"manifest path crosses an unapproved reparse point: {path}"
+            t("workspace_migration.path_crosses_reparse", path=path)
         )
     return path
 
@@ -1116,9 +1118,9 @@ def _apply_repository(repo: dict, *, global_path: Path | None = None) -> dict:
     """Preflight and apply all operations for one repository atomically."""
     root = _lexical(Path(str(repo.get("root", ""))))
     if not root.is_dir() or not (root / ".git").exists():
-        raise ReleaseTrackingError(f"manifest repository is not a Git repository: {root}")
+        raise ReleaseTrackingError(t("workspace_migration.not_git_repository", root=root))
     if _is_reparse_point(root):
-        raise ReleaseTrackingError(f"manifest repository root is a reparse point: {root}")
+        raise ReleaseTrackingError(t("workspace_migration.repository_root_reparse", root=root))
     cfg = load_config(
         project_dir=root,
         explicit_roots=[str(root)],
@@ -1139,14 +1141,14 @@ def _apply_repository(repo: dict, *, global_path: Path | None = None) -> dict:
         )
     if expected_config is None:
         raise ManifestPreflightError(
-            "missing_config_precondition",
-            f"manifest has no project config precondition: {root}",
+            reason="missing_config_precondition",
+            message=t("workspace_migration.no_config_precondition", root=root),
         )
     matches, reason = _precondition_matches(config_path, expected_config)
     if not matches:
         raise ManifestPreflightError(
-            "stale_manifest",
-            f"project config precondition failed for {root}: {reason}",
+            reason="stale_manifest",
+            message=t("workspace_migration.config_precondition_failed", root=root, reason=reason),
         )
 
     operations: list[tuple[Path, str]] = []
@@ -1165,15 +1167,15 @@ def _apply_repository(repo: dict, *, global_path: Path | None = None) -> dict:
         )
         if path in seen_paths:
             raise ManifestPreflightError(
-                "duplicate_operation",
-                f"manifest contains duplicate operation path: {path}",
+                reason="duplicate_operation",
+                message=t("workspace_migration.duplicate_operation", path=path),
             )
         seen_paths.add(path)
         precondition = action.get("precondition")
         if not isinstance(precondition, dict):
             raise ManifestPreflightError(
-                "missing_precondition",
-                f"manifest document has no precondition: {path}",
+                reason="missing_precondition",
+                message=t("workspace_migration.no_document_precondition", path=path),
             )
         matches, reason = _precondition_matches(
             path,
@@ -1182,13 +1184,15 @@ def _apply_repository(repo: dict, *, global_path: Path | None = None) -> dict:
         )
         if not matches:
             raise ManifestPreflightError(
-                "stale_manifest",
-                f"document precondition failed for {path}: {reason}",
+                reason="stale_manifest",
+                message=t(
+                    "workspace_migration.document_precondition_failed", path=path, reason=reason
+                ),
             )
         if not path.is_file():
             raise ManifestPreflightError(
-                "document_missing",
-                f"manifest document is missing: {path}",
+                reason="document_missing",
+                message=t("workspace_migration.document_missing", path=path),
             )
         operations.append((path, _target_after_text(path, str(action.get("value", "")))))
 
@@ -1207,8 +1211,8 @@ def _apply_repository(repo: dict, *, global_path: Path | None = None) -> dict:
             )
         except (OSError, UnicodeError) as exc:
             raise ManifestPreflightError(
-                "preflight_read_failed",
-                f"manifest operation cannot be read before writing: {path}: {exc}",
+                reason="preflight_read_failed",
+                message=t("workspace_migration.preflight_read_failed", path=path, error=exc),
             ) from exc
         originals[path] = (existed, original)
 
@@ -1286,11 +1290,11 @@ def apply_manifest(
 ) -> dict:
     """Apply a manifest with identity checks and durable, resumable state."""
     if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
-        raise ValueError("未対応の release migration manifest です")
+        raise ValueError(t("workspace_migration.manifest_unsupported"))
     expected_hash = manifest.get("manifest_sha256")
     actual_hash = _manifest_fingerprint(manifest)
     if not isinstance(expected_hash, str) or expected_hash != actual_hash:
-        raise ValueError("manifest の内容が記録済みの fingerprint と一致しません")
+        raise ValueError(t("workspace_migration.manifest_fingerprint_mismatch"))
     migration_id = str(manifest.get("migration_id") or "unknown")
     journal = _lexical(journal_path or (_JOURNAL_ROOT / f"{migration_id}.json"))
     previous: dict = {}
@@ -1299,18 +1303,16 @@ def apply_manifest(
             previous = json.loads(journal.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ReleaseTrackingError(
-                f"migration journal を安全に読み込めません: {journal}: {exc}"
+                t("workspace_migration.journal_unreadable", path=journal, error=exc)
             ) from exc
         if not isinstance(previous, dict):
-            raise ReleaseTrackingError(f"migration journal の形式が不正です: {journal}")
+            raise ReleaseTrackingError(t("workspace_migration.journal_invalid", path=journal))
         journal_hash = previous.get("manifest_sha256")
         if journal_hash is None:
             old_manifest = previous.get("manifest")
             journal_hash = old_manifest.get("manifest_sha256") if isinstance(old_manifest, dict) else None
         if journal_hash != expected_hash:
-            raise ReleaseTrackingError(
-                "migration journal の manifest fingerprint が今回の manifest と一致しません"
-            )
+            raise ReleaseTrackingError(t("workspace_migration.journal_fingerprint_mismatch"))
 
     cumulative = _journal_cumulative(previous)
     repo_results: list[dict] = []
@@ -1417,9 +1419,9 @@ def load_manifest(path: Path) -> dict:
     try:
         data = json.loads(_lexical(path).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"manifest を読み込めません: {path}: {exc}") from exc
+        raise ValueError(t("workspace_migration.manifest_unreadable", path=path, error=exc)) from exc
     if not isinstance(data, dict):
-        raise ValueError("manifest のルートは object である必要があります")
+        raise ValueError(t("workspace_migration.manifest_root_not_object"))
     return data
 
 
@@ -1436,7 +1438,7 @@ def migrate_release_tracking(
 ) -> dict:
     """Run inventory, optional manifest output, and optional explicit apply."""
     if apply and apply_manifest_path is not None:
-        raise ValueError("--apply と --apply-manifest は同時に指定できません")
+        raise ValueError(t("workspace_migration.apply_options_conflict"))
     if apply_manifest_path is not None:
         manifest = load_manifest(apply_manifest_path)
     else:

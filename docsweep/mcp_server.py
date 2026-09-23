@@ -10,6 +10,9 @@ PATH に依存しない `python -m docsweep mcp` 起動を標準にする。
 :mod:`docsweep.services` のラッパとして実装し、Web UI と同じ関数を呼ぶ。
 スコープ境界・``..`` 拒否・``.md`` 限定は :mod:`docsweep.security.path` で一元化。
 物理削除の口は構造的に存在しない（最悪 archive 止まり・親 plan C6 の不変条件）。
+
+tool の説明（MCP クライアントと AI エージェントに見せる description）は docstring に書かず、
+``docsweep/i18n/locales/<言語>/mcp.json`` の ``mcp.tool.<tool 名>`` に置く。
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from pathlib import Path
 
 from .atomic import ConflictError
 from .config import Config
+from .i18n import SUPPORTED_LANGS, t
 from .engine import apply_action, auto_sweep, promote_state, run_scan
 from .aggregate_index import build_index, write_index
 from .inject import eject as do_eject
@@ -108,27 +112,27 @@ def build_server(config: Config):
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as e:  # pragma: no cover - mcp extra 未導入
-        raise RuntimeError("MCP には mcp extra が必要です: pip install 'docsweep[mcp]'") from e
+        raise RuntimeError(t("mcp_server.extra_required")) from e
 
     mcp = FastMCP("docsweep")
+    # tool の説明はサーバーを作る時点の表示言語で引く（CLI は main の use_lang で先に決めている）。
+    # 対応言語の一覧は言語フォルダから作るので、フォルダを足せば説明の {langs} も増える。
+    langs = " / ".join(SUPPORTED_LANGS)
 
     def _doc_for(path: str):
         result = run_scan(config)
         target = Path(path).resolve().as_posix()
         return next((d for d in result.docs if d.record.path == target), None)
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.scan", langs=langs))
     def scan(project: str | None = None) -> list[dict]:
-        """全スキャンルートを走査し、各ファイルの状態・経過日数・flags・allowed_actions を返す。
-
-        ``project`` を指定するとそのプロジェクト名に絞る（sweep/promote と対称）。
-        """
+        """スキャン結果の record 一覧（project で絞れる）。"""
         records = run_scan(config).records
         if project:
             records = [r for r in records if r.project == project]
         return [r.to_dict() for r in records]
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.find", langs=langs))
     def find(
         owner: str | None = None,
         tags: list[str] | None = None,
@@ -140,7 +144,7 @@ def build_server(config: Config):
         target_release: str | None = None,
         missing_target_release: bool = False,
     ) -> list[dict]:
-        """自由検索。CLI ``docsweep find`` と同じ AND 契約で target_release も絞る。"""
+        """CLI find と同じ条件で絞った record 一覧。"""
         from .find import FindFilters, find_records, resolve_owner_alias
 
         filters = FindFilters(
@@ -156,13 +160,13 @@ def build_server(config: Config):
         )
         return [record.to_dict() for record in find_records(config, filters)]
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.set_target_release", langs=langs))
     def set_target_release(
         path: str,
         target_release: str,
         expected_mtime: float | None = None,
     ) -> dict:
-        """既存 MD の target_release だけを原子的に更新する（設定は変更しない）。"""
+        """frontmatter の target_release だけを書き換える。"""
         from .release import validate_release_label
         from .config import release_tracking_for_project
         from .services.frontmatter import update_frontmatter_field
@@ -174,7 +178,7 @@ def build_server(config: Config):
         tracking = release_tracking_for_project(config, project_root)
         if tracking.mode == "disabled":
             return {
-                "error": "release tracking が disabled です",
+                "error": t("mcp_server.release_tracking_disabled"),
                 "path": path,
                 "kind": "release_tracking_disabled",
             }
@@ -201,9 +205,9 @@ def build_server(config: Config):
             "release_tracking": tracking.mode,
         }
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.list_projects", langs=langs))
     def list_projects() -> dict:
-        """プロジェクト一覧と有効/除外状態（UX W2 / P39）。"""
+        """既知のプロジェクトと除外リスト。"""
         from .excluded import list_known_projects, load_excluded
 
         return {
@@ -211,9 +215,9 @@ def build_server(config: Config):
             "excluded": sorted(load_excluded()),
         }
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.set_project_enabled", langs=langs))
     def set_project_enabled(root: str, enabled: bool = True) -> dict:
-        """プロジェクトを看板/scan から除外（enabled=False）または復帰。"""
+        """excluded.json への除外・復帰。"""
         from .excluded import disable_project, enable_project, is_excluded
 
         if enabled:
@@ -222,53 +226,38 @@ def build_server(config: Config):
             disable_project(root)
         return {"root": root, "enabled": not is_excluded(root)}
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.route_intent", langs=langs))
     def route_intent(text: str) -> dict:
-        """自然言語の意図を docsweep サブコマンドへマップする（UX W2 / P28）。
-
-        典型: 「昨日何やった」「今日の続き」「看板開いて」「undo」
-        """
+        """自然言語の意図をサブコマンドへ振り分ける。"""
         from .intent import route_intent as _route
 
         return _route(text).to_dict()
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.doctor", langs=langs))
     def doctor() -> dict:
-        """環境ヘルスチェック（config / roots / index / inject）。CLI ``docsweep doctor`` と同一。"""
+        """run_doctor の結果。"""
         from .doctor import run_doctor
 
         return run_doctor(config=config).to_dict()
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.day", langs=langs))
     def day(phase: str = "open") -> dict:
-        """1 日の開閉。phase は open（朝）または close（夜）。"""
+        """day_open / day_close の結果。"""
         from .day import day_close, day_open
 
         if phase == "close":
             return day_close(config).to_dict()
         return day_open(config).to_dict()
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.brief", langs=langs))
     def brief(project: str | None = None, all_projects: bool = False) -> dict:
-        """朝の入口 = 今日 1 個だけやろうを断定する。CLI ``docsweep brief`` と同一契約。
-
-        典型ユーザー発話: 「今日の続きやって」「ブリーフして」「朝の状況」「何やればいい？」
-        「全プロジェクトの状況」（``all_projects=True``）。
-
-        既定は cwd プロジェクト（git remote から推定）を 1 件だけ返す。``all_projects=True``
-        で ``search_paths`` 全体を横並びにする（cross 相当の俯瞰になる）。
-
-        返り値:
-            ``{mode, generated_at, projects: [{project, today_pick, co_running, watchouts,
-            yesterday_done, open_count, stale_count}]}``。``today_pick`` は最高スコアの
-            1 件で、AI はこれを「次に着手すべき作業」として扱ってよい。
-        """
+        """build_brief の結果（CLI brief と同じ契約）。"""
         from .brief import build_brief
 
         result = build_brief(config, project=project, all_projects=all_projects)
         return result.to_dict()
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.capture_extract", langs=langs))
     def capture_extract(
         text: str,
         project: str | None = None,
@@ -276,17 +265,7 @@ def build_server(config: Config):
         max_drafts: int = 5,
         allow_sensitive: bool = False,
     ) -> dict:
-        """会話履歴 ``text`` から plan / bugfix / pending の草案候補を抽出する。
-
-        典型ユーザー発話: 「これ plan にして」「直前の会話を docsweep にキャプチャ」
-        「このバグ bugfix にして」「保留にしておいて」。
-
-        ``use_llm=False`` で heuristic 経路（決定マーカー検出）。``use_llm=True`` で LLM
-        provider（現状は ``mock`` のみ実装）。
-
-        返り値: ``{drafts: [{id, kind, title, body, suggested_filename, source_hint,
-        project, tags}], count}``。採用する候補があれば ``capture_save`` を続けて呼ぶ。
-        """
+        """会話から草案候補を抽出する。"""
         from .capture import extract_drafts
 
         try:
@@ -302,20 +281,14 @@ def build_server(config: Config):
             "count": len(drafts),
         }
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.capture_save", langs=langs))
     def capture_save(
         drafts: list[dict],
         project: str | None = None,
         out_dir: str | None = None,
         allow_sensitive: bool = False,
     ) -> dict:
-        """``capture_extract`` で得た draft を採用して configured work_dir 配下へ保存する。
-
-        典型ユーザー発話: 「採用して」「2 と 3 を採用」「全部 plan にして保存」。
-
-        ``drafts`` は ``capture_extract`` の戻り値 ``drafts`` をそのまま渡せる（ユーザーが
-        採用したい subset を AI が絞って渡す想定）。返り値: ``{saved: [path...], count}``。
-        """
+        """採用された草案を work queue へ保存する。"""
         from pathlib import Path as _P
         from .capture import save_drafts
         from .capture.models import Draft as _Draft
@@ -354,51 +327,30 @@ def build_server(config: Config):
             return {"error": str(e), "saved": [], "count": 0}
         return {"saved": [str(p) for p in saved], "count": len(saved)}
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.cross", langs=langs))
     def cross(projects: list[str] | None = None) -> dict:
-        """全プロジェクト束ねて『今日の 1 個』を 1 件断定 + 凍結予備軍を一覧。
-
-        典型ユーザー発話: 「全プロジェクトの状況」「クロスで見せて」「どのプロジェクトから
-        手をつける？」「凍結予備軍出して」「archive 候補は？」。
-
-        ``projects=['a','b']`` で対象プロジェクトを絞れる（指定なしで search_paths 全体）。
-
-        返り値:
-            ``{generated_at, project_filter, top_pick, runners_up[], frozen_candidates[],
-            project_summaries[{project, open_count, stale_count, today_one}],
-            total_projects, total_open}``。``top_pick`` は 1 件で、AI はこれを「全体で
-            次に着手すべき作業」として扱ってよい。``frozen_candidates`` は archive 推奨。
-        """
+        """build_cross の結果。"""
         from .cross import build_cross
 
         result = build_cross(config, projects=projects)
         return result.to_dict()
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.triage", langs=langs))
     def triage(project: str | None = None) -> dict:
-        """セッション開始時の残作業ビュー。要判断＋保留を古い順に絞り、各項目に rel/title/
-        state/type/age_days と機械実行できる actions を付けて返す（ファイル名を思い出さなくても
-        「次にやるべき作業」が先頭に出る）。壊れたラベルは needs_fix に別枠で添える。
-
-        ``project`` を指定すると当該プロジェクトの subset 版を返す（counts も per-project に揃う）。
-        """
+        """build_triage の結果。"""
         return build_triage(config, project=project)
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.apply", langs=langs))
     def apply(
         path: str,
         action: str,
         to: str | None = None,
         watching_days: int | None = None,
     ) -> dict:
-        """1 ファイルに閉じた action を機械実行する。
-
-        ``watching_days`` は ``action="relabel", to="watching"`` の今回だけの
-        due 日数上書きで、プロジェクト設定は変更しない。
-        """
+        """1 ファイルへ action を実行する。"""
         doc = _doc_for(path)
         if doc is None:
-            return {"error": "対象が見つかりません（スキャン範囲外?）", "path": path}
+            return {"error": t("target.not_found_in_scan"), "path": path}
         try:
             return apply_action(
                 doc,
@@ -410,65 +362,57 @@ def build_server(config: Config):
         except ValueError as e:
             return {"error": str(e), "path": path}
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.sweep", langs=langs))
     def sweep(project: str | None = None, dry_run: bool = False) -> list[dict] | dict:
-        """done/discarded を各プロジェクトの archive/ へ移送する（watching は触らない）。
-
-        ``project`` を指定するとそのプロジェクト名に絞る（promote と対称）。
-        """
+        """done / discarded を archive へ移す。"""
         batch = auto_sweep(config, project=project, dry_run=dry_run)
         moved = [m.to_dict() for m in batch]
         if not dry_run and config.roots:
             write_index(config)
-        if batch.failed:
-            return {"moved": moved, "failed": batch.failed}
+        if batch.failed or batch.ref_updates or batch.ref_failed:
+            return {
+                "moved": moved, "failed": batch.failed,
+                "ref_updates": batch.ref_updates, "ref_failed": batch.ref_failed,
+            }
         return moved
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.promote", langs=langs))
     def promote(from_state: str = "watching", to_state: str = "done",
                 project: str | None = None, dry_run: bool = False,
                 due_expired_only: bool = False) -> list[dict] | dict:
-        """様子見を完了へ昇格し archive へ移送する。
-
-        due_expired_only=True の場合は due 到来（当日を含む）の watching だけを対象にする。
-        """
+        """watching を done へ昇格して archive へ移す。"""
         try:
             batch = promote_state(
                 config, from_state=from_state, to_state=to_state, project=project,
                 dry_run=dry_run, due_expired_only=due_expired_only,
             )
-            if batch.failed:
-                return {"moved": [m.to_dict() for m in batch], "failed": batch.failed}
+            if batch.failed or batch.ref_updates or batch.ref_failed:
+                return {
+                    "moved": [m.to_dict() for m in batch], "failed": batch.failed,
+                    "ref_updates": batch.ref_updates, "ref_failed": batch.ref_failed,
+                }
             return [m.to_dict() for m in batch]
         except ValueError as e:
             return [{"error": str(e)}]
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.index", langs=langs))
     def index() -> dict:
-        """横断 INDEX を再生成して .docsweep/ に書き出し、集計を返す。"""
+        """INDEX を書き出して集計を返す。"""
         write_index(config)
         return build_index(config).counts
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.summary", langs=langs))
     def summary(project: str | None = None) -> str:
-        """AI に渡す圧縮 JSON（要判断・保留・要修正を要点だけに絞った INDEX）。
-
-        ``project`` を指定すると当該プロジェクトの subset 版を返す。
-        """
+        """render_summary の結果。"""
         return render_summary(config, project=project)
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.inject", langs=langs))
     def inject(project: str, preset: str | None = None, include_guidance: bool = True,
                write_yaml: bool = True, lang: str | None = None, dry_run: bool = False) -> dict:
-        """指定プロジェクトへ docsweep の運用ルール（管理ブロック＋.docsweep.yaml）を注入する。
-
-        導線をグローバルに寄せている場合は include_guidance=False でラベル節だけにできる
-        （CLI の --no-guidance 相当）。write_yaml=False で .docsweep.yaml を書かない（--no-yaml 相当）。
-        lang（ja / en）で注入文言の言語を preset の既定から上書きできる。
-        """
+        """project へ管理ブロックと .docsweep.yaml を注入する。"""
         project_dir = _valid_project_dir(project, config)
         if project_dir is None:
-            return {"error": "project outside scan roots", "kind": "project_scope"}
+            return {"error": t("mcp_server.project_outside_roots"), "kind": "project_scope"}
         try:
             r = do_inject(project_dir, preset=preset, include_guidance=include_guidance,
                           write_yaml=write_yaml, lang=lang, dry_run=dry_run)
@@ -477,12 +421,12 @@ def build_server(config: Config):
         return {"project": r.project, "written": r.written, "skipped": r.skipped,
                 "warnings": r.warnings, "yaml": r.yaml_path}
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.eject", langs=langs))
     def eject(project: str, purge: bool = False, dry_run: bool = False) -> dict:
-        """注入した管理ブロックを剥がす（ユーザー手書きは温存）。"""
+        """注入した管理ブロックを剥がす。"""
         project_dir = _valid_project_dir(project, config)
         if project_dir is None:
-            return {"error": "project outside scan roots", "kind": "project_scope"}
+            return {"error": t("mcp_server.project_outside_roots"), "kind": "project_scope"}
         try:
             r = do_eject(project_dir, purge=purge, dry_run=dry_run)
         except OSError as e:
@@ -490,20 +434,20 @@ def build_server(config: Config):
         return {"project": r.project, "removed": r.removed, "warnings": r.warnings,
                 "purged_yaml": r.purged_yaml}
 
-    @mcp.tool()
-    def inject_global(agent: str = "claude", lang: str = "ja", dry_run: bool = False) -> dict:
-        """セッション開始時に triage を読む導線＋due ルールを AI ツールのグローバル設定へ注入する（全プロジェクトで効く）。"""
+    @mcp.tool(description=t("mcp.tool.inject_global", langs=langs))
+    def inject_global(agent: str = "claude", lang: str | None = None, dry_run: bool = False) -> dict:
+        """agent 規定のグローバル設定へ導線を注入する。"""
         try:
             # MCP では任意 target を受け付けない。CLI の --global-target は人間が
             # 明示する互換経路として残し、AI 面は agent 規定の個人設定先へ固定する。
-            r = do_inject_global(agent=agent, lang=lang, dry_run=dry_run)
+            r = do_inject_global(agent=agent, lang=lang or config.document_lang(), dry_run=dry_run)
         except (OSError, ValueError) as e:
             return {"error": str(e)}
         return {"project": r.project, "written": r.written, "skipped": r.skipped, "warnings": r.warnings}
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.eject_global", langs=langs))
     def eject_global(agent: str = "claude", dry_run: bool = False) -> dict:
-        """グローバルへ注入した導線ブロックを剥がす。"""
+        """グローバル設定から導線を剥がす。"""
         try:
             r = do_eject_global(agent=agent, dry_run=dry_run)
         except (OSError, ValueError) as e:
@@ -516,23 +460,14 @@ def build_server(config: Config):
     # （MCP は raise しないでエラー dict 返却が AI に解釈しやすい）。
     # ------------------------------------------------------------------
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.update_status", langs=langs))
     def update_status(
         path: str,
         new_status: str,
         expected_mtime: float | None = None,
         watching_days: int | None = None,
     ) -> dict:
-        """MD の H1 ラベルを ``new_status`` に書き換える。
-
-        ``new_status`` は日本語ラベル（"計画" / "実行中" / "様子見" /
-        "保留" / "完了" / "廃止"）または内部 state key を受け付ける。
-        旧 bugfix 専用ラベル ``"対応中"`` は ``"実行中"`` のエイリアスとして引き続き受理する
-        （2026-06-23 改修で active を in-progress に統合）。
-        ``[完了]`` / ``[廃止]`` 指定時は内部で ``archive_done`` を呼んで一気通貫で
-        archive 移送する（人クリック相当の意思決定が MCP 呼び出しに含まれている前提）。
-        ``watching_days`` は様子見への遷移時だけ使う一回限りの due 日数上書き。
-        """
+        """H1 ラベルを書き換える（完了・廃止なら archive まで進める）。"""
         resolved, err = _resolve_or_error(path, config)
         if err is not None or resolved is None:
             return err or {"error": "unresolved_path", "path": path, "kind": "path_scope"}
@@ -570,21 +505,18 @@ def build_server(config: Config):
             "archive_triggered": res.archive_triggered,
         }
         if res.archive_triggered:
-            # 内部で archive_done を 1 ファイル指定で呼ぶ（同じ閉じた口を通る）。
-            arch = svc_archive_done(config=config, paths=[res.path])
+            # 内部で archive_done を 1 ファイル指定で呼ぶ（同じ閉じた口を通る）。ラベルの書き換えも
+            # 渡し、undo で場所と一緒にラベルも戻せるようにする。
+            arch = svc_archive_done(config=config, paths=[res.path], state_changes={res.path: res})
             out["archive"] = arch.to_dict()
         return out
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.update_due", langs=langs))
     def update_due(
         path: str, new_due: str, reason: str | None = None,
         expected_mtime: float | None = None,
     ) -> dict:
-        """frontmatter ``due:`` を書き換え、``postpone_count`` を +1 する。
-
-        ``new_due`` は ``YYYY-MM-DD`` または ``today`` / ``+1d`` / ``+1w`` / ``+1m``。
-        過去日を指定された場合も警告のみで拒否しない（やり忘れ列に残るだけ）。
-        """
+        """due を書き換えて postpone_count を増やす。"""
         resolved, err = _resolve_or_error(path, config)
         if err is not None or resolved is None:
             return err or {"error": "unresolved_path", "path": path, "kind": "path_scope"}
@@ -614,15 +546,12 @@ def build_server(config: Config):
             "new_mtime_iso": _mtime_iso(res.new_mtime),
         }
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.update_content", langs=langs))
     def update_content(
         path: str, new_content: str, expected_mtime: float | None = None,
         allow_sensitive: bool = False,
     ) -> dict:
-        """MD 本文を全置換する（楽観ロック対応）。
-
-        ``expected_mtime`` 不一致は ``kind=conflict`` で返却。Web UI からは必須。
-        """
+        """本文を全置換する（楽観ロック）。"""
         resolved, err = _resolve_or_error(path, config)
         if err is not None or resolved is None:
             return err or {"error": "unresolved_path", "path": path, "kind": "path_scope"}
@@ -648,13 +577,9 @@ def build_server(config: Config):
             "warnings": res.warnings,
         }
 
-    @mcp.tool()
+    @mcp.tool(description=t("mcp.tool.archive_done", langs=langs))
     def archive_done(paths: list[str] | None = None, auto: bool = False) -> dict:
-        """``[完了]`` / ``[廃止]`` のファイルを archive へ移送する。
-
-        ``paths`` 指定で個別移送、``auto=True`` で全プロジェクト一括。両方未指定は
-        破壊安全側で何もしない（空結果）。``[様子見]`` は明示指定でも拒否（寝かせを守る）。
-        """
+        """完了・廃止のファイルを archive へ移す（様子見は拒否）。"""
         validated_paths: list[str] = []
         errors: list[dict] = []
         if paths:

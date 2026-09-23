@@ -2,42 +2,72 @@
 
 from __future__ import annotations
 
-SCENARIOS: dict[str, list[dict[str, str]]] = {
+from dataclasses import dataclass
+
+from .i18n import t
+
+
+@dataclass(frozen=True)
+class Step:
+    """1 行分のコマンドと説明。説明（と言語で例が変わるコマンド）は辞書キーで持つ。"""
+
+    cmd: str
+    why_key: str
+    # 例の引数が言語で変わるコマンド（intent の自然文・find の検索語）は辞書キーで持つ。
+    cmd_key: str | None = None
+
+    def render(self) -> dict[str, str]:
+        return {
+            "cmd": t(self.cmd_key) if self.cmd_key else self.cmd,
+            "why": t(self.why_key),
+        }
+
+
+SCENARIOS: dict[str, list[Step]] = {
     "morning": [
-        {"cmd": "docsweep day open", "why": "朝の儀式: 今日の1個 + overdue"},
-        {"cmd": "docsweep brief", "why": "today_pick を断定"},
-        {"cmd": "docsweep serve", "why": "看板で捌く"},
+        Step("docsweep day open", "cookbook.morning.day_open"),
+        Step("docsweep brief", "cookbook.morning.brief"),
+        Step("docsweep serve", "cookbook.morning.serve"),
     ],
     "release": [
-        {"cmd": "docsweep review-week --json", "why": "週次サマリ"},
-        {"cmd": "docsweep promote --due-expired --dry-run", "why": "期限到来した様子見の昇格候補"},
-        {"cmd": "docsweep sweep --dry-run", "why": "完了/廃止の移送確認"},
-        {"cmd": "docsweep undo", "why": "誤移送を戻す"},
+        Step("docsweep review-week --json", "cookbook.release.review_week"),
+        Step("docsweep promote --due-expired --dry-run", "cookbook.release.promote"),
+        Step("docsweep sweep --dry-run", "cookbook.release.sweep"),
+        Step("docsweep undo", "cookbook.release.undo"),
     ],
     "closeout": [
-        {"cmd": "python -m docsweep closeout-check --path docs/local/plan_<parent>.md --to watching --json", "why": "親子 plan を read-only 検査"},
-        {"cmd": "python -m docsweep apply --root . --path docs/local/<child>.md --action relabel --to watching", "why": "承認後に child から状態同期"},
-        {"cmd": "python -m docsweep apply --root . --path docs/local/plan_<parent>.md --action relabel --to watching", "why": "child 後に親を状態同期"},
-        {"cmd": "python -m docsweep sweep --dry-run --json", "why": "done/archive は別承認で下見"},
+        Step(
+            "python -m docsweep closeout-check --path docs/local/plan_<parent>.md --to watching --json",
+            "cookbook.closeout.check",
+        ),
+        Step(
+            "python -m docsweep apply --root . --path docs/local/<child>.md --action relabel --to watching",
+            "cookbook.closeout.child",
+        ),
+        Step(
+            "python -m docsweep apply --root . --path docs/local/plan_<parent>.md --action relabel --to watching",
+            "cookbook.closeout.parent",
+        ),
+        Step("python -m docsweep sweep --dry-run --json", "cookbook.closeout.sweep"),
     ],
     "onboard": [
-        {"cmd": "docsweep init --yes", "why": "config 作成"},
-        {"cmd": "docsweep index-sync", "why": "索引同期"},
-        {"cmd": "docsweep doctor", "why": "環境確認"},
-        {"cmd": "docsweep inject --global", "why": "AI 導線"},
-        {"cmd": "docsweep brief", "why": "価値到達"},
+        Step("docsweep init --yes", "cookbook.onboard.init"),
+        Step("docsweep index-sync", "cookbook.onboard.index_sync"),
+        Step("docsweep doctor", "cookbook.onboard.doctor"),
+        Step("docsweep inject --global", "cookbook.onboard.inject"),
+        Step("docsweep brief", "cookbook.onboard.brief"),
     ],
     "ai": [
-        {"cmd": "docsweep intent \"昨日何やった\"", "why": "意図→コマンド"},
-        {"cmd": "docsweep context <file> --clipboard", "why": "AI に渡す"},
-        {"cmd": "docsweep triage --head 1", "why": "1件処理ループ"},
-        {"cmd": "python -m docsweep mcp", "why": "MCP 起動"},
+        Step("docsweep intent", "cookbook.ai.intent", cmd_key="cookbook.cmd.intent_example"),
+        Step("docsweep context <file> --clipboard", "cookbook.ai.context"),
+        Step("docsweep triage --head 1", "cookbook.ai.triage"),
+        Step("python -m docsweep mcp", "cookbook.ai.mcp"),
     ],
     "hygiene": [
-        {"cmd": "docsweep project list", "why": "除外状態"},
-        {"cmd": "docsweep fix-conflict --list", "why": "H1/FM 食い違い"},
-        {"cmd": "docsweep find --q \"認証\"", "why": "本文検索"},
-        {"cmd": "docsweep notify --dry-run", "why": "overdue 通知プレビュー"},
+        Step("docsweep project list", "cookbook.hygiene.project_list"),
+        Step("docsweep fix-conflict --list", "cookbook.hygiene.fix_conflict"),
+        Step("docsweep find --q", "cookbook.hygiene.find", cmd_key="cookbook.cmd.find_example"),
+        Step("docsweep notify --dry-run", "cookbook.hygiene.notify"),
     ],
 }
 
@@ -47,14 +77,17 @@ def list_scenarios() -> list[str]:
 
 
 def get_scenario(name: str) -> list[dict[str, str]] | None:
-    return SCENARIOS.get(name)
+    steps = SCENARIOS.get(name)
+    if steps is None:
+        return None
+    return [step.render() for step in steps]
 
 
 def render_cookbook(name: str | None = None) -> str:
     if name:
-        items = SCENARIOS.get(name)
+        items = get_scenario(name)
         if not items:
-            return f"unknown scenario: {name} (known: {', '.join(list_scenarios())})"
+            return t("cookbook.unknown_scenario", name=name, known=", ".join(list_scenarios()))
         lines = [f"# cookbook: {name}", ""]
         for it in items:
             lines.append(f"$ {it['cmd']}")
@@ -64,7 +97,7 @@ def render_cookbook(name: str | None = None) -> str:
     lines = ["# docsweep cookbook", ""]
     for key in list_scenarios():
         lines.append(f"## {key}")
-        for it in SCENARIOS[key]:
+        for it in get_scenario(key) or []:
             lines.append(f"  {it['cmd']}  - {it['why']}")
         lines.append("")
     return "\n".join(lines)

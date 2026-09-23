@@ -27,6 +27,7 @@ from pathlib import Path
 from .config import Config
 from .detect import detect_status
 from .engine import run_scan
+from .i18n import t
 from .okf import bundled_okf_profile, is_okf_lifecycle_status
 from .services.frontmatter import read_frontmatter, read_frontmatter_text
 
@@ -218,7 +219,7 @@ def plan_migration(
         except (OSError, UnicodeDecodeError) as e:
             result.skipped.append(MigratePlan(
                 path=rec.path, doc_type=rec.type or "?", status="?",
-                skipped_reason=f"読み取り失敗: {e}",
+                skipped_reason=t("migrate.read_failed", error=e),
             ))
             continue
         keys = _parse_frontmatter_keys(text, path)
@@ -227,7 +228,7 @@ def plan_migration(
         if keys is None and body != text:
             result.skipped.append(MigratePlan(
                 path=rec.path, doc_type=rec.type, status=rec.state or "?",
-                skipped_reason="frontmatter を解析できません（YAML 不正）",
+                skipped_reason=t("migrate.frontmatter_yaml_invalid"),
             ))
             continue
         if keys is not None:
@@ -242,7 +243,7 @@ def plan_migration(
             if not missing and not legacy_status_migration:
                 result.skipped.append(MigratePlan(
                     path=rec.path, doc_type=rec.type, status=rec.state or "?",
-                    skipped_reason="OKF frontmatter が揃っています",
+                    skipped_reason=t("migrate.okf_complete"),
                 ))
                 continue
             # 部分 frontmatter（due: だけ・type: だけ等）→ 不足キーを追記する upgrade 対象。
@@ -300,7 +301,7 @@ def apply_migration(
         try:
             text = path.open("r", encoding="utf-8", newline="").read()
         except (OSError, UnicodeDecodeError) as e:
-            plan.skipped_reason = f"読み取り失敗: {e}"
+            plan.skipped_reason = t("migrate.read_failed", error=e)
             result.skipped.append(plan)
             continue
         from .atomic import update_line
@@ -309,7 +310,7 @@ def apply_migration(
             # 二重チェック（plan 後に手で frontmatter が完成された/壊れたケースは触らない）。
             keys = _parse_frontmatter_keys(text, path)
             if keys is None or (all(k in keys for k in _OKF_KEYS) and not plan.legacy_status_migration):
-                plan.skipped_reason = "frontmatter が変化しています（再検出・スキップ）"
+                plan.skipped_reason = t("migrate.frontmatter_changed")
                 result.skipped.append(plan)
                 continue
             new_text = _upgrade_frontmatter(
@@ -318,7 +319,7 @@ def apply_migration(
                 replace_legacy_status=plan.legacy_status_migration,
             )
             if new_text is None:
-                plan.skipped_reason = "frontmatter を再構築できません（スキップ）"
+                plan.skipped_reason = t("migrate.rebuild_failed")
                 result.skipped.append(plan)
                 continue
 
@@ -332,7 +333,7 @@ def apply_migration(
         # 二重チェック（plan 後にユーザーが手で frontmatter を入れたケース）。
         _data, body = read_frontmatter_text(text)
         if body != text:
-            plan.skipped_reason = "既に frontmatter があります（再検出）"
+            plan.skipped_reason = t("migrate.frontmatter_exists")
             result.skipped.append(plan)
             continue
         bom = "\ufeff" if text.startswith("\ufeff") else ""

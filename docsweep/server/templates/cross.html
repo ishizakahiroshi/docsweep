@@ -32,7 +32,7 @@
     <li>
       <a href="/board?project={{ p.project|urlencode }}">
         {{ p.project }}
-        <div class="meta">open {{ p.open_count }} · stale {{ p.stale_count }}</div>
+        <div class="meta">{{ T.cross_counts.format(open=p.open_count, stale=p.stale_count) }}</div>
       </a>
     </li>
     {% endfor %}
@@ -46,7 +46,7 @@
   <div class="top-pick">
     <div class="label">{{ T.cross_top_pick }}</div>
     <div class="title">{{ cross.top_pick.state_label or '[?]' }} {{ cross.top_pick.title or cross.top_pick.rel }}</div>
-    <div class="meta">{{ cross.top_pick.project }}/{{ cross.top_pick.rel }} · {{ cross.top_pick.age_days }}d · score {{ cross.top_pick.score }}</div>
+    <div class="meta">{{ cross.top_pick.project }}/{{ cross.top_pick.rel }} · {{ T.days_short.format(n=cross.top_pick.age_days) }} · {{ T.score_value.format(score=cross.top_pick.score) }}</div>
   </div>
   {% else %}
   <p class="empty">{{ T.cross_empty }}</p>
@@ -56,7 +56,7 @@
   <h2>{{ T.cross_runners_up }}</h2>
   <ul class="cards">
     {% for d in cross.runners_up %}
-    <li>{{ d.state_label or '[?]' }} {{ d.project }}/{{ d.rel }} <span class="score">score {{ d.score }}</span></li>
+    <li>{{ d.state_label or '[?]' }} {{ d.project }}/{{ d.rel }} <span class="score">{{ T.score_value.format(score=d.score) }}</span></li>
     {% endfor %}
   </ul>
   {% endif %}
@@ -65,7 +65,7 @@
   <h2>{{ T.cross_frozen }} ({{ cross.frozen_candidates|length }})</h2>
   <ul class="cards">
     {% for d in cross.frozen_candidates %}
-    <li>{{ d.state_label or '[?]' }} {{ d.project }}/{{ d.rel }} <span class="score">{{ d.age_days }}d</span></li>
+    <li>{{ d.state_label or '[?]' }} {{ d.project }}/{{ d.rel }} <span class="score">{{ T.days_short.format(n=d.age_days) }}</span></li>
     {% endfor %}
   </ul>
   {% endif %}

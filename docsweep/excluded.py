@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Iterable
 
+from .i18n import t
+
 EXCLUDED_PATH = Path.home() / ".docsweep" / "excluded.json"
 
 
@@ -37,12 +39,12 @@ def load_excluded(*, path: Path | None = None) -> set[str]:
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ExcludedConfigError("excluded 設定を読み取れません") from exc
+        raise ExcludedConfigError(t("excluded.settings_unreadable")) from exc
     if not isinstance(data, dict):
-        raise ExcludedConfigError("excluded 設定の形式が不正です")
+        raise ExcludedConfigError(t("excluded.settings_invalid"))
     raw = data.get("excluded") or []
     if not isinstance(raw, list):
-        raise ExcludedConfigError("excluded 設定の excluded が配列ではありません")
+        raise ExcludedConfigError(t("excluded.settings_not_list"))
     return {_norm(x) for x in raw if x}
 
 

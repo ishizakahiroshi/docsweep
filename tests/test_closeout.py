@@ -14,6 +14,7 @@ import pytest
 from docsweep import cli as cli_mod
 from docsweep.closeout import check_closeout
 from docsweep.config import load_config
+from docsweep.doc_vocab import placeholder
 from docsweep.templates_gen import new_split_plans
 
 
@@ -100,10 +101,11 @@ def test_closeout_explicit_parent_and_new_split_write_parent_extension(tmp_path:
     created = new_split_plans("alpha", n=2, project_dir=project, offset_days={})
     parent = created[0].path
     for doc in created:
+        # 生成された「完了条件」「検証」の <TODO> を埋め、受入条件を足す（人が書き終えた状態）
         doc.path.write_text(
             doc.path.read_text(encoding="utf-8")
-            + "\n## 完了条件\n\n- 実装を完了した\n"
-            + "\n## 検証\n\n- [x] 自動確認: pytest -q 成功\n"
+            .replace(placeholder("plan_completion", "ja"), "- 実装を完了した")
+            .replace(placeholder("plan_verification", "ja"), "- [x] 自動確認: pytest -q 成功")
             + "\n## 受入条件\n\n- [x] 手動確認: 完了\n",
             encoding="utf-8",
             newline="",
@@ -116,6 +118,36 @@ def test_closeout_explicit_parent_and_new_split_write_parent_extension(tmp_path:
     for item in result.children:
         assert item["docsweep_parent"] == "docs/local/plan_alpha.md"
     assert all(check["reason"] == "prose_not_machine_proof" for check in result.manual_checks)
+
+
+def test_closeout_ignores_the_unfilled_generated_sections_when_filled_ones_follow(tmp_path: Path):
+    """生成された <TODO> の節を埋めずに、同じ見出しを末尾へ書き足した plan も通る。"""
+    project = tmp_path / "repo"
+    created = new_split_plans("alpha", n=2, project_dir=project, offset_days={})
+    for doc in created:
+        doc.path.write_text(
+            doc.path.read_text(encoding="utf-8")
+            + "\n## 完了条件\n\n- 実装を完了した\n"
+            + "\n## 検証\n\n- [x] 自動確認: pytest -q 成功\n"
+            + "\n## 受入条件\n\n- [x] 手動確認: 完了\n",
+            encoding="utf-8",
+            newline="",
+        )
+
+    result = check_closeout(created[0].path, project_dir=project, config=_cfg(project))
+
+    assert result.verdict == "manual_review_required"
+    assert result.blockers == []
+
+
+def test_closeout_still_blocks_a_plan_whose_generated_sections_are_unfilled(tmp_path: Path):
+    project = tmp_path / "repo"
+    created = new_split_plans("alpha", n=1, project_dir=project, offset_days={})
+
+    result = check_closeout(created[1].path, project_dir=project, config=_cfg(project))
+
+    assert result.verdict == "not_ready"
+    assert {blocker["code"] for blocker in result.blockers} == {"evidence_missing"}
 
 
 def test_closeout_reports_conflict_and_unchecked_as_blockers(tmp_path: Path):

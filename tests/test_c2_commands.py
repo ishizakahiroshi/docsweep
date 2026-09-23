@@ -388,7 +388,7 @@ def test_timeline_orders_by_date(workspace: Path):
     assert "plan_alpha.md" in names
     assert "bugfix_alpha_2026-06-01.md" in names
     md = render_timeline(result, fmt="markdown")
-    assert "timeline: alpha" in md
+    assert "タイムライン: alpha" in md
     js = render_timeline(result, fmt="json")
     json.loads(js)  # 文法 OK
 

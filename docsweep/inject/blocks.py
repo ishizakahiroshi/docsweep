@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic import write_atomic
+from ..i18n import t
 from .manifest import MANIFEST_PATH
 
 MARK_START = "<!-- docsweep:managed:start -->"
@@ -66,23 +67,32 @@ def _private_backup(path: Path, content: bytes) -> Path:
 
 
 def _strip_managed_blocks(
-    path: Path, prev_hash: str | None, result: Any, *, dry_run: bool
+    path: Path,
+    prev_hash: str | None,
+    result: Any,
+    *,
+    dry_run: bool,
+    decode_failures: list[str] | None = None,
 ) -> bool:
-    """ファイルから全管理ブロックを除去する。手編集は private 領域へ退避する。"""
+    """ファイルから全管理ブロックを除去する。手編集は private 領域へ退避する。
+
+    ``decode_failures`` を渡すと、UTF-8 として読めなかったファイル名をそこへ足す
+    （呼び出し側が警告の文言＝表示言語に頼らず失敗を判定するため）。
+    """
     if not path.is_file():
         return False
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
-        result.warnings.append(
-            f"{path.name}: UTF-8として読み取れないため除去を中止しました ({exc.reason})"
-        )
+        result.warnings.append(t("inject.strip_not_utf8", name=path.name, reason=exc.reason))
+        if decode_failures is not None:
+            decode_failures.append(path.name)
         return False
     spans = _find_all_blocks(text)
     if not spans:
         return False
     if prev_hash and _block_hash(_inner_of(text, spans[0])) != prev_hash:
-        result.warnings.append(f"{path.name}: 手編集を検出。private backup を作成しました。")
+        result.warnings.append(t("inject.hand_edit_detected", name=path.name))
         if not dry_run:
             _private_backup(path, text.encode("utf-8"))
     new_text = text

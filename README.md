@@ -255,6 +255,12 @@ python -m docsweep scan --all --json        # 全件を機械可読 JSON で
 python -m docsweep sweep --dry-run
 python -m docsweep sweep
 
+# 作業 queue の中で文書を移す。その文書を指す docsweep_parent・パス形式の related・本文の相対リンク・
+# 本文中の repo 相対パス（完全一致）も書き換える（--no-body で本文は触らない）。archive への移送も相対リンクを直す
+python -m docsweep mv docs/local/plan_x.md --to docs/local/app-a --dry-run
+python -m docsweep mv docs/local/plan_x.md --to docs/local/app-a
+python -m docsweep undo                     # 直近の archive / mv を、書き換えた参照とラベルごと戻す
+
 # 横断 INDEX を再生成（.docsweep/INDEX.md と INDEX.json）
 python -m docsweep index
 python -m docsweep pending                  # 全プロジェクトの [保留] だけ一発表示
@@ -369,6 +375,13 @@ bugfix:           [実行中] → [様子見] → [完了]
   `released_in: v0.9.1` は frontmatter に残したまま、minor 設定では
   `archive/v0.9.x/` へ移送します。未設定・disabled・flat は従来の flat archive を維持します。
   既存 workspace の移行手順は [release-tracking-migration.md](docs/release-tracking-migration.md) を参照してください。
+- queue をフォルダで分けているなら `archive_layout: mirror` を書くと、archive の中でも同じ
+  フォルダ構成を保ちます（`docs/local/app-a/plan_x.md` → `docs/local/archive/app-a/plan_x.md`）。
+  既定の `flat` は archive 直下へ平置きです。`archive_partition: release` と併用すると
+  `archive/app-a/v0.9.x/` の順になります。
+- 移送すると、その文書を指している他の文書の `docsweep_parent` と、パスで書かれた `related` を
+  新しいパスへ書き換えます（bare name の `related` は触りません）。書き換えた内容は `--json` の
+  `ref_updates` に出ます。
 - ラベル語彙・archive 可否・自動移送可否は `states:` 設定が **唯一の正本**で、検出・Web 表示・
   注入テンプレを全部そこから導出します。
 
@@ -432,6 +445,25 @@ workspace:
 ```bash
 python -m docsweep triage ~/dev/foo ~/projects/bar
 ```
+
+### 表示言語と文書の言語（日本語 / 英語）
+
+エラー・出力・`--help`・Web UI・MCP のツール説明は**表示言語**で出ます。決め方は
+`--lang ja|en` → 環境変数 `DOCSWEEP_LANG` → 設定の `lang`（書いたときだけ）→ OS の表示言語 → `en`。
+Windows は OS の UI 言語を見ます（Git Bash が入れる `LANG=en_US.UTF-8` では変わりません）。
+Web UI は設定モーダルか `?lang=en` で切り替えられ、選んだ言語は cookie に残ります。
+
+`docsweep new` が作るテンプレート・注入するルール文・状態ラベルは**文書の言語**で書きます。
+決め方は `.docsweep.yaml` の `lang` → `~/.docsweep/config.yaml` の `lang` → 表示言語。
+複数人で使うリポジトリは `.docsweep.yaml` に `lang` を書いて固定してください。
+docsweep はどちらの言語の文書も読みます（`## 概要` と `## Summary`、`[計画]` と `[Planned]` 等）。
+
+```yaml
+lang: ja   # この project の文書は日本語（各自の表示言語に左右されない）
+```
+
+文言と用語はコードに持たず、`docsweep/i18n/locales/<言語>/*.json` に置いています。
+言語はフォルダを 1 つ足すと増やせます（足りないキーは英語で出ます）。
 
 ### 作業 queue と private ドキュメント
 
@@ -501,6 +533,15 @@ python -m docsweep provenance start --path docs/local/plan_auth-refactor.md \
   --provider openai --model-id unknown --model-source unavailable --json
 python -m docsweep provenance finish --execution <AIX-ID> --result completed --json
 python -m docsweep provenance check --path docs/local/plan_auth-refactor.md --json
+```
+
+文書を archive へ移送したり `docsweep mv` で移したりすると、台帳の `work_path` も移動先へ付け替わります
+（`undo` で戻すと元の場所へ戻ります）。付け替える前に移した文書で `provenance check` が
+「台帳のwork_pathが現在pathと異なります」と警告するときは、`--fix-work-path` を付けると
+`work_id` と `ai_execution_refs` が一致する行の `work_path` を今の場所へ直します。
+
+```bash
+python -m docsweep provenance check --path docs/local/archive/plan_auth-refactor.md --fix-work-path
 ```
 
 provenance が有効なのに `--ai-*` / `--agent` を渡さなかった場合は、作成AIが `unknown` で

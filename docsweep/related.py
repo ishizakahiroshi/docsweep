@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .config import Config
 from .engine import run_scan
+from .i18n import t
 from .models import FileRecord
 from .services.frontmatter import read_frontmatter_text, update_frontmatter_field
 
@@ -164,7 +165,7 @@ def apply_fix_related(config: Config) -> FixRelatedResult:
         _data, body = read_frontmatter_text(text)
         if body == text:
             # frontmatter が無い md には書けない（migrate-frontmatter を先に走らせる前提）。
-            plan.failed.append({"path": fix.path, "error": "frontmatter がありません"})
+            plan.failed.append({"path": fix.path, "error": t("related.frontmatter_missing")})
             continue
         try:
             update_frontmatter_field(path, "related", merged)

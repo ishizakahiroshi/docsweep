@@ -9,6 +9,7 @@ from pathlib import Path
 from ..parser import _build_config
 
 def cmd_ics(args: argparse.Namespace) -> int:
+    from ...i18n import t
     from ...ics_export import write_ics
 
     cfg = _build_config(args)
@@ -17,5 +18,5 @@ def cmd_ics(args: argparse.Namespace) -> int:
     except OSError as exc:
         print(f"ics: {exc}", file=sys.stderr)
         return 2
-    print(f"wrote {out}")
+    print(t("cli_ics.wrote", path=out))
     return 0

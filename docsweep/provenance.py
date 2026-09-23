@@ -10,16 +10,21 @@ from __future__ import annotations
 import csv
 import io
 import os
+import posixpath
 import re
+import sys
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
 from pathlib import Path
 
 from .atomic import update_line, write_atomic
-from .config import Config, privacy_enforced
+from .config import Config, load_config, privacy_enforced
+from .doc_vocab import column, column_variants, heading_by_lang, heading_variants
+from .i18n import t
 from .services.frontmatter import (
     FrontmatterValidationError,
     _format_value,
@@ -75,6 +80,23 @@ ENV_FIELDS = {
 SESSION_LOG_FIELD = "ai_session_logs"
 SESSION_LOG_ENV = "DOCSWEEP_AI_SESSION_LOG"
 _CONTEXT_RE = re.compile(r"^C[1-9][0-9]*$")
+# 作業 MD の見出しと表の列名（文書の中身なので、表示言語では変えない）。日本語・英語の
+# どちらの文書も読み、足す列名はその表の言語で書く（語彙は docsweep/doc_vocab.py）。
+_CONTEXT_HEADINGS: dict[str, str] = {
+    f"## {name}": code for code, name in heading_by_lang("context").items()
+}
+_CONTEXT_SECTION = " / ".join(heading_variants("context"))
+_AI_EXECUTION_COLUMNS = frozenset(column_variants("ai_execution"))
+_EXECUTION_MODEL_COLUMNS = frozenset(column_variants("execution_model"))
+
+
+def _find_context_section(lines: list[str]) -> tuple[int | None, str]:
+    """``## context配分`` の行番号とその表の言語。無ければ (None, "ja")。"""
+    for index, line in enumerate(lines):
+        lang = _CONTEXT_HEADINGS.get(line.strip())
+        if lang is not None:
+            return index, lang
+    return None, "ja"
 
 
 class ProvenanceError(ValueError):
@@ -163,7 +185,7 @@ def _clean(value: str, field: str) -> str:
     if not text:
         return "unknown"
     if "\n" in text or "\r" in text or len(text) > 240:
-        raise ProvenanceError(f"{field} に改行または長すぎる値は指定できません")
+        raise ProvenanceError(t("provenance.invalid_value", field=field))
     return text
 
 
@@ -192,7 +214,140 @@ def _relative_work_path(path: Path, project_dir: Path) -> str:
     try:
         return resolved.relative_to(root).as_posix()
     except ValueError as exc:
-        raise ProvenanceError(f"対象MDがプロジェクト外です: {resolved}") from exc
+        raise ProvenanceError(t("provenance.outside_project", path=resolved)) from exc
+
+
+def _work_path_key(value: str) -> str:
+    """台帳の work_path を比べるための正規化（区切り文字・``./``・Windows の大文字小文字の揺れを吸収）。"""
+    text = str(value or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    if not text:
+        return ""
+    normalized = posixpath.normpath(text)
+    return normalized.casefold() if os.name == "nt" else normalized
+
+
+def _real_key(path: Path) -> str:
+    """junction / symlink を解いた比較用のパス。ファイルが無くても、在る親までは解く。"""
+    try:
+        resolved = os.path.realpath(os.fspath(path))
+    except (OSError, ValueError):
+        resolved = os.path.abspath(os.fspath(path))
+    return os.path.normcase(os.path.normpath(resolved))
+
+
+def _moved_work_path(old_work_path: str, new_path: Path, project_dir: Path) -> str | None:
+    """移した後の場所を、台帳と同じ書式（project 相対・``/`` 区切り・junction を解かない経路）で返す。
+
+    移送先は実体側のパスで届く（``docs/local`` が junction なら repo の外）。旧 work_path の祖先を
+    近い順に実体へ解き、移送先を含む最初の祖先の下へ付け替える。project の中で表せなければ None。
+    """
+    root = Path(os.path.abspath(os.path.normpath(os.fspath(project_dir))))
+    lexical = Path(os.path.normpath(os.fspath(root / old_work_path)))
+    target = Path(os.path.realpath(os.fspath(new_path)))
+    for ancestor in lexical.parents:
+        try:
+            ancestor.relative_to(root)
+        except ValueError:
+            break
+        try:
+            inner = target.relative_to(os.path.realpath(os.fspath(ancestor)))
+        except ValueError:
+            continue
+        return (ancestor / inner).relative_to(root).as_posix()
+    return None
+
+
+def document_work_id(path: Path) -> str:
+    """文書の frontmatter の ``work_id``（無ければ空文字）。provenance を使っていない文書を先に外すのに使う。"""
+    data = read_frontmatter(path) if Path(path).is_file() else None
+    return str((data or {}).get("work_id") or "").strip()
+
+
+def follow_move(src: Path, dst: Path, *, project_dir: Path) -> dict | None:
+    """移した文書の台帳行の ``work_path`` を、移した後の場所へ付け替える。
+
+    archive（sweep / promote / apply / release close / Web）と ``docsweep mv`` は
+    ``archive.archive_file`` を、``docsweep undo`` は ``services.archive.undo_last_batch`` を通るので、
+    そこから 1 件移すたびに呼ぶ。``src`` は移す前、``dst`` は移した後の場所（どちらも実体パスでよい）。
+
+    付け替えるのは、移した文書の frontmatter の ``work_id`` を持ち、``work_path`` が移す前の場所を
+    指している行だけ。台帳は全 project 共通なので、同じ project 相対パスを持つ別 project の行を
+    巻き込まないよう work_id でも絞る。比較は junction を解いた実体パスで行い、書く値は
+    :func:`_relative_work_path` と同じ書式（project 相対・``/`` 区切り）にする。
+
+    文書に work_id が無い・provenance が無効・repo 管理・台帳が無い・該当行が無いときは何もしない
+    （None）。設定は ``docsweep provenance`` と同じく、既定の global 設定と project の
+    ``.docsweep.yaml`` から読む。
+    """
+    work_id = document_work_id(dst)
+    if not work_id:
+        return None
+    config = load_config(project_dir=Path(project_dir))
+    if config.provenance_manager == "repo" or not config.provenance_enabled:
+        return None
+    ledger = config.provenance_ledger
+    if not ledger.is_file():
+        return None
+    root = Path(os.path.abspath(os.path.normpath(os.fspath(project_dir))))
+    before = _real_key(src)
+    updated: list[dict[str, str]] = []
+    with _ledger_lock(ledger):
+        rows = _read_ledger(ledger)
+        for row in rows:
+            if row["work_id"] != work_id or not row["work_path"]:
+                continue
+            if _real_key(root / row["work_path"]) != before:
+                continue
+            moved = _moved_work_path(row["work_path"], dst, root)
+            if moved is None:
+                raise ProvenanceError(t("provenance.outside_project", path=dst))
+            if moved != row["work_path"]:
+                updated.append(
+                    {"execution_id": row["execution_id"], "from": row["work_path"], "to": moved}
+                )
+                row["work_path"] = moved
+        if updated:
+            _write_ledger(ledger, rows)
+    if not updated:
+        return None
+    return {"ledger": str(ledger), "work_id": work_id, "updated": updated}
+
+
+def follow_move_safely(
+    src: Path,
+    dst: Path,
+    *,
+    project_dir: Path | Callable[[], Path | None] | None,
+) -> dict | None:
+    """:func:`follow_move` を、移動を失敗させない形で呼ぶ（失敗は stderr へ警告 1 行）。
+
+    ファイルの移動はもう済んでいるので巻き戻さない。付け替えられなかった行は
+    ``docsweep provenance check --path <md> --fix-work-path`` で後から直せる。
+
+    ``project_dir`` の特定に手間がかかる呼び出し側（undo。root 配下の走査が要る）は関数で渡す。
+    関数は work_id を持つ文書（provenance を使っている文書）のときだけ呼ぶ。
+    ``project_dir`` が分からない（None）ときは、provenance を使っている文書に限って警告する。
+    """
+    try:
+        if callable(project_dir):
+            if not document_work_id(dst):
+                return None
+            project_dir = project_dir()
+        if project_dir is None:
+            if document_work_id(dst):
+                _warn_follow_failed(dst, t("provenance.follow_project_unknown"))
+            return None
+        return follow_move(src, dst, project_dir=project_dir)
+    except Exception as exc:  # 台帳の不具合（lock・schema・書き込み・設定）で移動を失敗させない
+        _warn_follow_failed(dst, exc)
+        return None
+
+
+def _warn_follow_failed(path: Path, error: object) -> None:
+    message = t("provenance.follow_move_failed", path=path, error=error)
+    print(t("common.warning", message=message), file=sys.stderr)
 
 
 def _delegated(config: Config) -> dict | None:
@@ -204,9 +359,7 @@ def _delegated(config: Config) -> dict | None:
             "changed": False,
         }
     if not config.provenance_enabled or config.provenance_manager == "disabled":
-        raise ProvenanceError(
-            "AI provenance は無効です。config の provenance.enabled=true / manager=docsweep を確認してください"
-        )
+        raise ProvenanceError(t("provenance.disabled"))
     return None
 
 
@@ -227,9 +380,7 @@ def _ledger_lock(path: Path, timeout: float = 5.0):
             except FileNotFoundError:
                 continue
             if time.monotonic() >= deadline:
-                raise ProvenanceError(
-                    f"provenance 台帳のlock取得がtimeoutしました: {lock}"
-                ) from None
+                raise ProvenanceError(t("provenance.lock_timeout", path=lock)) from None
             time.sleep(0.05)
     try:
         os.write(fd, f"pid={os.getpid()}\n".encode("ascii"))
@@ -251,7 +402,7 @@ def _read_ledger(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         if tuple(reader.fieldnames or ()) != LEDGER_FIELDS:
-            raise ProvenanceError(f"provenance 台帳の列が現行schemaと一致しません: {path}")
+            raise ProvenanceError(t("provenance.ledger_schema_mismatch", path=path))
         return [{key: row.get(key, "") for key in LEDGER_FIELDS} for row in reader]
 
 
@@ -266,7 +417,9 @@ def _write_ledger(path: Path, rows: list[dict[str, str]]) -> None:
 def _append_row(path: Path, row: dict[str, str]) -> list[dict[str, str]]:
     rows = _read_ledger(path)
     if any(existing["execution_id"] == row["execution_id"] for existing in rows):
-        raise ProvenanceError(f"execution ID が重複しています: {row['execution_id']}")
+        raise ProvenanceError(
+            t("provenance.duplicate_execution", execution_id=row["execution_id"])
+        )
     previous = [dict(existing) for existing in rows]
     rows.append(row)
     _write_ledger(path, rows)
@@ -282,7 +435,7 @@ def _frontmatter_refs(data: dict) -> list[str]:
     if isinstance(raw, str):
         value = raw.strip().strip("[]")
         return [part.strip() for part in value.split(",") if part.strip()]
-    raise ProvenanceError("ai_execution_refs は YAML list である必要があります")
+    raise ProvenanceError(t("provenance.refs_not_list"))
 
 
 def _session_log_lines(config: Config, metadata: AIMetadata) -> list[str]:
@@ -343,9 +496,13 @@ def _append_context_execution(
     if contexts == ["not-applicable"]:
         return text
     lines = text.splitlines(keepends=True)
-    section = next((i for i, line in enumerate(lines) if line.strip() == "## context配分"), None)
+    section, table_lang = _find_context_section(lines)
     if section is None:
-        raise ProvenanceError("対象Cを記録するにはMDに ## context配分 表が必要です")
+        raise ProvenanceError(
+            t("provenance.context_table_missing", heading=" / ".join(_CONTEXT_HEADINGS))
+        )
+    ai_name = column("ai_execution", table_lang)
+    model_name = column("execution_model", table_lang)
     end = next(
         (i for i in range(section + 1, len(lines)) if lines[i].startswith("## ")),
         len(lines),
@@ -374,23 +531,27 @@ def _append_context_execution(
         while len(row) < original_width:
             row.append("")
 
-    ai_col = next((i for i, value in enumerate(header_cells) if value == "AI実行"), None)
+    ai_col = next((i for i, value in enumerate(header_cells) if value in _AI_EXECUTION_COLUMNS), None)
     if ai_col is None:
-        model_col = next((i for i, value in enumerate(header_cells) if value == "実行モデル"), None)
+        model_col = next(
+            (i for i, value in enumerate(header_cells) if value in _EXECUTION_MODEL_COLUMNS), None
+        )
         ai_col = model_col if model_col is not None else len(header_cells)
         for row in table_rows.values():
             row.insert(ai_col, "")
-        table_rows[header][ai_col] = "AI実行"
+        table_rows[header][ai_col] = ai_name
         table_rows[header + 1][ai_col] = "---"
         if model_col is not None:
             model_col += 1
 
-    model_col = next((i for i, value in enumerate(header_cells) if value == "実行モデル"), None)
+    model_col = next(
+        (i for i, value in enumerate(header_cells) if value in _EXECUTION_MODEL_COLUMNS), None
+    )
     if execution_model is not None and model_col is None:
         model_col = ai_col + 1
         for row in table_rows.values():
             row.insert(model_col, "")
-        table_rows[header][model_col] = "実行モデル"
+        table_rows[header][model_col] = model_name
         table_rows[header + 1][model_col] = "---"
     elif execution_model is not None and model_col != ai_col + 1:
         # A hand-edited table may already contain the model column elsewhere.
@@ -432,7 +593,13 @@ def _append_context_execution(
             row[model_col] = "; ".join(model_refs)
     missing = sorted(set(contexts) - found)
     if missing:
-        raise ProvenanceError(f"context配分に対象Cがありません: {', '.join(missing)}")
+        raise ProvenanceError(
+            t(
+                "provenance.context_not_found",
+                section=_CONTEXT_SECTION,
+                contexts=", ".join(missing),
+            )
+        )
     newline = "\r\n" if lines[header].endswith("\r\n") else "\n"
     for index, row in table_rows.items():
         if index == header + 1:
@@ -443,22 +610,27 @@ def _append_context_execution(
 
 
 def _context_execution_refs(text: str) -> set[str]:
-    """Return execution IDs written in the context配分 AI実行 column."""
+    """Return execution IDs written in the context配分 AI実行 column (either language)."""
     lines = text.splitlines()
-    section = next((i for i, line in enumerate(lines) if line.strip() == "## context配分"), None)
+    section, _lang = _find_context_section(lines)
     if section is None:
         return set()
     end = next((i for i in range(section + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
     header = next(
-        (i for i in range(section + 1, end) if lines[i].lstrip().startswith("|") and "AI実行" in lines[i]),
+        (
+            i for i in range(section + 1, end)
+            if lines[i].lstrip().startswith("|")
+            and any(name in lines[i] for name in _AI_EXECUTION_COLUMNS)
+        ),
         None,
     )
     if header is None:
         return set()
     header_cells = [part.strip() for part in lines[header].strip().strip("|").split("|")]
-    try:
-        ai_col = header_cells.index("AI実行")
-    except ValueError:
+    ai_col = next(
+        (i for i, value in enumerate(header_cells) if value in _AI_EXECUTION_COLUMNS), None
+    )
+    if ai_col is None:
         return set()
     refs: set[str] = set()
     for line in lines[header + 2:end]:
@@ -496,9 +668,7 @@ def _update_authoring_metadata(
             if row.get("work_id") == work_id and row.get("role") == "authoring"
         ]
         if not targets:
-            raise ProvenanceError(
-                f"work_id {work_id} の authoring 行が台帳にありません（--update できません）"
-            )
+            raise ProvenanceError(t("provenance.authoring_row_missing", work_id=work_id))
         previous = [dict(row) for row in rows]
         changed_ledger = False
         for row in targets:
@@ -561,7 +731,7 @@ def initialize_document(
     if delegated is not None:
         return {**delegated, "path": str(path.resolve())}
     if not path.is_file():
-        raise ProvenanceError(f"対象MDがありません: {path}")
+        raise ProvenanceError(t("provenance.document_missing", path=path))
     work_path = _relative_work_path(path, project_dir)
     data = read_frontmatter(path) or {}
     if data.get("work_id") and all(data.get(field) is not None for field in AUTHOR_FIELDS):
@@ -675,17 +845,17 @@ def start_execution(
     if delegated is not None:
         return {**delegated, "path": str(path.resolve()), "contexts": contexts, "role": role}
     if role not in ROLES - {"authoring"}:
-        raise ProvenanceError(f"role は implementation/review/verification のいずれかです: {role}")
+        raise ProvenanceError(t("provenance.invalid_role", role=role))
     normalized = [value.strip() for value in contexts if value.strip()]
     if not normalized:
-        raise ProvenanceError("context を1件以上指定してください")
+        raise ProvenanceError(t("provenance.context_required"))
     if "not-applicable" in normalized and len(normalized) != 1:
-        raise ProvenanceError("not-applicable は他のcontextと併用できません")
+        raise ProvenanceError(t("provenance.not_applicable_exclusive"))
     invalid = [value for value in normalized if value != "not-applicable" and not _CONTEXT_RE.match(value)]
     if invalid:
-        raise ProvenanceError(f"不正なcontext IDです: {', '.join(invalid)}")
+        raise ProvenanceError(t("provenance.invalid_context", contexts=", ".join(invalid)))
     if not path.is_file():
-        raise ProvenanceError(f"対象MDがありません: {path}")
+        raise ProvenanceError(t("provenance.document_missing", path=path))
     data = read_frontmatter(path) or {}
     if not data.get("work_id"):
         initialize_document(
@@ -786,15 +956,21 @@ def finish_execution(
     if delegated is not None:
         return {**delegated, "execution_id": execution_id, "result": result}
     if result not in RESULTS - {"started"}:
-        raise ProvenanceError(f"result は completed/partial/failed/cancelled のいずれかです: {result}")
+        raise ProvenanceError(t("provenance.invalid_result", result=result))
     with _ledger_lock(config.provenance_ledger):
         rows = _read_ledger(config.provenance_ledger)
         matches = [row for row in rows if row["execution_id"] == execution_id]
         if not matches:
-            raise ProvenanceError(f"execution ID が台帳にありません: {execution_id}")
+            raise ProvenanceError(t("provenance.execution_not_found", execution_id=execution_id))
         row = matches[0]
         if row["result"] != "started":
-            raise ProvenanceError(f"execution はすでに終了しています: {execution_id} ({row['result']})")
+            raise ProvenanceError(
+                t(
+                    "provenance.execution_already_finished",
+                    execution_id=execution_id,
+                    result=row["result"],
+                )
+            )
         row["result"] = result
         row["ended_at"] = _now()
         if evidence_refs:
@@ -812,7 +988,57 @@ def finish_execution(
     }
 
 
-def check_document(path: Path, *, project_dir: Path, config: Config) -> dict:
+def _repair_work_paths(
+    path: Path, *, project_dir: Path, config: Config, data: dict
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """``check --fix-work-path``: 文書の work_id と ai_execution_refs の両方に一致する台帳行の
+    ``work_path`` を、今の場所へ直す（移動に台帳が追従しなかった版で移した文書の後始末）。
+
+    記録された場所に今も別のファイルがある行は直さない（複製か別の文書で、どちらが正しいか
+    機械には決められない）。返り値は (直した行, 直さなかった行)。
+    """
+    work_id = str(data.get("work_id") or "").strip()
+    refs = set(_frontmatter_refs(data)) if "ai_execution_refs" in data else set()
+    ledger = config.provenance_ledger
+    if not work_id or not refs or not ledger.is_file():
+        return [], []
+    current = _relative_work_path(path, project_dir)
+    current_key = _real_key(path)
+    root = Path(os.path.abspath(os.path.normpath(os.fspath(project_dir))))
+    fixed: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+    with _ledger_lock(ledger):
+        rows = _read_ledger(ledger)
+        for row in rows:
+            if row["execution_id"] not in refs or row["work_id"] != work_id:
+                continue
+            if _work_path_key(row["work_path"]) == _work_path_key(current):
+                continue
+            recorded = root / row["work_path"] if row["work_path"] else None
+            if recorded is not None and recorded.is_file() and _real_key(recorded) != current_key:
+                skipped.append(
+                    {
+                        "execution_id": row["execution_id"],
+                        "work_path": row["work_path"],
+                        "reason": "recorded_path_exists",
+                    }
+                )
+                continue
+            fixed.append({"execution_id": row["execution_id"], "from": row["work_path"], "to": current})
+            row["work_path"] = current
+        if fixed:
+            _write_ledger(ledger, rows)
+    return fixed, skipped
+
+
+def check_document(
+    path: Path, *, project_dir: Path, config: Config, fix_work_path: bool = False
+) -> dict:
+    """文書・台帳・context配分 の整合を検査する。
+
+    ``fix_work_path=True`` では検査の前に :func:`_repair_work_paths` で台帳の work_path を今の場所へ
+    直し、直した行を ``work_path_fixed``、直さなかった行を ``work_path_skipped`` に入れて返す。
+    """
     if config.provenance_manager == "repo":
         return {
             "status": "delegated",
@@ -821,47 +1047,69 @@ def check_document(path: Path, *, project_dir: Path, config: Config) -> dict:
             "path": str(path.resolve()),
             "valid": True,
             "errors": [],
-            "warnings": ["repo固有validatorへ委譲してください"],
+            "warnings": [t("provenance.delegate_to_repo")],
         }
     _delegated(config)
     errors: list[str] = []
     warnings: list[str] = []
     data = read_frontmatter(path) if path.is_file() else None
     if data is None:
-        return {"status": "checked", "valid": False, "errors": ["frontmatterがありません"], "warnings": []}
+        return {
+            "status": "checked",
+            "valid": False,
+            "errors": [t("provenance.frontmatter_missing")],
+            "warnings": [],
+        }
+    fixed: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+    if fix_work_path:
+        fixed, skipped = _repair_work_paths(path, project_dir=project_dir, config=config, data=data)
     for field in ("work_id", "ai_provenance_version", *AUTHOR_FIELDS, "ai_execution_refs"):
         if field not in data:
-            errors.append(f"frontmatterに {field} がありません")
+            errors.append(t("provenance.frontmatter_field_missing", field=field))
     refs = _frontmatter_refs(data) if "ai_execution_refs" in data else []
     rows = _read_ledger(config.provenance_ledger)
     by_id = {row["execution_id"]: row for row in rows}
     for ref in refs:
         row = by_id.get(ref)
         if row is None:
-            errors.append(f"台帳にexecutionがありません: {ref}")
+            errors.append(t("provenance.ledger_execution_missing", ref=ref))
         elif str(data.get("work_id", "")) != row["work_id"]:
-            errors.append(f"work_idが一致しません: {ref}")
+            errors.append(t("provenance.work_id_mismatch", ref=ref))
     author_rows = [by_id[ref] for ref in refs if ref in by_id and by_id[ref]["role"] == "authoring"]
     if not author_rows:
-        errors.append("authoring executionがありません")
+        errors.append(t("provenance.authoring_missing"))
     elif data.get("ai_author_agent") != author_rows[0]["agent"]:
-        errors.append("ai_author_agentとauthoring executionが一致しません")
+        errors.append(t("provenance.author_agent_mismatch"))
     work_path = _relative_work_path(path, project_dir)
     for ref in refs:
-        if ref in by_id and by_id[ref]["work_path"] != work_path:
-            warnings.append(f"台帳のwork_pathが現在pathと異なります: {ref}")
+        if ref in by_id and _work_path_key(by_id[ref]["work_path"]) != _work_path_key(work_path):
+            warnings.append(t("provenance.work_path_changed", ref=ref))
     text = path.open("r", encoding="utf-8", newline="").read()
     table_refs = _context_execution_refs(text)
     for ref in table_refs - set(refs):
-        errors.append(f"context配分のAI実行がfrontmatter参照にありません: {ref}")
+        errors.append(
+            t(
+                "provenance.context_ref_not_in_frontmatter",
+                section=_CONTEXT_SECTION,
+                column=" / ".join(column_variants("ai_execution")),
+                ref=ref,
+            )
+        )
     for row in by_id.values():
         if row["work_id"] != str(data.get("work_id", "")):
             continue
         contexts = [part for part in row["context_id"].split(";") if part]
         if row["role"] != "authoring" and contexts != ["not-applicable"]:
             if row["execution_id"] not in table_refs:
-                errors.append(f"C executionがcontext配分にありません: {row['execution_id']}")
-    return {
+                errors.append(
+                    t(
+                        "provenance.execution_not_in_context",
+                        section=_CONTEXT_SECTION,
+                        execution_id=row["execution_id"],
+                    )
+                )
+    result = {
         "status": "checked",
         "path": str(path.resolve()),
         "work_id": data.get("work_id"),
@@ -871,6 +1119,11 @@ def check_document(path: Path, *, project_dir: Path, config: Config) -> dict:
         "execution_refs": refs,
         "ledger": str(config.provenance_ledger),
     }
+    if fix_work_path:
+        result["changed"] = bool(fixed)
+        result["work_path_fixed"] = fixed
+        result["work_path_skipped"] = skipped
+    return result
 
 
 def result_dict(value: object) -> dict:

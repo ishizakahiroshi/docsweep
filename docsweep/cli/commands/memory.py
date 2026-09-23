@@ -7,6 +7,7 @@ import json
 
 
 def cmd_memory(args: argparse.Namespace) -> int:
+    from ...i18n import t
     from ...memory_scan import scan_memory
 
     res = scan_memory(
@@ -16,9 +17,15 @@ def cmd_memory(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
         return 0
-    print(f"memory scan: {len(res.files)} files (stale>={res.stale_over_days}d: "
-          f"{sum(1 for f in res.files if f.age_days >= res.stale_over_days)})")
+    print(
+        t(
+            "cli_memory.summary",
+            count=len(res.files),
+            days=res.stale_over_days,
+            stale=sum(1 for f in res.files if f.age_days >= res.stale_over_days),
+        )
+    )
     for f in res.files[:30]:
-        mark = "STALE" if f.age_days >= res.stale_over_days else "ok"
+        mark = t("cli_memory.mark_stale") if f.age_days >= res.stale_over_days else "ok"
         print(f"  [{mark}] {f.age_days:>4}d  {f.path}")
     return 0

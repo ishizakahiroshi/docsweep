@@ -23,13 +23,15 @@ import os
 import tempfile
 from pathlib import Path
 
+from .i18n import t
+
 
 class ConflictError(Exception):
     """expected_mtime と実 mtime が一致しないときに発生（楽観ロックの不一致）。"""
 
     def __init__(self, path: Path, expected: float, actual: float) -> None:
         super().__init__(
-            f"mtime conflict at {path}: expected={expected!r} actual={actual!r}"
+            t("atomic.conflict", path=path, expected=repr(expected), actual=repr(actual))
         )
         self.path = path
         self.expected = expected

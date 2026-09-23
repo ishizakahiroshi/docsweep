@@ -15,6 +15,8 @@ project は **private な作業文書を git 追跡され得る repo 直下へ�
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -181,3 +183,116 @@ def test_the_document_never_leaves_its_project(tmp_path: Path, policy: str) -> N
 
     for entry in moved:
         assert Path(entry.dst).resolve().is_relative_to(project.resolve())
+
+
+# ---- archive_layout: mirror ----------------------------------------------------
+
+
+def _done_plan_in(folder: Path, name: str = "plan_done.md") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text("# [完了] x\n\n## 概要\n\nd\n", encoding="utf-8")
+    return path
+
+
+def test_flat_layout_keeps_dropping_queue_subfolders(tmp_path: Path) -> None:
+    """設定なしは今と同じ平置き（サブフォルダの文書も archive 直下へ）。"""
+    project = _project(tmp_path)
+    _done_plan_in(project / "docs" / "local" / "app-a")
+
+    auto_sweep(_cfg(tmp_path), dry_run=False)
+
+    assert (project / "docs" / "local" / "archive" / "plan_done.md").is_file()
+    assert not (project / "docs" / "local" / "archive" / "app-a").exists()
+
+
+def test_mirror_layout_keeps_queue_subfolders_inside_archive(tmp_path: Path) -> None:
+    project = _project(tmp_path, project_yaml="archive_layout: mirror\n")
+    queue = project / "docs" / "local"
+    _done_plan_in(queue / "app-a", "plan_app_a.md")
+    _done_plan_in(queue / "app-b" / "stage-1", "plan_stage.md")
+    _done_plan_in(queue, "plan_root.md")
+
+    preview = auto_sweep(_cfg(tmp_path), dry_run=True)
+    planned = sorted(Path(entry.dst).relative_to(queue.resolve()).as_posix() for entry in preview)
+    assert planned == [
+        "archive/app-a/plan_app_a.md",
+        "archive/app-b/stage-1/plan_stage.md",
+        "archive/plan_root.md",
+    ]
+    assert preview.routes[0]["archive_layout"] == "mirror"
+    assert (queue / "app-a" / "plan_app_a.md").is_file()
+
+    auto_sweep(_cfg(tmp_path), dry_run=False)
+
+    assert (queue / "archive" / "app-a" / "plan_app_a.md").is_file()
+    assert (queue / "archive" / "app-b" / "stage-1" / "plan_stage.md").is_file()
+    assert (queue / "archive" / "plan_root.md").is_file()
+    assert not (queue / "app-a" / "plan_app_a.md").exists()
+
+
+def test_mirror_layout_leaves_documents_outside_the_queue_flat(tmp_path: Path) -> None:
+    """queue の外（shared の repo 直下 docs/ 等）はサブフォルダを付けない。"""
+    project = _project(
+        tmp_path, project_yaml="archive_layout: mirror\nwork_policy: shared\n"
+    )
+    _done_plan_in(project / "docs" / "shared", "plan_shared.md")
+
+    auto_sweep(_cfg(tmp_path), dry_run=False)
+
+    assert (project / "archive" / "plan_shared.md").is_file()
+
+
+def test_flat_layout_route_reports_the_layout(tmp_path: Path) -> None:
+    _project(tmp_path)
+
+    result = auto_sweep(_cfg(tmp_path), dry_run=True)
+
+    assert all(route["archive_layout"] == "flat" for route in result.routes)
+
+
+def _directory_link(link: Path, target: Path) -> None:
+    """Create a directory symlink, with a Windows junction fallback."""
+    try:
+        os.symlink(target, link, target_is_directory=True)
+        return
+    except OSError:
+        if os.name != "nt":
+            pytest.skip("directory symlink creation is unavailable")
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip("directory junction creation is unavailable")
+
+
+def test_mirror_layout_follows_a_linked_queue(tmp_path: Path) -> None:
+    """queue が junction / symlink で repo の外にあっても、サブフォルダを正しく付ける。"""
+    project = tmp_path / "repo"
+    (project / ".git").mkdir(parents=True)
+    (project / ".docsweep.yaml").write_text("archive_layout: mirror\n", encoding="utf-8")
+    external = tmp_path / "external" / "local"
+    external.mkdir(parents=True)
+    (project / "docs").mkdir()
+    _directory_link(project / "docs" / "local", external)
+    _done_plan_in(external / "app-a")
+
+    moved = auto_sweep(_cfg(tmp_path), dry_run=False)
+
+    assert [Path(entry.dst).resolve() for entry in moved] == [
+        (external / "archive" / "app-a" / "plan_done.md").resolve()
+    ]
+    assert (external / "archive" / "app-a" / "plan_done.md").is_file()
+
+
+def test_invalid_archive_layout_stops_before_moving(tmp_path: Path) -> None:
+    project = _project(tmp_path, project_yaml="archive_layout: tree\n")
+    plan = _done_plan_in(project / "docs" / "local" / "app-a")
+
+    with pytest.raises(ValueError, match="flat / mirror"):
+        auto_sweep(_cfg(tmp_path), dry_run=False)
+
+    assert plan.is_file()
+    assert not (project / "docs" / "local" / "archive").exists()

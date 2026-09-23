@@ -8,19 +8,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .i18n import t
 from .states import DEFAULT_STATES, StateModel
 
 
 @dataclass(frozen=True)
 class Preset:
     name: str
-    description: str
+    # 説明の辞書キー（docsweep/i18n/locales/<言語>/messages.json の presets.*）。文言は ``description`` で引く。
+    description_key: str
     lang: str
     states: StateModel
     use_frontmatter: bool = False
     # プリセット定義の改訂版。注入内容（ラベル節の生成・状態モデル）の意味が変わったら手で bump する。
     # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
     version: str = "1"
+
+    @property
+    def description(self) -> str:
+        """説明。注入する .docsweep.yaml の見出しに書くので、プリセットの言語で返す。"""
+        return t(self.description_key, lang=self.lang)
 
 
 def _default_state_model() -> StateModel:
@@ -30,7 +37,7 @@ def _default_state_model() -> StateModel:
 PRESETS: dict[str, Preset] = {
     "claude-jp": Preset(
         name="claude-jp",
-        description="Claude Code 向け日本語ルール（H1 ステータスラベル運用）。docsweep 標準。",
+        description_key="presets.claude_jp.description",
         lang="ja",
         states=_default_state_model(),
         use_frontmatter=False,
@@ -38,7 +45,7 @@ PRESETS: dict[str, Preset] = {
     ),
     "frontmatter": Preset(
         name="frontmatter",
-        description="汎用。H1 ラベルに加え front matter の status: を併記する運用。",
+        description_key="presets.frontmatter.description",
         lang="en",
         states=_default_state_model(),
         use_frontmatter=True,
@@ -52,5 +59,5 @@ DEFAULT_PRESET = "claude-jp"
 def get_preset(name: str | None) -> Preset:
     key = name or DEFAULT_PRESET
     if key not in PRESETS:
-        raise ValueError(f"未知のプリセット '{key}'（利用可能: {', '.join(PRESETS)}）")
+        raise ValueError(t("presets.unknown", name=key, available=", ".join(PRESETS)))
     return PRESETS[key]

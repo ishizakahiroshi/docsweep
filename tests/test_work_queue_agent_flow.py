@@ -156,7 +156,7 @@ def test_low_confidence_warns_without_secret_value_and_content_update_blocks(tmp
     saved = save_drafts([_draft(low)], config=cfg, target_dir=queue, project_dir=project)
     assert saved
     stderr = capsys.readouterr().err
-    assert "possible secret" in stderr
+    assert "秘密情報らしき記述があります" in stderr
     assert "abcdefgh" not in stderr
 
     target = queue / "plan_edit.md"

@@ -91,3 +91,21 @@ def isolate_ci_env(monkeypatch: pytest.MonkeyPatch) -> None:
     自分で ``setenv`` する（後勝ち）。
     """
     monkeypatch.delenv("CI", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def isolate_display_lang(monkeypatch: pytest.MonkeyPatch):
+    """表示言語を「テストを流した環境」から切り離し、日本語に固定する。
+
+    表示言語は ``DOCSWEEP_LANG`` と OS の表示言語でも決まるため、遮断しないと
+    CI（Linux の ``LANG=C.UTF-8``）だけ英語になって既存テストの日本語の期待値が落ちる。
+    固定するのは一番弱い「OS」の段なので、``--lang`` や設定の ``lang`` を明示した
+    テストはそちらが勝つ。前のテストが決めた表示言語（contextvar）も持ち越さない。
+    """
+    from docsweep import i18n
+
+    monkeypatch.delenv(i18n.ENV_VAR, raising=False)
+    monkeypatch.setattr(i18n, "detect_os_lang", lambda **_kwargs: "ja")
+    token = i18n._current.set(None)
+    yield
+    i18n._current.reset(token)

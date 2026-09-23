@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from ..i18n import t
+
 
 class EmbeddingUnavailable(RuntimeError):
     """sentence-transformers extras 未インストール。"""
@@ -25,9 +27,7 @@ def get_model():
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as e:
-        raise EmbeddingUnavailable(
-            "sentence-transformers が未インストールです: pip install 'docsweep[resurrect]'"
-        ) from e
+        raise EmbeddingUnavailable(t("resurrect.embedding.unavailable")) from e
     _MODEL = SentenceTransformer(_MODEL_NAME)
     return _MODEL
 

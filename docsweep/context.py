@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .config import Config, config_for_project
 from .engine import run_scan
+from .i18n import t
 from .models import FileRecord
 from .related import backref_records, forward_records
 from .secrets_guard import enforce_secret_policy
@@ -76,9 +77,7 @@ def collect_context(
         path = Path(target_path)
         if not path.is_file():
             raise FileNotFoundError(target_path)
-        raise ValueError(
-            f"対象がスキャン範囲外です（--root で範囲を拡張してください）: {target_path}"
-        )
+        raise ValueError(t("context.outside_scan", path=target_path))
     parent = _parent_plan(target, records)
     related_recs = forward_records(target, records)
     backrefs = backref_records(target, records)
@@ -104,41 +103,41 @@ def _section_header(label: str, *, fmt: str) -> str:
 def render_context(bundle: ContextBundle, *, fmt: str = "markdown") -> str:
     """ContextBundle を 1 つのプロンプト文字列にレンダリングする。"""
     if fmt not in ("markdown", "plain"):
-        raise ValueError(f"未知の format: {fmt}")
-    out: list[str] = []
-    t = bundle.target
-    head = (
-        f"# 対象: {Path(t.path).name}" if fmt == "markdown"
-        else f"対象: {Path(t.path).name}"
-    )
-    out.append(head)
-    out.append(f"パス: {t.path}")
-    if t.title:
-        out.append(f"タイトル: {t.title}")
-    if t.state_label:
-        out.append(f"状態: {t.state_label}")
+        raise ValueError(t("context.unknown_format", format=fmt))
+    target = bundle.target
+    head = t("context.target", name=Path(target.path).name)
+    # 見出しの 4 行は 1 行ずつ改行でつなぐ（節は _section_header が先頭に空行を持つ）
+    head_lines = [f"# {head}" if fmt == "markdown" else head]
+    head_lines.append(t("context.path", path=target.path))
+    if target.title:
+        head_lines.append(t("context.title", title=target.title))
+    if target.state_label:
+        head_lines.append(t("context.state", state=target.state_label))
+    out: list[str] = ["\n".join(head_lines)]
 
-    body = _strip_frontmatter(_read_text(t.path)).strip()
-    out.append(_section_header("本文", fmt=fmt) + body)
+    body = _strip_frontmatter(_read_text(target.path)).strip()
+    out.append(_section_header(t("context.section_body"), fmt=fmt) + body)
 
     if bundle.parent is not None:
         p = bundle.parent
         p_body = _strip_frontmatter(_read_text(p.path)).strip()
         out.append(
-            _section_header(f"親 plan: {Path(p.path).name}", fmt=fmt) + p_body
+            _section_header(t("context.section_parent", name=Path(p.path).name), fmt=fmt)
+            + p_body
         )
 
     if bundle.related_recs:
         for r in bundle.related_recs:
             r_body = _strip_frontmatter(_read_text(r.path)).strip()
             out.append(
-                _section_header(f"related: {Path(r.path).name}", fmt=fmt) + r_body
+                _section_header(t("context.section_related", name=Path(r.path).name), fmt=fmt)
+                + r_body
             )
 
     if bundle.backrefs:
         names = ", ".join(Path(r.path).name for r in bundle.backrefs)
         out.append(
-            _section_header("逆参照（このファイルを related に挙げているファイル）", fmt=fmt)
+            _section_header(t("context.section_backrefs"), fmt=fmt)
             + names
         )
 

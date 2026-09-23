@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from ..config import Config, config_for_project
 from ..engine import ScanResult, apply_action, auto_sweep, run_scan
 from ..aggregate_index import write_index
+from ..i18n import t
 from ..inject import (
     eject,
     eject_global,
@@ -32,7 +33,7 @@ from .routes import capture as capture_routes
 from .routes import cross as cross_routes
 from .routes import graph as graph_routes
 from .routes import resurrect as resurrect_routes
-from .i18n import get_messages, resolve_lang
+from .i18n import LANG_COOKIE, SUPPORTED_LANGS, get_messages, resolve_lang
 from .sanitize import sanitize_html
 from .security import TOKEN_COOKIE, check_token, resolve_under_roots
 
@@ -165,7 +166,7 @@ def create_app(
             # shutdown だけは許可（デモ終了）
             if request.url.path.rstrip("/") != "/api/shutdown":
                 return JSONResponse(
-                    {"detail": "server is read-only"},
+                    {"detail": t("web.read_only")},
                     status_code=403,
                 )
         return await call_next(request)
@@ -187,6 +188,32 @@ def create_app(
             "form-action 'self'; frame-ancestors 'none'",
         )
         return resp
+
+    @app.middleware("http")
+    async def _display_lang(request: Request, call_next):
+        """リクエストの間の表示言語を画面の言語にそろえる。
+
+        エンジンの例外は ``raise`` した時点の表示言語で作られるので、ルートが
+        ``str(exc)`` をそのまま返していても画面の言語で出る。
+
+        ``?lang=`` で開いたときは cookie にも残す。JS の再描画（``/board/fragment``）や
+        API 呼び出しは ``?lang=`` を付けないため、残さないと 2 回目以降のリクエストが
+        設定・OS の言語へ戻り、画面の途中から言語が混ざる。
+        """
+        from ..i18n import reset_lang, set_lang
+
+        query_lang = request.query_params.get("lang")
+        token = set_lang(resolve_lang(request))
+        try:
+            response = await call_next(request)
+        finally:
+            reset_lang(token)
+        if query_lang in SUPPORTED_LANGS and request.cookies.get(LANG_COOKIE) != query_lang:
+            # 設定画面の言語切替（keymap.js の setUiLang）と同じ属性で保存する。
+            response.set_cookie(
+                LANG_COOKIE, query_lang, max_age=31536000, path="/", samesite="lax"
+            )
+        return response
 
     static_dir = _DIR / "static"
     if static_dir.is_dir():
@@ -210,12 +237,12 @@ def create_app(
         path: str = Query(default=""),
         allow_sensitive: bool = Query(default=False),
     ):
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None:
-            raise HTTPException(status_code=403, detail="path outside scan roots")
+            raise HTTPException(status_code=403, detail=t("web.path_outside_roots"))
         if not resolved.is_file():
-            raise HTTPException(status_code=404, detail="not found")
+            raise HTTPException(status_code=404, detail=t("web.not_found"))
         text = resolved.read_text(encoding="utf-8", errors="replace")
         from ..secrets_guard import SensitiveContentError, enforce_secret_policy
         from ..work_queue import find_project_dir
@@ -251,14 +278,14 @@ def create_app(
         action: str = Form(...),
         to: str | None = Form(default=None),
     ):
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None:
-            raise HTTPException(status_code=403, detail="path outside scan roots")
+            raise HTTPException(status_code=403, detail=t("web.path_outside_roots"))
         result = run_scan(state.config)
         doc = _find_doc(result, str(resolved))
         if doc is None:
-            raise HTTPException(status_code=404, detail="not found")
+            raise HTTPException(status_code=404, detail=t("web.not_found"))
         try:
             entry = apply_action(doc, action, state.config, to=to)
         except ValueError as e:
@@ -268,27 +295,27 @@ def create_app(
     @app.post("/api/open")
     def api_open(request: Request, token: str = Form(default=""), path: str = Form(...)):
         """既定アプリで開く（補助・従）。冪等な閲覧操作のみ・ルート配下限定。"""
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None or not resolved.is_file():
-            raise HTTPException(status_code=403, detail="path outside scan roots")
+            raise HTTPException(status_code=403, detail=t("web.path_outside_roots"))
         _open_in_default_app(resolved)
         return JSONResponse({"opened": resolved.as_posix()})
 
     @app.post("/api/reveal")
     def api_reveal(request: Request, token: str = Form(default=""), path: str = Form(...)):
         """ファイルの置き場フォルダを OS のファイルマネージャで開く（補助・従）。ルート配下限定。"""
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         resolved = resolve_under_roots(path, state.config.roots)
         if resolved is None or not resolved.is_file():
-            raise HTTPException(status_code=403, detail="path outside scan roots")
+            raise HTTPException(status_code=403, detail=t("web.path_outside_roots"))
         _reveal_in_file_manager(resolved)
         return JSONResponse({"revealed": resolved.parent.as_posix()})
 
     @app.post("/api/sweep")
     def api_sweep(request: Request, token: str = Form(default=""), dry_run: bool = Form(default=False)):
         """done/discarded を archive へ。watching は触らない。"""
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         moved = auto_sweep(state.config, dry_run=dry_run)
         # CLI sweep と同様、実移送後は横断 INDEX を再生成して陳腐化させない。
         if not dry_run and state.config.roots:
@@ -311,16 +338,16 @@ def create_app(
         """
         from .config_write import update_global_roots
 
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         if op not in ("add", "remove"):
-            raise HTTPException(status_code=400, detail="op must be add or remove")
+            raise HTTPException(status_code=400, detail=t("web.roots_op_invalid"))
         if op == "add" and not allow_root_mutation:
             raise HTTPException(
                 status_code=403,
-                detail="roots 追加は --allow-root-mutation 起動時のみ許可",
+                detail=t("web.roots_mutation_disabled"),
             )
         if not path.strip():
-            raise HTTPException(status_code=400, detail="path is required")
+            raise HTTPException(status_code=400, detail=t("web.path_required"))
         raw_path = path.strip()
         target = Path(raw_path).expanduser()
         try:
@@ -331,23 +358,23 @@ def create_app(
         if op == "add" and _is_protected_root_target(target, raw_path):
             raise HTTPException(
                 status_code=400,
-                detail="システム root / HOME 直下の追加は禁止",
+                detail=t("web.roots_system_forbidden"),
             )
 
         current = [Path(r) for r in state.config.roots]
         if op == "add":
             if not target.is_dir():
-                raise HTTPException(status_code=400, detail="not a directory")
+                raise HTTPException(status_code=400, detail=t("web.not_a_directory"))
             if any(target == Path(r).resolve() for r in current):
-                raise HTTPException(status_code=409, detail="already registered")
+                raise HTTPException(status_code=409, detail=t("web.already_registered"))
             new_roots = current + [target]
         else:
             new_roots = [r for r in current if Path(r).resolve() != target]
             if len(new_roots) == len(current):
-                raise HTTPException(status_code=404, detail="root not found")
+                raise HTTPException(status_code=404, detail=t("web.root_not_found"))
             if not new_roots:
                 # 空にすると看板が操作不能になるため、最後の 1 個は削除させない。
-                raise HTTPException(status_code=400, detail="cannot remove the last root")
+                raise HTTPException(status_code=400, detail=t("web.cannot_remove_last_root"))
 
         state.config.roots = new_roots
         try:
@@ -370,9 +397,9 @@ def create_app(
         """画面右上 ⏻ ボタン用。uvicorn を graceful 停止する。
         cmd_serve から起動した実体だけが state.server を持つ。テスト等で
         単体生成された FastAPI では server が無いため 503 を返す。"""
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         if state.server is None:
-            raise HTTPException(status_code=503, detail="server is not stoppable in this context")
+            raise HTTPException(status_code=503, detail=t("web.not_stoppable"))
         # uvicorn.Server はメインループ内でこのフラグを毎周見てから抜ける。
         # 走行中のリクエスト（このレスポンス含む）は完了するまで待たれる。
         state.server.should_exit = True
@@ -397,17 +424,19 @@ def create_app(
         dry_run: bool = Form(default=False),
     ):
         """運用ルールを注入。dry_run=True は「何が書かれるか」のプレビューを返す（書き込まない）。"""
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         if scope == "global":
             if agent not in ("claude", "codex"):
-                raise HTTPException(status_code=400, detail="unknown agent")
+                raise HTTPException(status_code=400, detail=t("web.unknown_agent"))
+            # 設定で lang を決めていなければ画面の言語で書く（固定の既定 ja にしない）
+            guidance_lang = state.config.document_lang()
             if dry_run:
-                return JSONResponse(preview_global(agent=agent, lang=state.config.lang))
-            r = inject_global(agent=agent, lang=state.config.lang)
+                return JSONResponse(preview_global(agent=agent, lang=guidance_lang))
+            r = inject_global(agent=agent, lang=guidance_lang)
             return JSONResponse({"project": r.project, "written": r.written, "skipped": r.skipped, "warnings": r.warnings})
         pdir = _valid_project_dir(project)
         if pdir is None:
-            raise HTTPException(status_code=403, detail="project outside scan roots")
+            raise HTTPException(status_code=403, detail=t("web.project_outside_roots"))
         preset_name = preset or None
         try:
             if dry_run:
@@ -429,15 +458,15 @@ def create_app(
         dry_run: bool = Form(default=False),
     ):
         """注入した管理ブロックを剥がす（手書きは温存）。dry_run=True は除去対象の確認のみ。"""
-        check_token(request, token, status_code=403, detail="invalid or missing token")
+        check_token(request, token, status_code=403, detail=t("web.invalid_token"))
         if scope == "global":
             if agent not in ("claude", "codex"):
-                raise HTTPException(status_code=400, detail="unknown agent")
+                raise HTTPException(status_code=400, detail=t("web.unknown_agent"))
             r = eject_global(agent=agent, dry_run=dry_run)
             return JSONResponse({"project": r.project, "removed": r.removed, "warnings": r.warnings})
         pdir = _valid_project_dir(project)
         if pdir is None:
-            raise HTTPException(status_code=403, detail="project outside scan roots")
+            raise HTTPException(status_code=403, detail=t("web.project_outside_roots"))
         r = eject(pdir, purge=purge, dry_run=dry_run)
         return JSONResponse({"project": r.project, "removed": r.removed,
                              "warnings": r.warnings, "purged_yaml": r.purged_yaml})

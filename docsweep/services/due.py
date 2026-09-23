@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
+from ..i18n import t
 from ..state import increment_postpone
 from .frontmatter import read_frontmatter_text, update_frontmatter_field
 
@@ -64,7 +65,7 @@ def resolve_due(spec: str, *, today: date | None = None) -> date:
         unit = m_rel.group(2).lower()
         days = {"d": n, "w": n * 7, "m": n * 30, "y": n * 365}[unit]
         return today + timedelta(days=days)
-    raise DueParseError(f"new_due を解釈できません: {spec!r}")
+    raise DueParseError(t("services_due.invalid_new_due", spec=spec))
 
 
 def resolve_relative_offset(spec: str, *, today: date | None = None) -> date:
@@ -89,7 +90,7 @@ def resolve_relative_offset(spec: str, *, today: date | None = None) -> date:
         unit = m_rel.group(3).lower()
         days = {"d": n, "w": n * 7, "m": n * 30, "y": n * 365}[unit]
         return today + timedelta(days=sign * days)
-    raise DueParseError(f"日付指定を解釈できません: {spec!r}")
+    raise DueParseError(t("services_due.invalid_date_spec", spec=spec))
 
 
 def _read_current_due(text: str) -> str | None:
@@ -138,15 +139,11 @@ def update_due(
 
     warning: str | None = None
     if count >= alert_threshold:
-        warning = (
-            f"postpone_count={count} は廃止候補しきい値（{alert_threshold}）に達しました。"
-        )
+        warning = t("services_due.postpone_alert", count=count, threshold=alert_threshold)
     elif count >= warn_threshold:
-        warning = (
-            f"postpone_count={count} は警告しきい値（{warn_threshold}）に達しました。"
-        )
+        warning = t("services_due.postpone_warning", count=count, threshold=warn_threshold)
     if target < date.today():
-        past_msg = "指定日付は過去日です（やり忘れ列に残ります）。"
+        past_msg = t("services_due.past_date")
         warning = f"{warning} {past_msg}".strip() if warning else past_msg
 
     return UpdateDueResult(

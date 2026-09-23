@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..atomic import write_atomic
 from ..config import Config, config_for_project
+from ..i18n import t
 from ..secrets_guard import enforce_secret_policy, format_warnings
 from ..work_queue import ensure_write_allowed
 from .heuristics import extract_drafts_heuristic
@@ -34,14 +35,12 @@ def _sanitize_filename(name: str) -> str:
     Windows のディレクトリ区切り ``\\`` も拒否。
     """
     if not name or not isinstance(name, str):
-        raise CaptureScopeError(f"suggested_filename が空または不正です: {name!r}")
+        raise CaptureScopeError(t("capture.service.filename_empty", name=repr(name)))
     # パスセパレータを含む入力は明示拒否（Path.name で吸収せず「意図」を弾く）。
     if "/" in name or "\\" in name or name in (".", ".."):
-        raise CaptureScopeError(f"suggested_filename にパスを含めることはできません: {name!r}")
+        raise CaptureScopeError(t("capture.service.filename_has_path", name=repr(name)))
     if not _SAFE_FILENAME_RE.match(name):
-        raise CaptureScopeError(
-            f"suggested_filename は英数字・ハイフン・アンダースコア・ドットのみで .md 拡張子必須: {name!r}"
-        )
+        raise CaptureScopeError(t("capture.service.filename_invalid", name=repr(name)))
     return name
 
 
@@ -117,6 +116,7 @@ def extract_drafts(
             offset_days=effective_config.due_default_offset_days,
             template_sections=effective_config.template_sections,
             owner=_capture_owner(effective_config),
+            lang=effective_config.document_lang(),
         )
         return client.extract(request)
 
@@ -127,6 +127,7 @@ def extract_drafts(
         offset_days=effective_config.due_default_offset_days,
         template_sections=effective_config.template_sections,
         owner=_capture_owner(effective_config),
+        lang=effective_config.document_lang(),
     )
 
 

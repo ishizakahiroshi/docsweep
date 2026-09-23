@@ -29,8 +29,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
+from .archive import new_batch_id
 from .config import Config
 from .engine import ScanResult, apply_action, archive_doc, run_scan
+from .i18n import t
 from .models import Action, Flag
 from .okf import is_okf_lifecycle_status
 from .scan import ScannedDoc
@@ -56,16 +58,22 @@ KEY_TO_DECISION: dict[str, str] = {
     "q": KEY_QUIT,
 }
 
-# 各判定の人間可読ラベル（ログ要約に使う）。
-DECISION_LABELS: dict[str, str] = {
-    KEY_DONE: "完了",
-    KEY_WATCHING: "様子見",
-    KEY_DISCARD: "廃止",
-    KEY_SKIP: "スキップ",
-    KEY_LATER: "後で",
-    KEY_OPEN: "開いた",
-    KEY_QUIT: "終了",
+# 各判定の人間可読ラベル（ログ要約に使う）の辞書キー。文言は表示言語で引く。
+DECISION_LABEL_KEYS: dict[str, str] = {
+    KEY_DONE: "interactive.decision.done",
+    KEY_WATCHING: "interactive.decision.watching",
+    KEY_DISCARD: "interactive.decision.discard",
+    KEY_SKIP: "interactive.decision.skip",
+    KEY_LATER: "interactive.decision.later",
+    KEY_OPEN: "interactive.decision.open",
+    KEY_QUIT: "interactive.decision.quit",
 }
+
+
+def decision_label(decision: str) -> str:
+    """判定の人間可読ラベル（表示言語）。未知の判定はそのまま返す。"""
+    key = DECISION_LABEL_KEYS.get(decision)
+    return t(key) if key else decision
 
 
 @dataclass
@@ -135,7 +143,11 @@ def _update_frontmatter_status(
 
 
 def _open_in_os(path: Path) -> str | None:
-    """OS デフォルトのアプリで md ファイルを開く。失敗時はエラー文字列を返す。"""
+    """OS デフォルトのアプリで md ファイルを開く。失敗時は OS のエラー文字列を返す。
+
+    「開けませんでした: 」の前置きは表示する側（``run_interactive_triage``）が付ける。
+    ここでも包むと二重になる。
+    """
     try:
         if sys.platform == "win32":
             os.startfile(str(path))
@@ -144,7 +156,7 @@ def _open_in_os(path: Path) -> str | None:
         else:
             subprocess.Popen(["xdg-open", str(path)])  # noqa: S603,S607
     except OSError as e:
-        return f"open failed: {e}"
+        return str(e)
     return None
 
 
@@ -190,6 +202,9 @@ def apply_decision(
         # それ以外は (a) state を done に書換 → archive、または (b) 既に done なら素直に archive。
         try:
             if not dry_run:
+                # 1 件の判定を 1 バッチにして、``docsweep undo`` で直前の判定の移送とラベルを戻せる
+                # ようにする（ラベルの書き換えと移送を同じバッチに入れる）。
+                batch_id = new_batch_id()
                 if rec.state != "done":
                     apply_action(
                         doc,
@@ -197,9 +212,10 @@ def apply_decision(
                         config,
                         to="done",
                         allow_type_override=True,
+                        batch_id=batch_id,
                     )
                     _update_frontmatter_status(path, "done", state_model=config.state_model)
-                archive_doc(doc, config)
+                archive_doc(doc, config, batch_id=batch_id)
             return DecisionResult(
                 path=rec.path, decision=decision, action="relabel+archive", archived=True
             )
@@ -214,8 +230,11 @@ def apply_decision(
                 if Action.DISCARD.value in rec.allowed_actions:
                     apply_action(doc, Action.DISCARD.value, config)
                 else:
-                    apply_action(doc, Action.RELABEL.value, config, to="discarded")
-                    archive_doc(doc, config)
+                    batch_id = new_batch_id()
+                    apply_action(
+                        doc, Action.RELABEL.value, config, to="discarded", batch_id=batch_id
+                    )
+                    archive_doc(doc, config, batch_id=batch_id)
                 _update_frontmatter_status(path, "discarded", state_model=config.state_model)
             return DecisionResult(
                 path=rec.path, decision=decision, action=Action.DISCARD.value, archived=True
@@ -246,7 +265,7 @@ def apply_decision(
 
     return DecisionResult(
         path=rec.path, decision=decision, action=None, archived=False,
-        error=f"未知の決定: {decision}",
+        error=t("interactive.unknown_decision", decision=decision),
     )
 
 
@@ -260,17 +279,17 @@ def dispatch_decisions(
 def summarize(results: list[DecisionResult]) -> str:
     """判定結果を「判定別 N 件」「エラー M 件」に要約した 1〜数行文字列を返す。"""
     if not results:
-        return "（処理対象なし）"
+        return t("interactive.summary_empty")
     counts: dict[str, int] = {}
     errors = 0
     for r in results:
         counts[r.decision] = counts.get(r.decision, 0) + 1
         if r.error:
             errors += 1
-    parts = [f"{DECISION_LABELS.get(k, k)} {v}" for k, v in counts.items()]
-    head = "判定結果: " + " / ".join(parts)
+    parts = [f"{decision_label(k)} {v}" for k, v in counts.items()]
+    head = t("interactive.summary_head", parts=" / ".join(parts))
     if errors:
-        head += f"  (エラー {errors} 件)"
+        head += "  " + t("interactive.summary_errors", count=errors)
     return head
 
 
@@ -305,13 +324,10 @@ def run_interactive_triage(
         docs = candidates_for_review(result)
 
     if not docs:
-        wr("判断が要るファイルはありません。")
+        wr(t("interactive.nothing_to_decide"))
         return 0
 
-    wr(
-        "インタラクティブ triage を開始します。"
-        " キー: c=完了 / w=様子見 / x=廃止 / s=スキップ / l=後で / o=md を開く / q=終了"
-    )
+    wr(t("interactive.start"))
 
     pairs: list[tuple[ScannedDoc, str]] = []
     open_results: list[DecisionResult] = []
@@ -327,23 +343,24 @@ def run_interactive_triage(
                 try:
                     raw = rd("  [c/w/x/s/l/o/q]? ")
                 except EOFError:
-                    wr("（入力ストリーム終了 → q として終了）")
+                    # input() はプロンプトを改行なしで出すので、改行してから出す（Ctrl+C と同じ）
+                    wr("\n  " + t("interactive.input_eof"))
                     raw = "q"
                 key = parse_key(raw)
                 if key is None:
-                    wr("  → 不明なキーです。c/w/x/s/l/o/q のいずれかを入力してください。")
+                    wr("  → " + t("interactive.unknown_key"))
                     continue
                 if key == KEY_QUIT:
-                    wr("  → 中断しました（ここまでの判定だけ適用します）")
+                    wr("  → " + t("interactive.quit"))
                     quit_loop = True
                     break
                 if key == KEY_OPEN:
                     res = apply_decision(d, KEY_OPEN, config, dry_run=dry_run)
                     open_results.append(res)
                     if res.error:
-                        wr(f"  → 開けませんでした: {res.error}")
+                        wr("  → " + t("interactive.cannot_open", error=res.error))
                     else:
-                        wr("  → 開きました。続けてキーを入力してください。")
+                        wr("  → " + t("interactive.opened"))
                     continue
                 pairs.append((d, key))
                 break
@@ -351,7 +368,7 @@ def run_interactive_triage(
         # 蓄積した pairs を捨てず、ここまでの判定を一括処理する（docstring の「終了時に
         # 一括処理する」設計と整合させる）。EOFError は q 相当で扱っているが、Ctrl+C は
         # 無捕捉だったため蓄積分が全消失していた。
-        wr("\n  → Ctrl+C を検知しました（ここまでの判定だけ適用します）")
+        wr("\n  → " + t("interactive.interrupted"))
 
     results = dispatch_decisions(pairs, config, dry_run=dry_run)
     wr("")

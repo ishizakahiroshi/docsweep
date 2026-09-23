@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -55,11 +56,14 @@ def test_cli_subcommand_help_exits_zero(cmd: str):
 
 def test_cli_root_help_exits_zero():
     """トップレベル ``python -m docsweep --help`` も exit 0。"""
+    # 子プロセスの表示言語は OS から決まるので、英語に固定して usage 行を確かめる
+    env = {**os.environ, "DOCSWEEP_LANG": "en", "NO_COLOR": "1"}
     proc = subprocess.run(
         [sys.executable, "-m", "docsweep", "--help"],
         capture_output=True,
         timeout=10,
         text=True,
+        env=env,
     )
     assert proc.returncode == 0
     assert "usage" in proc.stdout.lower()

@@ -16,7 +16,7 @@ from docsweep.config import load_config
 from docsweep.export import (
     OKF_REVIEW_STATUS_VOCABULARY,
     OKF_STATUS_VOCABULARY,
-    OKF_TYPE_VOCABULARY,
+    okf_type_vocabulary,
     run_export,
 )
 from docsweep.okf import load_okf_profile
@@ -80,7 +80,12 @@ def test_export_creates_zip_with_manifest(workspace: Path, tmp_path: Path):
         assert "okf-manifest.json" in names
         manifest = json.loads(zf.read("okf-manifest.json").decode("utf-8"))
     assert manifest["format"] == "okf"
-    assert manifest["type_vocabulary"] == OKF_TYPE_VOCABULARY
+    # 説明文は文書の言語（lang 未設定なので表示言語 = conftest の ja）。日本語は従来と同じ文面
+    assert manifest["type_vocabulary"] == okf_type_vocabulary(cfg.document_lang())
+    assert manifest["type_vocabulary"]["bugfix"] == {
+        "okf_equivalent": "incident",
+        "description": "障害対応の事後記録（症状 / 根本原因 / 修正内容）",
+    }
     assert manifest["status_vocabulary"] == OKF_STATUS_VOCABULARY
     assert manifest["review_status_vocabulary"] == OKF_REVIEW_STATUS_VOCABULARY
     assert manifest["file_count"] == result.file_count

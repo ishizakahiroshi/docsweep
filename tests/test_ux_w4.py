@@ -105,8 +105,8 @@ def test_doc_hint_can_be_disabled() -> None:
 def test_doc_hint_carries_the_help_id_for_support() -> None:
     line = doc_hint("config.yaml_parse")
     assert line is not None
-    assert "help id: config.yaml_parse" in line
-    assert line.startswith("hint: ")
+    assert "ヘルプ ID: config.yaml_parse" in line
+    assert line.startswith("ヒント: ")
 
 
 # ===== P59: bulk_confirm =====================================================

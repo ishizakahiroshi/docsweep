@@ -17,6 +17,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+from .i18n import t
+
 SCHEMA_VERSION = 2
 
 
@@ -168,10 +170,7 @@ def _schema_version_or_error(conn: sqlite3.Connection) -> int | None:
     try:
         return int(str(row[0]).strip())
     except (TypeError, ValueError) as exc:
-        raise IndexSchemaError(
-            "index schema_version is not numeric; restore the database or remove it "
-            "after taking a backup"
-        ) from exc
+        raise IndexSchemaError(t("index.schema_version_not_numeric")) from exc
 
 
 def _schema_state(conn: sqlite3.Connection) -> int | None:
@@ -180,15 +179,10 @@ def _schema_state(conn: sqlite3.Connection) -> int | None:
     if not tables:
         return None
     if "meta" not in tables:
-        raise IndexSchemaError(
-            "index database is partially initialized (meta table is missing)"
-        )
+        raise IndexSchemaError(t("index.schema_partially_initialized"))
     version = _schema_version_or_error(conn)
     if version is None:
-        raise IndexSchemaError(
-            "index database has no schema_version; restore the database or remove it "
-            "after taking a backup"
-        )
+        raise IndexSchemaError(t("index.schema_version_missing"))
     return version
 
 
@@ -210,10 +204,7 @@ def _missing_schema_parts(conn: sqlite3.Connection) -> list[str]:
 def _validate_current_schema(conn: sqlite3.Connection) -> None:
     missing = _missing_schema_parts(conn)
     if missing:
-        raise IndexSchemaError(
-            "index schema_version is current but the schema is incomplete: "
-            + ", ".join(missing)
-        )
+        raise IndexSchemaError(t("index.schema_incomplete", missing=", ".join(missing)))
 
 
 def _create_schema(conn: sqlite3.Connection) -> None:
@@ -237,10 +228,7 @@ def _validate_migration_base(conn: sqlite3.Connection) -> None:
         }
         missing.extend(f"files.{name}" for name in sorted(required_v1 - columns))
     if missing:
-        raise IndexSchemaError(
-            "index schema_version=1 is incomplete and cannot be migrated: "
-            + ", ".join(missing)
-        )
+        raise IndexSchemaError(t("index.schema_v1_incomplete", missing=", ".join(missing)))
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
@@ -272,7 +260,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
                 return
             if state not in (None, _V1_SCHEMA_VERSION):
                 raise IndexSchemaError(
-                    f"unsupported index schema_version={state}; current version is {SCHEMA_VERSION}"
+                    t(
+                        "index.schema_version_unsupported",
+                        version=state,
+                        current=SCHEMA_VERSION,
+                    )
                 )
             # Fall through to the normal initialization/migration path below.
             conn.rollback()
@@ -282,7 +274,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
             raise
     if state not in (None, _V1_SCHEMA_VERSION):
         raise IndexSchemaError(
-            f"unsupported index schema_version={state}; current version is {SCHEMA_VERSION}"
+            t("index.schema_version_unsupported", version=state, current=SCHEMA_VERSION)
         )
 
     conn.execute("BEGIN IMMEDIATE")
@@ -295,7 +287,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
             return
         if state not in (None, _V1_SCHEMA_VERSION):
             raise IndexSchemaError(
-                f"unsupported index schema_version={state}; current version is {SCHEMA_VERSION}"
+                t("index.schema_version_unsupported", version=state, current=SCHEMA_VERSION)
             )
 
         if state is None:

@@ -15,6 +15,7 @@ from .config import (
     privacy_enforced,
     resolve_work_dir,
 )
+from .i18n import t
 from .secrets_guard import enforce_secret_policy
 
 
@@ -31,6 +32,10 @@ class WorkQueueCheck:
     tracked: bool | None = None
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    # errors のうち、private queue の Git 状態（tracked / not ignored）に関するもの。
+    # 互換 fallback で警告へ落とす対象を、文言の文字列ではなくここで見分ける
+    # （文言は表示言語で変わるため）。
+    git_privacy_errors: list[str] = field(default_factory=list, repr=False)
 
     @property
     def ok(self) -> bool:
@@ -217,20 +222,17 @@ def resolve_work_target(
     queue_root = resolve_work_dir(root, effective.work_dir)
     target = _absolute(explicit_dir) if explicit_dir is not None else queue_root
     if not _under(target, root):
-        raise WorkQueueError(f"作業先はプロジェクト配下である必要があります: {target}")
+        raise WorkQueueError(t("work_queue.target_outside_project", path=target))
     if (
         config.roots
         and config.project_dir is None
         and not any(_under(target, Path(r)) for r in config.roots)
     ):
-        raise WorkQueueError(f"作業先はスキャン root 配下である必要があります: {target}")
+        raise WorkQueueError(t("work_queue.target_outside_roots", path=target))
     if not _target_realpath_allowed(
         project_root=root, target_dir=target, queue_root=queue_root
     ):
-        raise WorkQueueError(
-            "作業先の実体がプロジェクトまたは設定済み queue の範囲外です: "
-            f"{target}"
-        )
+        raise WorkQueueError(t("work_queue.target_realpath_outside", path=target))
     return root, target
 
 
@@ -253,31 +255,30 @@ def check_work_queue(
     except (OSError, ValueError):
         queue_root = resolve_work_dir(root, config.work_dir)
     if policy not in {"private", "shared"}:
-        result.errors.append("work_policy は private または shared で指定してください")
+        result.errors.append(t("work_queue.policy_invalid"))
     if not _under(target, root):
-        result.errors.append("作業 queue はプロジェクト配下である必要があります")
+        result.errors.append(t("work_queue.queue_outside_project"))
     elif not _target_realpath_allowed(
         project_root=root, target_dir=target, queue_root=queue_root
     ):
-        result.errors.append(
-            "作業 queue の実体がプロジェクトまたは設定済み queue の範囲外です"
-        )
+        result.errors.append(t("work_queue.queue_realpath_outside"))
     if (
         config.roots
         and config.project_dir is None
         and not any(_under(target, Path(r)) for r in config.roots)
     ):
-        result.errors.append("作業 queue はスキャン root 配下である必要があります")
+        result.errors.append(t("work_queue.queue_outside_roots"))
 
     if policy == "private" and not result.errors:
         result.ignored = _git_ignored(root, target)
         result.tracked = _git_tracked(root, target)
         if result.tracked:
-            result.errors.append("private work queue に tracked ファイルが含まれています")
+            result.git_privacy_errors.append(t("work_queue.private_tracked"))
         if result.ignored is False:
-            result.errors.append("private work queue が Git ignore されていません")
-        elif result.ignored is None:
-            result.warnings.append("Git ignore 状態を確認できませんでした")
+            result.git_privacy_errors.append(t("work_queue.private_not_ignored"))
+        result.errors.extend(result.git_privacy_errors)
+        if result.ignored is None:
+            result.warnings.append(t("work_queue.ignore_state_unknown"))
 
     # docsweep 自身が書く実行時ディレクトリ。`promote` / `apply --action relabel` /
     # `sweep` のたびに `.docsweep/state.json`（ラベル履歴・postpone 回数）が書き換わる。
@@ -289,15 +290,9 @@ def check_work_queue(
     if state_dir.exists():
         state_ignored = _git_ignored(root, state_dir)
         if state_ignored is False:
-            result.warnings.append(
-                f"{INDEX_DIRNAME} が Git ignore されていません"
-                "（docsweep の実行時ファイル。.gitignore へ追加してください）"
-            )
+            result.warnings.append(t("work_queue.state_dir_not_ignored", dirname=INDEX_DIRNAME))
         if _git_tracked(root, state_dir):
-            result.errors.append(
-                f"{INDEX_DIRNAME} に tracked ファイルが含まれています"
-                "（実行時ファイルなので追跡から外してください）"
-            )
+            result.errors.append(t("work_queue.state_dir_tracked", dirname=INDEX_DIRNAME))
 
     if content is not None:
         # enforce_secret_policy は本文を例外・戻り値へ含めない。
@@ -326,18 +321,12 @@ def ensure_write_allowed(
     )
     errors = list(result.errors)
     if not privacy_enforced(config):
-        downgraded = [
-            error for error in errors
-            if "private work queue" in error or "private queue" in error
-        ]
+        downgraded = list(result.git_privacy_errors)
         errors = [error for error in errors if error not in downgraded]
         # 互換 fallback で error を落とすときは、黙って落とさず warning として残す。
         # 落としたことが見えないと「保護されている」と誤解したまま運用が続く。
         for error in downgraded:
-            result.warnings.append(
-                f"{error}（work_dir / work_policy が未設定のため警告に留めています。"
-                "強制するには .docsweep.yaml で work_policy を明示してください）"
-            )
+            result.warnings.append(t("work_queue.privacy_downgraded", error=error))
     if errors:
         raise WorkQueueError("; ".join(errors) + f": {result.path}")
     return result

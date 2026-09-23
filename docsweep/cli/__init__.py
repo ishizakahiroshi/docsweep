@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from .parser import _build_config, build_parser
@@ -15,6 +17,7 @@ from .commands.memory import cmd_memory
 from .commands.ics import cmd_ics
 from .commands.inject import cmd_eject, cmd_inject
 from .commands.mcp import cmd_mcp
+from .commands.move import cmd_mv
 from .commands.provenance import cmd_provenance
 from .commands.serve import cmd_serve
 from .commands.release import cmd_release_close
@@ -22,13 +25,14 @@ from .commands.workspace import cmd_workspace_migrate
 from .commands.completion import cmd_completion
 from .commands.excluded import cmd_config, cmd_review, cmd_review_week
 
-_SUBCOMMANDS = {'scan', 'triage', 'apply', 'sweep', 'serve', 'promote', 'index', 'pending', 'index-sync', 'index-rebuild', 'index-watch', 'index-stats', 'index-vacuum', 'brief', 'cross', 'capture', 'linkcheck', 'auto-triage', 'graph', 'resurrect', 'report', 'summary', 'new', 'provenance', 'review', 'inject', 'eject', 'list', 'mcp', 'migrate-frontmatter', 'fix-related', 'show', 'stale', 'context', 'claim', 'config', 'timeline', 'find', 'target-release', 'release', 'workspace', 'completion', 'export', 'okf-check', 'okf-profiles', 'closeout-check', 'activity', 'doctor', 'init', 'undo', 'day', 'intent', 'fix-conflict', 'notify', 'project', 'review-week', 'history', 'cookbook', 'memory', 'ics', 'demo'}
+_SUBCOMMANDS = {'scan', 'triage', 'apply', 'sweep', 'mv', 'serve', 'promote', 'index', 'pending', 'index-sync', 'index-rebuild', 'index-watch', 'index-stats', 'index-vacuum', 'brief', 'cross', 'capture', 'linkcheck', 'auto-triage', 'graph', 'resurrect', 'report', 'summary', 'new', 'provenance', 'review', 'inject', 'eject', 'list', 'mcp', 'migrate-frontmatter', 'fix-related', 'show', 'stale', 'context', 'claim', 'config', 'timeline', 'find', 'target-release', 'release', 'workspace', 'completion', 'export', 'okf-check', 'okf-profiles', 'closeout-check', 'activity', 'doctor', 'init', 'undo', 'day', 'intent', 'fix-conflict', 'notify', 'project', 'review-week', 'history', 'cookbook', 'memory', 'ics', 'demo'}
 
 _DISPATCH = {
     'scan': cmd_scan,
     'triage': cmd_triage,
     'apply': cmd_apply,
     'sweep': cmd_sweep,
+    'mv': cmd_mv,
     'serve': cmd_serve,
     'promote': cmd_promote,
     'index': cmd_index,
@@ -130,8 +134,88 @@ def _print_doc_hint(help_id: str) -> None:
         return
 
 
+def _argv_option(argv: list[str], name: str) -> str | None:
+    for index, item in enumerate(argv):
+        if item == name and index + 1 < len(argv):
+            return argv[index + 1]
+        if item.startswith(name + "="):
+            return item.split("=", 1)[1]
+    return None
+
+
+def _startup_lang(argv: list[str]) -> str:
+    """argparse より前に表示言語を決める（``--help`` の文言にも効かせるため）。
+
+    順序は ``docsweep.i18n.resolve_lang`` と同じ。設定は ``--config`` か global と、
+    ``--project-dir`` か cwd の project の ``.docsweep.yaml`` から ``lang`` だけを読む。
+    """
+    from types import SimpleNamespace
+
+    from ..config import GLOBAL_CONFIG_PATH, PROJECT_CONFIG_NAME, _load_yaml
+    from ..i18n import resolve_lang
+    from ..work_queue import find_project_dir
+
+    lang_value = None
+    try:
+        config_path = _argv_option(argv, "--config")
+        global_cfg = _load_yaml(Path(config_path) if config_path else GLOBAL_CONFIG_PATH)
+        project_opt = _argv_option(argv, "--project-dir")
+        project_dir = Path(project_opt) if project_opt else find_project_dir(cwd=Path.cwd())
+        project_cfg = _load_yaml(project_dir / PROJECT_CONFIG_NAME)
+        lang_value = project_cfg.get("lang") or global_cfg.get("lang")
+    except Exception:
+        # 設定の誤りは、この後の本処理が正しいメッセージで報告する。
+        lang_value = None
+    config = SimpleNamespace(lang=lang_value, lang_explicit=bool(lang_value))
+    return resolve_lang(_argv_option(argv, "--lang"), config=config)
+
+
+def _argparse_gettext(message: str) -> str:
+    """argparse 自身の文言（usage: / options: / エラー）を表示言語で引く。
+
+    argparse は gettext の msgid（英語の原文）で文言を引く。訳は言語別 JSON の
+    ``argparse.<msgid>`` にあり、無いもの（開発者向けの内部エラー等）は原文のまま出す。
+    """
+    from ..i18n import MESSAGES, t
+
+    key = f"argparse.{message}"
+    return t(key) if key in MESSAGES else message
+
+
+def _argparse_ngettext(singular: str, plural: str, count: int) -> str:
+    return _argparse_gettext(singular if count == 1 else plural)
+
+
+@contextmanager
+def _localized_argparse() -> Iterator[None]:
+    """docsweep の CLI を動かす間だけ argparse の文言を差し替える。
+
+    argparse は ``from gettext import gettext as _, ngettext`` をモジュールの名前で呼ぶので、
+    その 2 つを差し替える。終わったら戻す（ライブラリとして import したアプリの argparse を
+    巻き込まない）。
+    """
+    import argparse
+
+    namespace = vars(argparse)
+    saved = {name: namespace.get(name) for name in ("_", "ngettext")}
+    namespace.update(_=_argparse_gettext, ngettext=_argparse_ngettext)
+    try:
+        yield
+    finally:
+        namespace.update(saved)
+
+
 def main(argv: list[str] | None = None) -> int:
+    from ..i18n import use_lang
+
     raw = list(sys.argv[1:] if argv is None else argv)
+    with use_lang(_startup_lang(raw)), _localized_argparse():
+        return _main(raw)
+
+
+def _main(raw: list[str]) -> int:
+    from ..i18n import t
+
     if raw and raw[0] not in _SUBCOMMANDS and raw[0] not in ("--version", "-h", "--help"):
         first = raw[0]
         # Keep the convenient ``docsweep <existing-directory>`` scan shorthand,
@@ -140,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         if first.startswith("-") or Path(first).is_dir():
             raw = ["scan", *raw]
         else:
-            print(f"docsweep: unknown command or scan directory: {first}", file=sys.stderr)
+            print(t("cli_main.unknown_command", name=first), file=sys.stderr)
             _print_doc_hint("cli.unknown_command")
             return 2
     parser = build_parser()
@@ -158,11 +242,7 @@ def main(argv: list[str] | None = None) -> int:
         # ここへ来るのは --json だけ（人間向けは上で緩めてある）。出力先の
         # コードページが payload を表現できないという環境エラーなので、
         # raw traceback ではなく短い指示を出して exit 2 で返す。
-        print(
-            f"docsweep: 出力先のエンコーディング {exc.encoding} では"
-            "この内容を表現できません（PYTHONIOENCODING=utf-8 を指定してください）",
-            file=sys.stderr,
-        )
+        print(t("cli_main.output_encoding", encoding=exc.encoding), file=sys.stderr)
         _print_doc_hint("console.encoding")
         return 2
     try:

@@ -7,12 +7,21 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
 from ..config import DEFAULT_DUE_OFFSET_DAYS, TemplateSection
-from ..templates_gen import _append_template_sections, okf_frontmatter
+from ..doc_vocab import heading
+from ..i18n import SUPPORTED_LANGS, current_lang, t, texts
+from ..templates_gen import (
+    _append_template_sections,
+    _context_table,
+    _h1,
+    _sections,
+    okf_frontmatter,
+)
 from .models import Draft, DraftKind
 
 
@@ -26,6 +35,46 @@ class LLMRequest:
     offset_days: dict[str, int] | None = None
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None
     owner: str | None = None
+    # 草案の本文（見出し・ラベル）の言語。None なら表示言語。
+    lang: str | None = None
+
+
+# 会話を分類するキーワードは言語ごとに terms.json に置き、どの言語の会話も読めるよう
+# 全言語の語で照合する。照合のしかたも言語のデータ（``capture.marker_match``）で決める:
+# ``substring`` は部分一致（大文字小文字を区別。語の区切りを空白で書かない日本語等）、
+# ``word`` は語単位（大文字小文字を無視。英語等）。``word`` 以外は ``substring`` と読む。
+def _compile_markers(key: str) -> tuple[tuple[str, ...], tuple[re.Pattern[str], ...]]:
+    substrings: dict[str, None] = {}
+    words: dict[str, None] = {}
+    for lang in SUPPORTED_LANGS:
+        style = t("capture.marker_match", lang=lang)
+        target = words if style == "word" else substrings
+        for item in texts(key, lang=lang):
+            target.setdefault(item, None)
+    return tuple(substrings), tuple(
+        re.compile(rf"\b{re.escape(word.lower())}\b") for word in words
+    )
+
+
+# 段落単位で拾う語（heuristics.py）と、MockLLM が行単位で拾う語。
+_MARKER_KEYS = (
+    "capture.markers.plan",
+    "capture.markers.bugfix",
+    "capture.markers.pending",
+    "capture.mock_markers.plan",
+    "capture.mock_markers.bugfix",
+    "capture.mock_markers.pending",
+)
+_MARKERS = {key: _compile_markers(key) for key in _MARKER_KEYS}
+
+
+def has_marker(text: str, key: str) -> bool:
+    """``text`` に ``key``（``capture.markers.*`` 等）のキーワードがあるか。"""
+    substrings, words = _MARKERS[key]
+    if any(word in text for word in substrings):
+        return True
+    lowered = text.lower()
+    return any(pattern.search(lowered) for pattern in words)
 
 
 class LLMClient(Protocol):
@@ -48,11 +97,11 @@ class MockLLM:
             if not stripped:
                 continue
             kind: str | None = None
-            if any(k in stripped for k in ("決定", "やる", "TODO", "実装する")):
+            if has_marker(stripped, "capture.mock_markers.plan"):
                 kind = DraftKind.PLAN.value
-            elif any(k in stripped for k in ("バグ", "不具合", "壊れ", "エラー")):
+            elif has_marker(stripped, "capture.mock_markers.bugfix"):
                 kind = DraftKind.BUGFIX.value
-            elif any(k in stripped for k in ("保留", "あとで")):
+            elif has_marker(stripped, "capture.mock_markers.pending"):
                 kind = DraftKind.PENDING.value
             if kind is None:
                 continue
@@ -68,6 +117,7 @@ class MockLLM:
                 offset_days=request.offset_days,
                 template_sections=request.template_sections,
                 owner=request.owner,
+                lang=request.lang,
             ))
             if len(drafts) >= request.max_drafts:
                 break
@@ -85,11 +135,8 @@ def get_llm(provider: str | None = None) -> LLMClient:
     if norm in ("", "mock"):
         return MockLLM()
     if norm in ("openai", "anthropic"):
-        raise NotImplementedError(
-            f"LLM provider '{norm}' は未実装です。現時点では provider='mock' のみ使えます"
-            " (実 provider 追加は別 plan で対応)"
-        )
-    raise ValueError(f"未知の LLM provider: {provider}")
+        raise NotImplementedError(t("capture.llm.not_implemented", provider=norm))
+    raise ValueError(t("capture.llm.unknown_provider", provider=provider))
 
 
 def _slugify(title: str) -> str:
@@ -114,6 +161,7 @@ def _make_draft(
     offset_days: dict[str, int] | None = None,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
     owner: str | None = None,
+    lang: str | None = None,
 ) -> Draft:
     from .models import Draft as _Draft
 
@@ -134,7 +182,7 @@ def _make_draft(
         owner=owner,
     )
     body = front + _render_body_seed(
-        kind, title, body_seed, template_sections=template_sections
+        kind, title, body_seed, template_sections=template_sections, lang=lang or current_lang()
     )
     return _Draft(
         id=f"draft-{idx:03d}",
@@ -153,30 +201,29 @@ def _render_body_seed(
     seed: str,
     *,
     template_sections: Mapping[str, tuple[TemplateSection, ...]] | None = None,
+    lang: str,
 ) -> str:
-    """kind に応じた必須セクションを持つテンプレ本文を組む。"""
+    """kind に応じた必須セクションを持つテンプレ本文を組む（見出しは ``docsweep new`` と同じ語彙）。"""
+    seed_line = f"<TODO: {seed}>"
     if kind == DraftKind.PLAN.value:
-        label = "[計画]"
-        sections = "## context配分\n\n| C | 種別 | 内容 | 備考/注意点 |\n|---|---|---|---|\n| C1 | planned | <TODO> | — |\n\n## 概要\n\n<TODO: " + seed + ">\n"
+        body = (
+            _h1("planned", title, lang)
+            + _context_table(lang)
+            + f"## {heading('summary', lang)}\n\n{seed_line}\n"
+        )
     elif kind == DraftKind.BUGFIX.value:
-        label = "[実行中]"
-        sections = (
-            "## context配分\n\n| C | 種別 | 内容 | 備考/注意点 |\n|---|---|---|---|\n| C1 | planned | <TODO> | — |\n\n"
-            "## 症状\n\n<TODO: " + seed + ">\n\n"
-            "## 根本原因\n\n<TODO>\n\n"
-            "## 修正内容\n\n<TODO>\n\n"
-            "## 変更ファイル\n\n<TODO>\n\n"
-            "## 検証\n\n<TODO>\n\n"
-            "## 備忘\n\n<TODO>\n"
+        body = (
+            _h1("in-progress", title, lang)
+            + _context_table(lang)
+            + f"## {heading('symptoms', lang)}\n\n{seed_line}\n\n"
+            + _sections(("root_cause", "fix", "changed_files", "verification", "notes"), lang)
         )
     else:
-        label = "[保留]"
-        sections = (
-            "## 概要\n\n<TODO: " + seed + ">\n\n"
-            "## 保留理由\n\n<TODO>\n\n"
-            "## 着手条件\n\n<TODO>\n"
+        body = (
+            _h1("pending", title, lang)
+            + f"## {heading('summary', lang)}\n\n{seed_line}\n\n"
+            + _sections(("pending_reason", "resume_when"), lang)
         )
-    body = f"# {label} {title}\n\n{sections}"
     return _append_template_sections(
         body, doc_type=kind, template_sections=template_sections
     )

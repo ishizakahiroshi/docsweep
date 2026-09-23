@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from ...i18n import t
 from ..parser import _build_config
 
 def cmd_mcp(args: argparse.Namespace) -> int:
@@ -12,7 +13,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     try:
         from ... import mcp_server
     except ImportError:
-        print("MCP には mcp extra が必要です: pip install 'docsweep[mcp]'", file=sys.stderr)
+        print(t("cli_mcp.needs_mcp_extra"), file=sys.stderr)
         return 3
     try:
         mcp_server.run(cfg)

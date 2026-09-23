@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from ...config import Config, load_config
+from ...i18n import t
 from ...provenance_hint import warn_if_unresolved
 from ...provenance import (
     AIMetadata,
@@ -60,15 +61,32 @@ def _emit(result: dict, *, as_json: bool) -> int:
     if as_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif result.get("status") == "delegated":
-        skill = result.get("delegate_skill") or "repo固有skill"
-        print(f"provenance: repo管理へ委譲（{skill}）。汎用台帳は変更していません")
+        skill = result.get("delegate_skill") or t("cli_provenance.repo_skill")
+        print(t("cli_provenance.delegated", skill=skill))
     elif result.get("status") == "checked":
         label = "OK" if result.get("valid") else "NG"
         print(f"provenance check: {label} ({result.get('path', '')})")
+        for item in result.get("work_path_fixed", []):
+            print(
+                t(
+                    "cli_provenance.work_path_fixed",
+                    ref=item["execution_id"],
+                    before=item["from"],
+                    after=item["to"],
+                )
+            )
+        for item in result.get("work_path_skipped", []):
+            print(
+                t(
+                    "cli_provenance.work_path_skipped",
+                    ref=item["execution_id"],
+                    path=item["work_path"],
+                )
+            )
         for message in result.get("errors", []):
-            print(f"  error: {message}")
+            print(t("cli_provenance.check_error", message=message))
         for message in result.get("warnings", []):
-            print(f"  warning: {message}")
+            print(t("cli_provenance.check_warning", message=message))
     else:
         execution = result.get("execution_id")
         suffix = f" execution={execution}" if execution else ""
@@ -119,13 +137,14 @@ def cmd_provenance(args: argparse.Namespace) -> int:
                 _path(args.path, project_dir),
                 project_dir=project_dir,
                 config=cfg,
+                fix_work_path=bool(getattr(args, "fix_work_path", False)),
             )
         else:  # pragma: no cover - argparse requires a known action
-            raise ProvenanceError(f"未知のprovenance actionです: {action}")
+            raise ProvenanceError(t("cli_provenance.unknown_action", action=action))
     except (OSError, ProvenanceError, ValueError) as exc:
         if getattr(args, "json", False):
             print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False, indent=2))
         else:
-            print(f"provenance error: {exc}", file=sys.stderr)
+            print(t("cli_provenance.error", error=exc), file=sys.stderr)
         return 2
     return _emit(result, as_json=bool(getattr(args, "json", False)))

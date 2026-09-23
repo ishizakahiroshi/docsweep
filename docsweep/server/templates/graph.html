@@ -16,7 +16,7 @@
 </head>
 <body>
 <header>
-  <h1>docsweep graph <span class="meta">— {{ graph.nodes|length }} nodes / {{ graph.edges|length }} edges</span></h1>
+  <h1>docsweep graph <span class="meta">— {{ T.graph_counts.format(nodes=graph.nodes|length, edges=graph.edges|length) }}</span></h1>
   <span class="meta">{{ T.graph_click_hint }}</span>
 </header>
 
@@ -24,12 +24,13 @@
   <div><span class="dot" style="background:#4a90e2"></span> plan</div>
   <div><span class="dot" style="background:#e2724a"></span> bugfix</div>
   <div><span class="dot" style="background:#888"></span> pending</div>
-  <div><span class="dot" style="background:#c9c9c9"></span> isolated</div>
+  <div><span class="dot" style="background:#c9c9c9"></span> {{ T.graph_isolated }}</div>
 </div>
 
 <div id="cy"></div>
 
 <script type="application/json" id="graph-data">{{ graph|tojson }}</script>
+<script type="application/json" id="graph-labels">{{ {"state": T.graph_node_state, "project": T.graph_node_project, "type": T.graph_node_type}|tojson }}</script>
 <script src="/static/graph.js"></script>
 </body>
 </html>

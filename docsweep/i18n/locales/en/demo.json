@@ -1,0 +1,25 @@
+{
+  "demo.seed.plan_search-relevance.title": "Rework search relevance",
+  "demo.seed.plan_search-relevance.summary": "Full-text search still sorts oldest first, so what you look for sinks to the bottom.",
+  "demo.seed.plan_onboarding-flow.title": "First-run onboarding flow",
+  "demo.seed.plan_onboarding-flow.summary": "It takes five steps from first launch to the first useful result.",
+  "demo.seed.bugfix_login-timeout_2026-05-02.title": "Login expires after 30 seconds",
+  "demo.seed.bugfix_login-timeout_2026-05-02.summary": "Session extension does not work, so users are sent back to the login screen mid-task.",
+  "demo.seed.bugfix_csv-encoding_2026-05-20.title": "Garbled text in CSV import",
+  "demo.seed.bugfix_csv-encoding_2026-05-20.summary": "Some columns are garbled when importing a cp932 CSV. Fixed; watching for a relapse.",
+  "demo.seed.plan_billing-rework.title": "Rework billing",
+  "demo.seed.plan_billing-rework.summary": "Proration for plan changes has no specification yet.",
+  "demo.seed.pending_mobile-app.title": "Decide whether to ship a mobile app",
+  "demo.seed.pending_mobile-app.summary": "Start once monthly web usage is stable.",
+  "demo.seed.pending_i18n.title": "Decide the scope of localization",
+  "demo.seed.pending_i18n.summary": "Ship English first, or all three languages from the start.",
+  "demo.seed.plan_weekly-report.title": "Generate the weekly report automatically",
+  "demo.seed.plan_weekly-report.summary": "Done: every Monday the previous week is summarized and sent out.",
+  "demo.table_rows": [
+    "| C1 | planned | Measure the current state | Demo sample, so it is empty |",
+    "| C2 | planned | Fix it | |"
+  ],
+  "demo.completion_item": "- [ ] This is a demo sample, so there are no completion criteria",
+  "demo.verification_item": "- [ ] not run",
+  "demo.config_comment": "# docsweep demo project (disposable)"
+}

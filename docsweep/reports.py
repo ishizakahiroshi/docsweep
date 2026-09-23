@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import Config
 from .aggregate_index import build_index
+from .i18n import t
 from .models import Action
 from .state import load as load_state
 
@@ -17,20 +18,25 @@ def render_report(config: Config) -> str:
     idx = build_index(config)
     c = idx.counts
     lines = [
-        "docsweep レポート",
+        t("reports.title"),
         "=" * 40,
-        f"プロジェクト数: {c['projects']}   総ファイル: {c['total']}",
-        f"要判断(陳腐化): {c['needs_decision']}   要修正: {c['needs_fix']}   "
-        f"保留: {c['pending']}   archive候補: {c['archivable']}",
+        t("reports.counts", projects=c["projects"], total=c["total"]),
+        t(
+            "reports.flags",
+            needs_decision=c["needs_decision"],
+            needs_fix=c["needs_fix"],
+            pending=c["pending"],
+            archivable=c["archivable"],
+        ),
         "",
     ]
     if idx.needs_decision:
-        lines.append("■ いま判断が要るもの（古い順・上位10）")
+        lines.append(t("reports.needs_decision_heading"))
         for d in idx.needs_decision[:10]:
             lines.append(f"  {d['state_label']} {d['project']}/{Path(d['path']).name}  {d['age_days']}d")
         lines.append("")
     if c["archivable"]:
-        lines.append(f"■ archive へ運べる確定ファイル: {c['archivable']} 件（`python -m docsweep sweep` で移送）")
+        lines.append(t("reports.archivable", count=c["archivable"]))
         lines.append("")
     return "\n".join(lines)
 

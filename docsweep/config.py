@@ -14,6 +14,8 @@ from typing import cast
 
 import yaml
 
+from .doc_vocab import heading, heading_variants
+from .i18n import DEFAULT_LANG, t
 from .states import StateModel, build_state_model
 
 GLOBAL_CONFIG_PATH = Path.home() / ".docsweep" / "config.yaml"
@@ -30,6 +32,7 @@ SECRET_POLICIES = frozenset({"block", "warn", "off"})
 PROVENANCE_MANAGERS = frozenset({"docsweep", "repo", "disabled"})
 RELEASE_TRACKING_MODES = frozenset({"enabled", "disabled"})
 ARCHIVE_PARTITIONS = frozenset({"flat", "release"})
+ARCHIVE_LAYOUTS = frozenset({"flat", "mirror"})
 RELEASE_ARCHIVE_GROUPS = frozenset({"patch", "minor", "major"})
 RELEASE_TAG_PREFIXES = frozenset({"v", "none", "optional"})
 
@@ -75,10 +78,34 @@ class TemplateSection:
     body: str
 
 
+_PLAN_SECTIONS = ("context", "summary")
+_BUGFIX_SECTIONS = (
+    "context", "symptoms", "root_cause", "fix", "changed_files", "verification", "notes",
+)
+_PENDING_SECTIONS = ("summary", "pending_reason", "resume_when")
+
+
+def _canonical_heading(key: str) -> str:
+    # TypeDef の見出しは既定の言語（i18n.DEFAULT_LANG）の表記を識別子として持つ。解析側は
+    # doc_vocab.variants() で全言語の表記を受け付ける（summary_section の "Summary" は
+    # "概要" の文書にも当たる）。
+    return heading(key, DEFAULT_LANG)
+
+
+def _canonical_headings(keys: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(_canonical_heading(key) for key in keys)
+
+
 DEFAULT_TYPES: tuple[TypeDef, ...] = (
-    TypeDef("plan", "plan_*.md", ("概要",), "概要", 90),
-    TypeDef("bugfix", "bugfix_*.md", ("症状", "根本原因", "修正内容", "変更ファイル", "検証", "備忘"), "症状", 30),
-    TypeDef("pending", "pending_*.md", ("概要", "保留理由", "着手条件"), "概要", 180),
+    TypeDef("plan", "plan_*.md", _canonical_headings(("summary",)), _canonical_heading("summary"), 90),
+    TypeDef(
+        "bugfix", "bugfix_*.md", _canonical_headings(_BUGFIX_SECTIONS[1:]),
+        _canonical_heading("symptoms"), 30,
+    ),
+    TypeDef(
+        "pending", "pending_*.md", _canonical_headings(_PENDING_SECTIONS),
+        _canonical_heading("summary"), 180,
+    ),
     # Legacy release records. New releases use plan_release-*; keep this type so historical
     # manual_release-* files remain scannable and archivable during migration.
     TypeDef("manual_release", "manual_release-*.md", (), "", 180),
@@ -94,10 +121,15 @@ DEFAULT_TYPES: tuple[TypeDef, ...] = (
 )
 
 
+# template_sections で使えない（既定の節と重なる）見出し。日本語・英語どちらの文書も
+# 作れるので、両方の表記を予約する。
 DEFAULT_TEMPLATE_SECTION_HEADINGS: dict[str, frozenset[str]] = {
-    "plan": frozenset({"context配分", "概要"}),
-    "bugfix": frozenset({"context配分", "症状", "根本原因", "修正内容", "変更ファイル", "検証", "備忘"}),
-    "pending": frozenset({"概要", "保留理由", "着手条件"}),
+    doc_type: frozenset(name for key in keys for name in heading_variants(key))
+    for doc_type, keys in (
+        ("plan", _PLAN_SECTIONS),
+        ("bugfix", _BUGFIX_SECTIONS),
+        ("pending", _PENDING_SECTIONS),
+    )
 }
 
 
@@ -150,7 +182,11 @@ class Config:
     )
     state_model: StateModel = field(default_factory=StateModel)
     project_markers: list[str] = field(default_factory=lambda: list(DEFAULT_PROJECT_MARKERS))
-    lang: str = "ja"
+    # 設定に書いた ``lang``（書いていなければ None）。文書の言語は ``document_lang()`` で引く。
+    lang: str | None = None
+    # ``lang`` を global / project のどちらかで書いたか。表示言語（docsweep.i18n）は
+    # 明示されたときだけ設定の値を使い、書いていなければ環境変数と OS から決める。
+    lang_explicit: bool = False
     # 期日（due）まわりの設定。.docsweep.yaml の ``due:`` ブロックから上書き可。
     # 既定: postpone_warn=3 / postpone_alert=5（services/due.py の warning しきい値）。
     # default_offset_days は ``docsweep new`` のテンプレ生成と AI ショートカット用初期値。
@@ -194,6 +230,10 @@ class Config:
     # ``flat`` は従来の archive/<filename>、``release`` は release bucket 配下。
     archive_partition: str = "flat"
     archive_partition_base: str | None = field(default=None, repr=False)
+    # ``flat`` は queue 内のサブフォルダを捨てて archive 直下へ、``mirror`` は
+    # queue 内の相対フォルダを archive 側でも保つ（app-a/plan_x.md → archive/app-a/plan_x.md）。
+    archive_layout: str = "flat"
+    archive_layout_base: str | None = field(default=None, repr=False)
     # AI execution provenance。既定は opt-in で、個人の global config から有効化する。
     # manager=repo はリポ固有台帳・validator を正典にする明示的な委譲モード。
     provenance_enabled: bool = False
@@ -215,6 +255,19 @@ class Config:
     work_policy_explicit: bool = False
     loaded_from_config: bool = False
 
+    def document_lang(self) -> str:
+        """文書へ書き込む言語（``docsweep new`` のテンプレート・状態ラベル・注入文）。
+
+        project / global の ``lang`` を明示していればその値、無ければ表示言語
+        （``--lang`` / ``DOCSWEEP_LANG`` / OS）。複数人のリポジトリは ``.docsweep.yaml`` の
+        ``lang`` で固定すれば、各自の表示言語に関係なく同じ言語の文書になる。
+        """
+        from .i18n import SUPPORTED_LANGS, current_lang
+
+        if self.lang_explicit and self.lang in SUPPORTED_LANGS:
+            return self.lang
+        return current_lang()
+
     def type_by_name(self, name: str) -> TypeDef | None:
         return next((t for t in self.types if t.name == name), None)
 
@@ -222,9 +275,9 @@ class Config:
         """ファイル名から type を判定（最初にマッチした定義）。"""
         from fnmatch import fnmatch
 
-        for t in self.types:
-            if fnmatch(filename, t.pattern):
-                return t
+        for type_def in self.types:
+            if fnmatch(filename, type_def.pattern):
+                return type_def
         return None
 
 
@@ -241,12 +294,14 @@ def _load_yaml(path: Path) -> dict:
         from .doc_links import doc_hint
 
         hint = doc_hint("config.yaml_parse") or ""
-        raise ValueError("\n".join(x for x in (f"{path} の YAML を読めません: {exc}", hint) if x)) from exc
+        message = t("config.yaml_unreadable", path=path, error=exc)
+        raise ValueError("\n".join(x for x in (message, hint) if x)) from exc
     if not isinstance(data, dict):
         from .doc_links import doc_hint
 
         hint = doc_hint("config.yaml_parse") or ""
-        raise ValueError("\n".join(x for x in (f"{path} はマップ形式である必要があります", hint) if x))
+        message = t("config.yaml_not_mapping", path=path)
+        raise ValueError("\n".join(x for x in (message, hint) if x))
     return data
 
 
@@ -342,12 +397,12 @@ def resolve_work_dir(project_dir: Path, work_dir: str | None = None) -> Path:
     # than the project. Treat all Windows drive/UNC forms as invalid here.
     windows_candidate = PureWindowsPath(raw)
     if candidate.is_absolute() or windows_candidate.is_absolute() or windows_candidate.drive:
-        raise ValueError("work_dir はプロジェクト相対パスで指定してください")
+        raise ValueError(t("config.work_dir_not_relative"))
     target = Path(os.path.abspath(os.path.normpath(os.fspath(root / candidate))))
     try:
         target.relative_to(root)
     except ValueError as exc:
-        raise ValueError("work_dir がプロジェクト外を指しています") from exc
+        raise ValueError(t("config.work_dir_outside_project")) from exc
     return target
 
 
@@ -403,6 +458,21 @@ def archive_partition_for_project(config: Config, project_dir: Path) -> str:
     return project_value or config.archive_partition_base or config.archive_partition
 
 
+def archive_layout_for_project(config: Config, project_dir: Path) -> str:
+    """Resolve ``archive_layout`` for a project in a cross-project operation."""
+    project_path = Path(project_dir)
+    if (
+        config.project_dir is not None
+        and Path(config.project_dir).resolve() == project_path.resolve()
+    ):
+        return config.archive_layout
+    project_cfg = _load_yaml(project_path / PROJECT_CONFIG_NAME)
+    project_value = _archive_layout_value(
+        project_cfg.get("archive_layout"), source=project_path / PROJECT_CONFIG_NAME
+    )
+    return project_value or config.archive_layout_base or config.archive_layout
+
+
 def config_for_project(config: Config, project_dir: Path) -> Config:
     """横断処理で選ばれた project の queue 設定を Config に反映する。"""
     work_dir, work_policy, secret_policy = project_work_settings(project_dir, config)
@@ -430,6 +500,7 @@ def config_for_project(config: Config, project_dir: Path) -> Config:
         ),
         release_tracking=release_tracking_for_project(config, project_dir),
         archive_partition=archive_partition_for_project(config, project_dir),
+        archive_layout=archive_layout_for_project(config, project_dir),
         project_dir=Path(project_dir).resolve(),
         work_dir_explicit=(config.work_dir_explicit or "work_dir" in project_cfg),
         work_policy_explicit=(config.work_policy_explicit or "work_policy" in project_cfg),
@@ -457,7 +528,7 @@ def _parse_types(raw: list | None) -> list[TypeDef] | None:
                 name=r["name"],
                 pattern=r["pattern"],
                 sections=tuple(r.get("sections") or ()),
-                summary_section=r.get("summary_section") or "概要",
+                summary_section=r.get("summary_section") or _canonical_heading("summary"),
                 stale_days=int(r.get("stale_days", 90)),
                 archive_dir=r.get("archive_dir"),
             )
@@ -472,7 +543,7 @@ def _parse_template_sections(
     if raw is None:
         return {}
     if not isinstance(raw, Mapping):
-        raise ValueError(_template_sections_error(source, "マップ形式で指定してください"))
+        raise ValueError(_template_sections_error(source, t("config.must_be_mapping")))
 
     parsed: dict[str, tuple[TemplateSection, ...]] = {}
     for raw_type, raw_sections in raw.items():
@@ -480,7 +551,8 @@ def _parse_template_sections(
             allowed = ", ".join(sorted(DEFAULT_TEMPLATE_SECTION_HEADINGS))
             raise ValueError(
                 _template_sections_error(
-                    source, f"type は {allowed} のいずれかで指定してください: {raw_type!r}"
+                    source,
+                    t("config.template_sections_type_invalid", allowed=allowed, value=raw_type),
                 )
             )
         if raw_sections is None:
@@ -489,7 +561,7 @@ def _parse_template_sections(
         if not isinstance(raw_sections, list):
             raise ValueError(
                 _template_sections_error(
-                    source, f"{raw_type} は section のリストで指定してください"
+                    source, t("config.template_sections_not_list", doc_type=raw_type)
                 )
             )
 
@@ -500,7 +572,8 @@ def _parse_template_sections(
             if not isinstance(raw_section, Mapping):
                 raise ValueError(
                     _template_sections_error(
-                        source, f"{raw_type}[{index}] は heading / body のマップで指定してください"
+                        source,
+                        t("config.template_section_not_mapping", doc_type=raw_type, index=index),
                     )
                 )
             heading = raw_section.get("heading")
@@ -508,13 +581,15 @@ def _parse_template_sections(
             if not isinstance(heading, str) or not heading.strip():
                 raise ValueError(
                     _template_sections_error(
-                        source, f"{raw_type}[{index}].heading は空でない文字列が必要です"
+                        source,
+                        t("config.template_section_heading_empty", doc_type=raw_type, index=index),
                     )
                 )
             if not isinstance(body, str) or not body.strip():
                 raise ValueError(
                     _template_sections_error(
-                        source, f"{raw_type}[{index}].body は空でない文字列が必要です"
+                        source,
+                        t("config.template_section_body_empty", doc_type=raw_type, index=index),
                     )
                 )
             heading = heading.strip()
@@ -522,19 +597,26 @@ def _parse_template_sections(
                 raise ValueError(
                     _template_sections_error(
                         source,
-                        f"{raw_type}[{index}].heading は Markdown 記号を含まない1行の見出しにしてください",
+                        t("config.template_section_heading_markdown", doc_type=raw_type, index=index),
                     )
                 )
             if heading in reserved:
                 raise ValueError(
                     _template_sections_error(
-                        source, f"{raw_type}[{index}].heading は既定見出し '{heading}' と重複しています"
+                        source,
+                        t(
+                            "config.template_section_heading_reserved",
+                            doc_type=raw_type,
+                            index=index,
+                            heading=heading,
+                        ),
                     )
                 )
             if heading in seen:
                 raise ValueError(
                     _template_sections_error(
-                        source, f"{raw_type} の heading '{heading}' が重複しています"
+                        source,
+                        t("config.template_section_heading_duplicate", doc_type=raw_type, heading=heading),
                     )
                 )
             seen.add(heading)
@@ -601,29 +683,39 @@ def _release_tracking_layer(raw: object, *, source: Path | None = None) -> dict[
         return {}
     if not isinstance(raw, Mapping):
         prefix = f"{source}: " if source is not None else "release_tracking: "
-        raise ValueError(f"{prefix}マップ形式で指定してください")
+        raise ValueError(prefix + t("config.must_be_mapping"))
 
     parsed: dict[str, object] = {}
     if "mode" in raw and raw.get("mode") is not None:
         mode = str(raw.get("mode")).strip().lower()
         if mode not in RELEASE_TRACKING_MODES:
             raise ValueError(
-                f"{source or 'release_tracking'}: mode は enabled / disabled のいずれかです: {mode!r}"
+                t(
+                    "config.release_tracking_mode_invalid",
+                    source=source or "release_tracking",
+                    value=mode,
+                )
             )
         parsed["mode"] = mode
 
     if "tag_pattern" in raw and raw.get("tag_pattern") is not None:
         pattern = str(raw.get("tag_pattern")).strip()
         if not pattern:
-            raise ValueError(f"{source or 'release_tracking'}: tag_pattern は空にできません")
+            raise ValueError(
+                t("config.release_tracking_tag_pattern_empty", source=source or "release_tracking")
+            )
         parsed["tag_pattern"] = pattern
 
     if "archive_group_by" in raw and raw.get("archive_group_by") is not None:
         grouping = str(raw.get("archive_group_by")).strip().lower()
         if grouping not in RELEASE_ARCHIVE_GROUPS:
             raise ValueError(
-                f"{source or 'release_tracking'}: archive_group_by は "
-                f"{', '.join(sorted(RELEASE_ARCHIVE_GROUPS))} のいずれかです: {grouping!r}"
+                t(
+                    "config.release_tracking_group_invalid",
+                    source=source or "release_tracking",
+                    allowed=", ".join(sorted(RELEASE_ARCHIVE_GROUPS)),
+                    value=grouping,
+                )
             )
         parsed["archive_group_by"] = grouping
 
@@ -640,7 +732,11 @@ def _release_tracking_layer(raw: object, *, source: Path | None = None) -> dict[
         normalized = aliases.get(prefix)
         if normalized is None:
             raise ValueError(
-                f"{source or 'release_tracking'}: tag_prefix は v / none / optional のいずれかです: {prefix!r}"
+                t(
+                    "config.release_tracking_tag_prefix_invalid",
+                    source=source or "release_tracking",
+                    value=prefix,
+                )
             )
         parsed["tag_prefix"] = normalized
     elif "allow_v_prefix" in raw:
@@ -683,7 +779,19 @@ def _archive_partition_value(raw: object, *, source: Path | None = None) -> str 
         value = "flat"
     if value not in ARCHIVE_PARTITIONS:
         raise ValueError(
-            f"{source or 'archive_partition'}: flat / release のいずれかです: {value!r}"
+            t("config.archive_partition_invalid", source=source or "archive_partition", value=value)
+        )
+    return value
+
+
+def _archive_layout_value(raw: object, *, source: Path | None = None) -> str | None:
+    """Read the top-level ``archive_layout`` setting."""
+    if raw is None:
+        return None
+    value = str(raw).strip().lower()
+    if value not in ARCHIVE_LAYOUTS:
+        raise ValueError(
+            t("config.archive_layout_invalid", source=source or "archive_layout", value=value)
         )
     return value
 
@@ -746,6 +854,11 @@ def load_config(
         project_cfg.get("archive_partition"), source=project_config_path
     )
     archive_partition = project_partition or global_partition or "flat"
+    global_layout = _archive_layout_value(g.get("archive_layout"), source=global_path)
+    project_layout = _archive_layout_value(
+        project_cfg.get("archive_layout"), source=project_config_path
+    )
+    archive_layout = project_layout or global_layout or "flat"
 
     raw_work_dir = merged.get("work_dir") or DEFAULT_WORK_DIR
     work_dir = str(raw_work_dir).strip() or DEFAULT_WORK_DIR
@@ -768,7 +881,7 @@ def load_config(
         elif profile in g_profiles:
             roots = _resolve_roots(g_profiles[profile], global_path.parent)
         else:
-            raise ValueError(f"プロファイル '{profile}' が config に見つかりません")
+            raise ValueError(t("config.profile_not_found", profile=profile))
     elif project_cfg.get("roots"):
         roots = _resolve_roots(project_cfg.get("roots"), base_dir)
     else:
@@ -844,8 +957,8 @@ def load_config(
     known_tags_set: list[str] = []
     for layer in (g.get("known_tags"), project_cfg.get("known_tags")):
         if isinstance(layer, list):
-            for t in layer:
-                s = str(t).strip()
+            for tag in layer:
+                s = str(tag).strip()
                 if s and s not in known_tags_set:
                     known_tags_set.append(s)
 
@@ -981,7 +1094,7 @@ def load_config(
         template_sections_base=global_template_sections,
         state_model=state_model,
         project_markers=list(merged.get("project_markers") or DEFAULT_PROJECT_MARKERS),
-        lang=merged.get("lang") or "ja",
+        lang=merged.get("lang") or None,
         due_warn_threshold=due_warn,
         due_alert_threshold=due_alert,
         due_default_offset_days=offsets,
@@ -1001,6 +1114,8 @@ def load_config(
         release_tracking_base=global_release_tracking,
         archive_partition=archive_partition,
         archive_partition_base=global_partition or "flat",
+        archive_layout=archive_layout,
+        archive_layout_base=global_layout or "flat",
         provenance_enabled=provenance_enabled,
         provenance_manager=provenance_manager,
         provenance_ledger=provenance_ledger,
@@ -1011,6 +1126,7 @@ def load_config(
         project_dir=project_dir.resolve() if project_dir is not None else None,
         archive_dir_explicit=("archive_dir" in g or "archive_dir" in project_cfg),
         archive_partition_explicit=("archive_partition" in g or "archive_partition" in project_cfg),
+        lang_explicit=bool(g.get("lang") or project_cfg.get("lang")),
         release_tracking_explicit=("release_tracking" in g or "release_tracking" in project_cfg),
         work_dir_explicit=("work_dir" in g or "work_dir" in project_cfg),
         work_policy_explicit=("work_policy" in g or "work_policy" in project_cfg),
@@ -1035,7 +1151,7 @@ def get_user_setting(key: str, *, global_path: Path | None = None) -> str | None
     プロジェクト側の上書きは load_config 経由で見る（こちらはグローバル単体読み出し用）。
     """
     if key not in SETTABLE_KEYS:
-        raise ValueError(f"未知の設定キー: {key}（許可: {sorted(SETTABLE_KEYS)}）")
+        raise ValueError(t("config.unknown_setting_key", name=key, allowed=sorted(SETTABLE_KEYS)))
     data = _load_yaml(global_path or GLOBAL_CONFIG_PATH)
     section, name = key.split(".", 1)
     sec = data.get(section) if isinstance(data, dict) else None
@@ -1057,7 +1173,7 @@ def set_user_setting(
     ``value=None`` でキー削除。書き込み先のパスを返す。
     """
     if key not in SETTABLE_KEYS:
-        raise ValueError(f"未知の設定キー: {key}（許可: {sorted(SETTABLE_KEYS)}）")
+        raise ValueError(t("config.unknown_setting_key", name=key, allowed=sorted(SETTABLE_KEYS)))
     path = global_path or GLOBAL_CONFIG_PATH
     data = _load_yaml(path) if path.exists() else {}
     section, name = key.split(".", 1)

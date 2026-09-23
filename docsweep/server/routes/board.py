@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 
 from ... import __version__
 from ...engine import run_scan
+from ...i18n import current_lang, t
 from ...inject import list_injected
 from ...models import Flag
 from ...presets import DEFAULT_PRESET, PRESETS
@@ -97,8 +98,9 @@ def _card_view(
     """テンプレートに渡すカード dict（path/state/期日/postpone を整形）。"""
     from ..i18n import absolute_title, get_messages
 
-    t = t or get_messages("ja")
-    lang = (t.get("__lang__") or "ja") if isinstance(t, dict) else "ja"
+    # T を渡さない経路（JSON API）はリクエストの表示言語で出す（middleware が決めた言語）。
+    t = t or get_messages(current_lang())
+    lang = t.get("__lang__") or current_lang()
     project_root = Path(rec.project_root)
     abs_path = Path(rec.path)
     try:
@@ -330,7 +332,7 @@ def _index_freshness() -> dict:
             "path": str(path),
             "age_hours": None,
             "level": "warn",  # missing
-            "label": "index 未作成",
+            "label": t("web.index_missing"),
         }
     try:
         mtime = path.stat().st_mtime
@@ -340,15 +342,15 @@ def _index_freshness() -> dict:
             "path": str(path),
             "age_hours": None,
             "level": "warn",
-            "label": "index 読めず",
+            "label": t("web.index_unreadable"),
         }
     age_h = max(0.0, datetime.now(timezone.utc).timestamp() - mtime) / 3600.0
     if age_h >= 168:
-        level, label = "bad", f"index {age_h:.0f}h 前"
+        level, label = "bad", t("web.index_age", hours=f"{age_h:.0f}")
     elif age_h >= 24:
-        level, label = "warn", f"index {age_h:.0f}h 前"
+        level, label = "warn", t("web.index_age", hours=f"{age_h:.0f}")
     else:
-        level, label = "ok", f"index {age_h:.1f}h 前"
+        level, label = "ok", t("web.index_age", hours=f"{age_h:.1f}")
     return {
         "exists": True,
         "path": str(path),
@@ -395,7 +397,7 @@ def _today_pick_view(config, t: dict | None = None) -> dict | None:
         "rel": best.get("rel") or "",
         "age_days": best.get("age_days"),
         # UX W4 / P66: 「19d」だけ英語表記のまま残っていたのを言語で統一する。
-        "age_label": age_label(best.get("age_days"), (t or {}).get("__lang__") or "ja"),
+        "age_label": age_label(best.get("age_days"), (t or {}).get("__lang__") or current_lang()),
         "score_total": (sc or {}).get("total"),
         "score": sc,
     }
@@ -448,19 +450,21 @@ def board(
     token: str = Query(default=""),
     lang: str | None = None,
 ):
-    check_token(request, token, status_code=403, detail="invalid or missing token")
-    from ..i18n import get_messages
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
+    from ..i18n import get_messages, js_messages
 
     resolved_lang = _scope_lang(request, lang)
-    t = get_messages(resolved_lang)
-    data = _board_data(request, t=t)
+    messages = get_messages(resolved_lang)
+    data = _board_data(request, t=messages)
     return TEMPLATES.TemplateResponse(
         request,
         "board.html",
         {
             "token": request.app.state.docsweep.token,
             "lang": resolved_lang,
-            "T": t,
+            "T": messages,
+            # static/i18n.js（DS_T）の文言。board.html が ds-i18n のデータ島に埋める。
+            "JS_T": js_messages(resolved_lang),
             "data": data,
         },
     )
@@ -473,19 +477,19 @@ def board_fragment(
     lang: str | None = None,
 ):
     """htmx 用パーシャル（カラム本体だけを差し替える）。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     from ..i18n import get_messages
 
     resolved_lang = _scope_lang(request, lang)
-    t = get_messages(resolved_lang)
-    data = _board_data(request, t=t)
+    messages = get_messages(resolved_lang)
+    data = _board_data(request, t=messages)
     return TEMPLATES.TemplateResponse(
         request,
         "_board_body.html",
         {
             "token": request.app.state.docsweep.token,
             "lang": resolved_lang,
-            "T": t,
+            "T": messages,
             "data": data,
         },
     )
@@ -497,7 +501,7 @@ def board_triage_json(
     token: str = Query(default=""),
 ):
     """JSON 版（MCP / CLI 検証用に同じ表示データを返す）。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     data = _board_data(request)
     return JSONResponse(
         {
@@ -519,11 +523,11 @@ def card_context(
     from ...secrets_guard import SensitiveContentError
     from ..security import resolve_under_roots
 
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     resolved = resolve_under_roots(path, cfg.roots)
     if resolved is None:
-        raise HTTPException(status_code=403, detail="path out of scope or not .md")
+        raise HTTPException(status_code=403, detail=t("web.path_out_of_scope_or_not_md"))
     # collect_context は scan の path 表記（posix 寄り）と一致させる
     candidates = [
         resolved.as_posix(),
@@ -547,7 +551,7 @@ def card_context(
             continue
     raise HTTPException(
         status_code=404,
-        detail=str(last_err) if last_err else "not found",
+        detail=str(last_err) if last_err else t("web.not_found"),
     )
 
 
@@ -565,15 +569,15 @@ def card_raw(
     """
     from ..security import resolve_under_roots
 
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     resolved = resolve_under_roots(path, cfg.roots)
     if resolved is None:
-        raise HTTPException(status_code=403, detail="path outside scan roots")
+        raise HTTPException(status_code=403, detail=t("web.path_outside_roots"))
     if not resolved.is_file():
-        raise HTTPException(status_code=404, detail="not found")
+        raise HTTPException(status_code=404, detail=t("web.not_found"))
     if resolved.suffix.lower() != ".md":
-        raise HTTPException(status_code=400, detail="only .md files are readable here")
+        raise HTTPException(status_code=400, detail=t("web.only_md_readable"))
     try:
         text = resolved.open("r", encoding="utf-8", newline="").read()
     except OSError as e:
@@ -612,14 +616,14 @@ def card_detail(
     """
     from ..security import resolve_under_roots
 
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     state = request.app.state.docsweep
     cfg = state.config
     resolved = resolve_under_roots(path, cfg.roots)
     if resolved is None:
-        raise HTTPException(status_code=403, detail="path outside scan roots")
+        raise HTTPException(status_code=403, detail=t("web.path_outside_roots"))
     if not resolved.is_file():
-        raise HTTPException(status_code=404, detail="not found")
+        raise HTTPException(status_code=404, detail=t("web.not_found"))
     target_path = resolved.as_posix()
 
     result = run_scan(cfg)
@@ -664,7 +668,7 @@ def label_picker_partial(
     token: str = Query(default=""),
 ):
     """ラベル選択セグメント partial（keymap.js が fetch して body に貼る）。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved_lang = _scope_lang(request, None)
     return TEMPLATES.TemplateResponse(
         request, "_label_picker.html",
@@ -692,7 +696,7 @@ def change_picker_partial(
     経緯: docs/local/kanban-card-ux-options/index.html — バッジクリック動線を廃し、
     下段 3 ボタン（変更▾ / 期日更新▾ / 廃止）に全操作を集約する方針。
     """
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     resolved_lang = _scope_lang(request, None)
     return TEMPLATES.TemplateResponse(
         request, "_change_picker.html",
@@ -754,7 +758,9 @@ def settings_partial(
     token: str = Query(default=""),
 ):
     """⚙ 設定モーダルの中身（プロジェクト一覧 + グローバル inject タブ + presets）。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    from ..i18n import lang_choices
+
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     state = request.app.state.docsweep
     result = run_scan(state.config)
     return TEMPLATES.TemplateResponse(
@@ -766,6 +772,8 @@ def settings_partial(
             "version": __version__,
             "T": _t(request),
             "lang": _scope_lang(request, None),
+            # 言語ボタンは対応言語（locales/ のフォルダ）ごとに 1 つ。名前は ui.json の ui.lang_name。
+            "lang_choices": lang_choices(),
         },
     )
 
@@ -778,7 +786,7 @@ def api_suggestions(
     """auto-triage 提案トレイ JSON（UX W2 / P35）。"""
     from ...auto_triage import suggest_transitions
 
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     result = suggest_transitions(cfg)
     return JSONResponse(result.to_dict())
@@ -796,7 +804,7 @@ def api_suggestions_apply(
     """提案 1 件を Accept（apply）する。"""
     from ...auto_triage import apply_suggestions
 
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     cfg = request.app.state.docsweep.config
     decisions = [{"path": path, "action": action, "to": to}]
     res = apply_suggestions(cfg, decisions, dry_run=dry_run)
@@ -813,7 +821,7 @@ def api_project_toggle(
     """プロジェクト ON/OFF（除外リスト）（UX W2 / P39）。"""
     from ...excluded import disable_project, enable_project, is_excluded
 
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     want_on = str(enabled).strip().lower() in ("1", "true", "yes", "on")
     if want_on:
         enable_project(root)
@@ -834,7 +842,7 @@ def api_set_profile(
     """看板の profile cookie を設定（UX W2 / P41）。"""
     from fastapi.responses import JSONResponse as JR
 
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     name = (profile or "all").strip() or "all"
     resp = JR({"profile": name})
     resp.set_cookie(
@@ -852,5 +860,5 @@ def due_picker_partial(
     token: str = Query(default=""),
 ):
     """期日変更ポップオーバー partial（keymap.js が fetch して body に貼る）。"""
-    check_token(request, token, status_code=403, detail="invalid or missing token")
+    check_token(request, token, status_code=403, detail=t("web.invalid_token"))
     return TEMPLATES.TemplateResponse(request, "_due_picker.html", {"T": _t(request)})

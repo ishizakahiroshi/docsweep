@@ -48,6 +48,23 @@ def test_write_atomic_mtime_conflict(tmp_path: Path):
     assert f.read_text(encoding="utf-8") == "v1"
 
 
+@pytest.mark.parametrize(
+    ("lang", "expected"),
+    [
+        ("en", "the file was changed by something else while docsweep was working on it"),
+        ("ja", "docsweep が作業している間に、ほかの操作がファイルを書き換えました"),
+    ],
+)
+def test_conflict_message_follows_display_language(tmp_path: Path, lang: str, expected: str):
+    from docsweep.i18n import use_lang
+
+    f = tmp_path / "plan.md"
+    with use_lang(lang):
+        err = ConflictError(f, 1.5, 2.5)
+    assert str(err).startswith(f"{expected}: {f}")
+    assert "mtime=1.5" in str(err) and "2.5" in str(err)
+
+
 def test_write_atomic_mtime_match_passes(tmp_path: Path):
     proj = _setup_project(tmp_path)
     f = proj / "plan.md"

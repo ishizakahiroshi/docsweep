@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from docsweep.config import load_config
+from docsweep.i18n import t
 from docsweep.services.archive import archive_done
 
 
@@ -35,7 +36,8 @@ def test_archive_done_rejects_watching_when_specified(tmp_path: Path):
     f = _write(root / "proj" / "docs" / "plan_watch.md", "# [様子見] 寝かせ\n\n## 概要\n\na\n")
     res = archive_done(config=_cfg(root), paths=[str(f)])
     assert res.moved == []
-    assert any("not archivable" in s.reason for s in res.skipped)
+    reason = t("services_archive.skip_not_archivable", label="[様子見]")
+    assert any(s.reason == reason for s in res.skipped)
     # ファイルは元のまま
     assert f.exists()
 
@@ -62,4 +64,4 @@ def test_archive_done_reports_unknown_path_in_skipped(tmp_path: Path):
     root = tmp_path / "dev"
     _write(root / "proj" / "docs" / "plan_done.md", "# [完了] 1\n\n## 概要\n\na\n")
     res = archive_done(config=_cfg(root), paths=[str(root / "proj" / "docs" / "nope.md")])
-    assert any("not found" in s.reason for s in res.skipped)
+    assert any(s.reason == t("services_archive.skip_not_found") for s in res.skipped)

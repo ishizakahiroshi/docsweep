@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from docsweep.config import DEFAULT_TYPES, TemplateSection, load_config
+from docsweep.config import (
+    DEFAULT_TYPES,
+    TemplateSection,
+    archive_layout_for_project,
+    load_config,
+)
 from docsweep.engine import auto_sweep
 from docsweep.scan import scan
 
@@ -129,3 +134,54 @@ def test_template_sections_reject_reserved_heading(tmp_path: Path):
 
     with pytest.raises(ValueError, match="既定見出し"):
         load_config(project_dir=project, global_path=tmp_path / "missing.yaml")
+
+
+def test_archive_layout_defaults_to_flat(tmp_path: Path):
+    project = tmp_path / "project"
+    project.mkdir()
+
+    config = load_config(project_dir=project, global_path=tmp_path / "missing.yaml")
+
+    assert config.archive_layout == "flat"
+
+
+def test_archive_layout_project_overrides_global(tmp_path: Path):
+    global_cfg = tmp_path / "global.yaml"
+    global_cfg.write_text("archive_layout: flat\n", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".docsweep.yaml").write_text("archive_layout: Mirror\n", encoding="utf-8")
+
+    config = load_config(project_dir=project, global_path=global_cfg)
+
+    assert config.archive_layout == "mirror"
+
+
+def test_archive_layout_resolves_per_project_in_cross_project_runs(tmp_path: Path):
+    """横断 sweep では、起動した project ではなく対象 project の設定を読む。"""
+    global_cfg = tmp_path / "global.yaml"
+    global_cfg.write_text("archive_layout: mirror\n", encoding="utf-8")
+    flat_project = tmp_path / "flat"
+    flat_project.mkdir()
+    (flat_project / ".docsweep.yaml").write_text("archive_layout: flat\n", encoding="utf-8")
+    plain_project = tmp_path / "plain"
+    plain_project.mkdir()
+
+    config = load_config(explicit_roots=[str(tmp_path)], global_path=global_cfg)
+
+    assert archive_layout_for_project(config, flat_project) == "flat"
+    assert archive_layout_for_project(config, plain_project) == "mirror"
+
+
+@pytest.mark.parametrize("where", ["global", "project"])
+def test_archive_layout_rejects_unknown_value(tmp_path: Path, where: str):
+    global_cfg = tmp_path / "global.yaml"
+    project = tmp_path / "project"
+    project.mkdir()
+    if where == "global":
+        global_cfg.write_text("archive_layout: tree\n", encoding="utf-8")
+    else:
+        (project / ".docsweep.yaml").write_text("archive_layout: tree\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="flat / mirror"):
+        load_config(project_dir=project, global_path=global_cfg)

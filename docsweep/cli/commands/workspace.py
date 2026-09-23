@@ -43,6 +43,8 @@ def _prompt(prompt: str) -> str:
 
 def _choice(prompt: str) -> str:
     """Read a review choice; an empty/closed input is a safe cancellation."""
+    from ...i18n import t
+
     while True:
         value = _prompt(prompt).lower()
         if value in {"y", "yes", "1", "enable", "enabled"}:
@@ -51,37 +53,36 @@ def _choice(prompt: str) -> str:
             return "no"
         if value in {"q", "quit", "cancel", "c", ""}:
             return "cancel"
-        print("y（enable）/ n（skip）/ q（cancel）のいずれかを入力してください", file=sys.stderr)
+        print(t("cli_workspace.invalid_choice"), file=sys.stderr)
 
 
 def _review_target(repo: dict, args: argparse.Namespace) -> tuple[str | None, bool]:
     """Resolve a target for the initial wizard, returning (value, cancelled)."""
+    from ...i18n import t
+
     value = getattr(args, "default_target", None)
     if value:
         return str(value).strip(), False
     inventory = repo.get("inventory") or {}
     if not inventory.get("target_release_missing"):
         return None, False
-    value = _prompt("default target_release（必須、q でキャンセル）: ")
+    value = _prompt(t("cli_workspace.prompt_default_target"))
     if value.lower() in {"q", "quit", "cancel", "c"}:
         return None, True
     from ...release import validate_release_label
 
     while True:
         if not value:
-            print(
-                "target未設定の文書があるため default target_release は必須です",
-                file=sys.stderr,
-            )
-            value = _prompt("default target_release（必須、q でキャンセル）: ")
+            print(t("cli_workspace.default_target_required"), file=sys.stderr)
+            value = _prompt(t("cli_workspace.prompt_default_target"))
             if value.lower() in {"q", "quit", "cancel", "c"}:
                 return None, True
             continue
         try:
             return validate_release_label(value, field="default_target"), False
         except ValueError as exc:
-            print(f"default target_release が不正です: {exc}", file=sys.stderr)
-            value = _prompt("default target_release（再入力、q でキャンセル）: ")
+            print(t("cli_workspace.invalid_default_target", error=exc), file=sys.stderr)
+            value = _prompt(t("cli_workspace.prompt_default_target_retry"))
             if value.lower() in {"q", "quit", "cancel", "c", ""}:
                 return None, True
 
@@ -107,6 +108,7 @@ def _initial_review_candidate(repo: dict) -> bool:
 
 def _target_actions(repo: dict, target: str) -> None:
     """Add queue-scoped target actions after the user chose a default."""
+    from ...i18n import t
     from ...workspace_migration import _file_precondition
 
     actions = [item for item in repo.get("actions") or [] if isinstance(item, dict)]
@@ -132,7 +134,7 @@ def _target_actions(repo: dict, target: str) -> None:
                         Path(path), field="target_release"
                     ),
                     "reason": "interactive_default_target",
-                    "evidence": "interactive first-run configuration",
+                    "evidence": t("cli_workspace.evidence_interactive_default"),
                     "confidence": "high",
                 }
             )
@@ -140,6 +142,8 @@ def _target_actions(repo: dict, target: str) -> None:
 
 
 def _set_initial_enable(repo: dict, target: str | None) -> None:
+    from ...i18n import t
+
     before = repo.get("before") or {}
     before_tracking = before.get("release_tracking") or {}
     archive_dir = str(
@@ -154,9 +158,7 @@ def _set_initial_enable(repo: dict, target: str | None) -> None:
     }
     inventory = repo.get("inventory") or {}
     if inventory.get("target_release_missing") and not target:
-        raise ValueError(
-            "target未設定の文書があるrepoはdefault target_releaseなしでenableできません"
-        )
+        raise ValueError(t("cli_workspace.enable_needs_default_target"))
     if target:
         tracking["default_target"] = target
         _target_actions(repo, target)
@@ -210,6 +212,8 @@ def _interactive_review_manifest(
     manifest: dict, args: argparse.Namespace
 ) -> dict | None:
     """Resolve first-run choices and return None when the user cancels."""
+    from ...i18n import t
+
     candidates = [
         repo
         for repo in manifest.get("repositories") or []
@@ -217,11 +221,8 @@ def _interactive_review_manifest(
     ]
     if candidates:
         for repo in candidates:
-            root = repo.get("root", "<unknown repository>")
-            choice = _choice(
-                f"{root} は release tracking 未設定です。enable しますか? "
-                "[y=enable / n=skip / q=cancel]: "
-            )
+            root = repo.get("root", t("cli_workspace.unknown_repository"))
+            choice = _choice(t("cli_workspace.prompt_enable", root=root))
             if choice == "cancel":
                 return None
             if choice == "no":
@@ -239,11 +240,9 @@ def _interactive_review_manifest(
     )
     if not has_work:
         return manifest
-    print("\n最終的に適用する内容:")
+    print(t("cli_workspace.final_changes"))
     _print_review(manifest)
-    choice = _choice(
-        "review 内容を適用しますか? [y=apply / n=cancel / q=cancel]: "
-    )
+    choice = _choice(t("cli_workspace.prompt_apply"))
     return manifest if choice == "yes" else None
 
 
@@ -264,69 +263,83 @@ def _has_applyable_work(manifest: dict) -> bool:
 
 
 def _print_review(manifest: dict) -> None:
-    print("workspace release tracking migration")
-    print(f"  repositories: {len(manifest.get('repositories') or [])}")
-    print(f"  excluded paths: {len(manifest.get('excluded') or [])}")
+    from ...i18n import t
+
+    print(t("cli_workspace.review_title"))
+    print(t("cli_workspace.review_repositories", count=len(manifest.get("repositories") or [])))
+    print(t("cli_workspace.review_excluded_paths", count=len(manifest.get("excluded") or [])))
     for repo in manifest.get("repositories") or []:
         inventory = repo.get("inventory") or {}
         actions = repo.get("actions") or []
         print(
-            f"  {repo.get('status')}: {repo.get('root')} "
-            f"active={inventory.get('active_documents', 0)} "
-            f"missing_target={inventory.get('target_release_missing', 0)} "
-            f"actions={len(actions)}"
+            t(
+                "cli_workspace.review_repo",
+                status=repo.get("status"),
+                root=repo.get("root"),
+                active=inventory.get("active_documents", 0),
+                missing_target=inventory.get("target_release_missing", 0),
+                actions=len(actions),
+            )
         )
         for reason in repo.get("diagnostics") or []:
-            print(f"    reason: {reason}")
+            print(t("cli_workspace.review_reason", reason=reason))
         for item in (repo.get("review_items") or [])[:20]:
             print(
-                f"    review: {item.get('kind', 'item')} "
-                f"{item.get('path', '')} ({item.get('reason', '')}; "
-                f"confidence={item.get('confidence', 'unknown')})"
+                t(
+                    "cli_workspace.review_item",
+                    kind=item.get("kind", "item"),
+                    path=item.get("path", ""),
+                    reason=item.get("reason", ""),
+                    confidence=item.get("confidence", "unknown"),
+                )
             )
         config_action = repo.get("config_action")
         if isinstance(config_action, dict):
             tracking = config_action.get("release_tracking") or {}
             print(
-                "    config: "
-                f"mode={tracking.get('mode')} "
-                f"default_target={tracking.get('default_target')} "
-                f"group={tracking.get('archive_group_by')} "
-                f"archive_dir={config_action.get('archive_dir')}"
+                t(
+                    "cli_workspace.review_config",
+                    mode=tracking.get("mode"),
+                    default_target=tracking.get("default_target"),
+                    group=tracking.get("archive_group_by"),
+                    archive_dir=config_action.get("archive_dir"),
+                )
             )
         for action in actions[:20]:
             if not isinstance(action, dict):
                 continue
             print(
-                "    action: "
-                f"{action.get('field')}={action.get('value')} "
-                f"{action.get('path')} ({action.get('reason')})"
+                t(
+                    "cli_workspace.review_action",
+                    field=action.get("field"),
+                    value=action.get("value"),
+                    path=action.get("path"),
+                    reason=action.get("reason"),
+                )
             )
         if len(actions) > 20:
-            print(f"    action: ... and {len(actions) - 20} more")
+            print(t("cli_workspace.review_more_actions", count=len(actions) - 20))
         archived = inventory.get("archived_documents", 0)
         if archived:
-            print(f"    archived release documents: {archived}")
+            print(t("cli_workspace.review_archived", count=archived))
     for item in (manifest.get("excluded") or [])[:20]:
-        print(f"  excluded: {item.get('path')} ({item.get('reason')})")
+        print(t("cli_workspace.review_excluded", path=item.get("path"), reason=item.get("reason")))
 
 
 def cmd_workspace_migrate(args: argparse.Namespace) -> int:
     from ...config import load_config
+    from ...i18n import t
     from ...workspace_migration import apply_manifest, migrate_release_tracking
 
     if getattr(args, "apply", False) and getattr(args, "apply_manifest", None):
-        print("workspace migration: --apply と --apply-manifest は同時に指定できません", file=sys.stderr)
+        print(t("cli_workspace.apply_conflict"), file=sys.stderr)
         return 2
     config = load_config(
         global_path=(Path(args.config) if getattr(args, "config", None) else None)
     )
     root_values = list(getattr(args, "roots", None) or config.workspace_roots)
     if not root_values and not getattr(args, "apply_manifest", None):
-        print(
-            "workspace migration: --root または config の workspace.roots が必要です",
-            file=sys.stderr,
-        )
+        print(t("cli_workspace.roots_required"), file=sys.stderr)
         return 2
     exclude_values = list(config.workspace_exclude)
     for value in list(getattr(args, "exclude", None) or []):
@@ -358,7 +371,7 @@ def cmd_workspace_migrate(args: argparse.Namespace) -> int:
 
     manifest = result.get("manifest") or {}
     if interactive_review:
-        print("適用前の棚卸し:")
+        print(t("cli_workspace.inventory_before_apply"))
         _print_review(manifest)
         reviewed = _interactive_review_manifest(manifest, args)
         if reviewed is None:
@@ -405,21 +418,26 @@ def cmd_workspace_migrate(args: argparse.Namespace) -> int:
             _print_review(manifest)
         else:
             print(
-                f"workspace migration {result.get('mode')}: "
-                f"{len(manifest.get('repositories') or [])} repositories"
+                t(
+                    "cli_workspace.summary",
+                    mode=result.get("mode"),
+                    count=len(manifest.get("repositories") or []),
+                )
             )
         if result.get("apply"):
             counts = result["apply"].get("counts") or {}
             print(
-                "  apply: "
-                f"applied={counts.get('applied', 0)} "
-                f"skipped={counts.get('skipped', 0)} "
-                f"needs_review={counts.get('needs_review', 0)} "
-                f"failed={counts.get('failed', 0)}"
+                t(
+                    "cli_workspace.apply_counts",
+                    applied=counts.get("applied", 0),
+                    skipped=counts.get("skipped", 0),
+                    needs_review=counts.get("needs_review", 0),
+                    failed=counts.get("failed", 0),
+                )
             )
         review = result.get("review") or {}
         if review.get("status") == "cancelled":
-            print("  review: cancelled (no changes)")
+            print(t("cli_workspace.review_cancelled"))
 
     apply_result = result.get("apply") or {}
     apply_counts = apply_result.get("counts") or {}

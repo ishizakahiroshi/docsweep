@@ -114,6 +114,9 @@ def archived_this_week(config: Config, *, today: date | None = None) -> int:
                 continue
             if not isinstance(entry, dict):
                 continue
+            # queue 内の移動と参照の書き換えは archive ではない（status を持たないので下で数えてしまう）。
+            if entry.get("op") in ("move", "ref_rewrite", "ref_restore"):
+                continue
             if entry.get("status") not in (None, "ok", "moved"):
                 continue
             ts = entry.get("ts")

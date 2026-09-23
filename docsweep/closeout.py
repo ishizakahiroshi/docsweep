@@ -10,12 +10,22 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .config import Config, DEFAULT_PROJECT_MARKERS, load_config
-from .detect import Detection, detect_status, mask_code_fences, mask_inline_code
+from .detect import (
+    _H1_LABEL_RE,
+    _H1_RE,
+    Detection,
+    detect_status,
+    mask_code_fences,
+    mask_inline_code,
+)
+from .doc_vocab import heading, heading_variants
+from .i18n import SUPPORTED_LANGS, t, variants
 from .linkcheck import _extract_files_from_section, _extract_section
 from .scan import ALWAYS_SKIP_DIRS, _is_ignored, _read_gitignore
 from .services.frontmatter import read_frontmatter_text
@@ -27,22 +37,47 @@ class CloseoutInputError(ValueError):
 
 _HEADING_RE = re.compile(r"^(?P<marks>#{2,6})[ \t]+(?P<title>.+?)[ \t]*$", re.MULTILINE)
 _CHECKBOX_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?\[(?P<mark>[ xX])\]\s*(?P<body>.*)$")
-_TODO_RE = re.compile(r"(?:<\s*TODO[^>]*>|\bTODO\b|\bTBD\b|未記入|未定)", re.IGNORECASE)
+# 検証行・見出しを分類する語は言語ごとに terms.json に置く（``closeout.words.*`` /
+# ``closeout.heading.*``。値は正規表現の断片）。どの言語で書かれた plan でも同じ判定に
+# なるよう、全言語の断片を 1 つの正規表現にまとめる。言語に依らない印（テンプレートの
+# ``<TODO: ...>`` 記入欄・ツール名・製品名・チェック済みの箱）だけをここに書く。
+
+
+def _alternation(fragments: Iterable[str]) -> str:
+    """正規表現の断片を ``(?:a|b|...)`` にまとめる（重複は 1 つ）。
+
+    長い断片から試す。言語ごとの断片の一方が他方を含む形（件数の後ろの ``\\s*(?:件)?`` と
+    ``\\s*``）でも、長い方を先に試せば、その言語の断片だけで書いた正規表現と同じ範囲で一致する。
+    """
+    ordered = sorted(dict.fromkeys(fragments), key=len, reverse=True)
+    return "(?:" + "|".join(ordered) + ")"
+
+
+def _words(key: str, *neutral: str) -> str:
+    return _alternation((*variants(key), *neutral))
+
+
+def _section_title(*heading_keys: str) -> str:
+    """見出しの分類用。文書の見出しの表記（``doc.heading.*``）と、同じ節として受け付ける
+    表記（``closeout.heading.<先頭のキー>``）を部分一致で見る。"""
+    fragments = [re.escape(name) for key in heading_keys for name in heading_variants(key)]
+    return _alternation((*fragments, *variants(f"closeout.heading.{heading_keys[0]}")))
+
+
+_TODO_RE = re.compile(_words("closeout.words.todo", r"<\s*TODO[^>]*>"), re.IGNORECASE)
 # 失敗語そのもの。``continue-on-error`` のような識別子の一部を拾わないよう、
-# 前後をハイフン・語構成文字で挟まれた出現は除く。
-_FAILED_RE = re.compile(
-    r"(?:失敗|エラー|(?<![-\w])(?:failed|failure|failures|error|errors)(?![-\w]))",
-    re.IGNORECASE,
-)
+# 英語は前後をハイフン・語構成文字で挟まれた出現を除く（断片の側に書いてある）。
+_FAILURE = _words("closeout.words.failure")
+_FAILED_RE = re.compile(_FAILURE, re.IGNORECASE)
 # 失敗語に件数が結び付いた形。``0 failed`` / ``failed: 0`` / ``失敗 3 件`` を数値ごと拾う。
 # ここで 0 と正の数を分けるのが分類の要で、``failed`` の出現有無だけでは決めない。
+# 件数と失敗語の間・後ろに置ける語（``件`` ``の`` ``数``）は言語ごとの断片。
 _FAILURE_COUNT_RE = re.compile(
     r"(?:"
-    r"(?P<pre>\d+)\s*(?:件)?\s*(?:の)?\s*"
-    r"(?:失敗|エラー|(?<![-\w])(?:failed|failures?|errors?)(?![-\w]))"
+    rf"(?P<pre>\d+){_words('closeout.words.count_to_failure')}{_FAILURE}"
     r"|"
-    r"(?:失敗|エラー|(?<![-\w])(?:failed|failures?|errors?)(?![-\w]))"
-    r"\s*(?:数)?\s*[:=]?\s*(?P<post>\d+)\s*(?:件)?"
+    rf"{_FAILURE}{_words('closeout.words.failure_to_count')}(?P<post>\d+)"
+    rf"{_words('closeout.words.count_suffix')}"
     r")",
     re.IGNORECASE,
 )
@@ -56,50 +91,36 @@ _FAILURE_COUNT_RE = re.compile(
 # 否定の語尾も「〜ない」系（``無かった`` / ``出ていない`` / ``出ておらず`` / ``生じていない``）まで広げる。
 # ここで救済されても ``passed`` に直行はせず、``_AUTO_RE`` と ``_SUCCESS_RE`` の判定を経るため、
 # 散文が自動 pass へ昇格することはない（``claimed`` = manual review に落ちる）。
-_ZERO_FAILURE_RE = re.compile(
-    r"(?:"
-    r"(?:失敗|エラー)\s*[はがも]?\s*(?:"
-    r"なし|無し|ありません|有りません|無い|ない|無かった|なかった"
-    r"|出ていません|出ていない|出ておらず|出なかった|出ず"
-    r"|生じていない|生じませんでした|生じなかった"
-    r")"
-    r"|no\s+(?:failed|failures?|errors?)(?![-\w])"
-    r"|(?<![-\w])(?:failed|failures?|errors?)(?![-\w])\s*[:=]?\s*none"
-    r")",
-    re.IGNORECASE,
-)
+_ZERO_FAILURE_RE = re.compile(_words("closeout.words.zero_failure"), re.IGNORECASE)
 # 失敗が「実際に起きた」と主張している形。単に失敗語を含むだけの文と区別する。
 # 2026-09-11 までに 3 例確認した誤検出のうち 2 例は、``エラー`` が
 # **仕様説明の名詞**として現れたものだった（``<TODO>`` が残っているとき hook が
 # エラーを返す / エラー文面での再実行禁止への改修）。語の出現だけで失敗と断定すると、
 # 期待挙動や改修内容を書いた plan ほど締められなくなる。
+# 英語の「失敗した」は主語付きの過去形で見る（``failed`` 単独は仕様説明にも出るので含めない）。
 #
 # ここに当たらない失敗語は blocker ではなく **人の確認（manual check）** へ落とす。
 # 検出を消すのではなく、機械が確信を持てないことを verdict に正直に反映する。
-_ASSERTED_FAILURE_RE = re.compile(
-    r"(?:"
-    r"失敗(?:した|している|しました|が残|があっ|がある|に終わ)"
-    r"|落ち(?:た|ている|ました)"
-    r"|エラー(?:になった|になっている|が発生|が出た|が出ている|が残|で停止|で中断|で落ち)"
-    r"|(?<![-\w])(?:failed|failing|errored)(?![-\w])\s*[:：]"
-    r"|did\s+not\s+pass|does\s+not\s+pass"
-    r")",
-    re.IGNORECASE,
-)
-_NOT_RUN_RE = re.compile(r"(?:未実施|未検証|not[ _-]?run|not[ _-]?tested|未確認)", re.IGNORECASE)
+_ASSERTED_FAILURE_RE = re.compile(_words("closeout.words.asserted_failure"), re.IGNORECASE)
+# 以下の語彙はどの言語でも同じ判定になるように言語ごとに対で持つ（英語の文書で closeout-check の
+# 結果が変わらないようにする。見出しの語彙は docsweep/doc_vocab.py）。
+_NOT_RUN_RE = re.compile(_words("closeout.words.not_run"), re.IGNORECASE)
 _AUTO_RE = re.compile(
-    r"(?:自動(?:確認|検証|テスト)?|automated?|\bpytest\b|\bruff\b|\bmypy\b|\bunittest\b|\bCI\b|静的(?:検査|確認))",
+    _words(
+        "closeout.words.automatic",
+        r"\bpytest\b", r"\bruff\b", r"\bmypy\b", r"\bunittest\b", r"\bCI\b",
+    ),
     re.IGNORECASE,
 )
 _MANUAL_RE = re.compile(
-    r"(?:手動(?:確認|受入|検証)?|manual|ブラウザ|browser|目視|実機|本番|production|Obsidian|Google Drive|Drive)",
-    re.IGNORECASE,
+    _words("closeout.words.manual", "Obsidian", "Google Drive", "Drive"), re.IGNORECASE
 )
-_SUCCESS_RE = re.compile(r"(?:成功|通過|合格|完了|確認済|済み|\bpass(?:ed)?\b|\bok\b|\bdone\b|\[x\])", re.IGNORECASE)
-_COMPLETION_RE = re.compile(r"(?:完了条件|completion[ _-]?criteria|definition[ _-]?of[ _-]?done)", re.IGNORECASE)
-_VERIFICATION_RE = re.compile(r"(?:検証|verification|verify|test(?:ing)?)", re.IGNORECASE)
-_ACCEPTANCE_RE = re.compile(r"(?:受入|受け入れ|acceptance)", re.IGNORECASE)
-_CHANGED_FILES_RE = re.compile(r"(?:変更予定ファイル|変更ファイル|changed?[ _-]?files?)", re.IGNORECASE)
+_SUCCESS_RE = re.compile(_words("closeout.words.success", r"\[x\]"), re.IGNORECASE)
+_COMPLETION_RE = re.compile(_section_title("completion"), re.IGNORECASE)
+# ``test`` は語の区切りで見る（``Latest`` / ``Contest`` の見出しを検証節と取り違えない）
+_VERIFICATION_RE = re.compile(_section_title("verification"), re.IGNORECASE)
+_ACCEPTANCE_RE = re.compile(_section_title("acceptance"), re.IGNORECASE)
+_CHANGED_FILES_RE = re.compile(_section_title("changed_files", "files_to_change"), re.IGNORECASE)
 _LEGACY_CHILD_RE_TEMPLATE = r"^{parent}_c\d+(?:_|$)"
 
 # The standard state order is intentionally local to this read-only service.
@@ -114,6 +135,12 @@ _STATE_RANK = {
     "discarded": 5,
 }
 _CLOSEOUT_TYPES = {"plan", "bugfix"}
+# detect の警告文は表示言語で変わる。docsweep_state と旧 status の食い違いは
+# ``Detection.conflict`` に載らないので、どちらの言語で出た警告でも拾う
+# （frontmatter と H1 の食い違いは ``conflict`` が立つ）。
+_LEGACY_STATE_MISMATCH = frozenset(
+    t("detect.legacy_status_mismatch", lang=lang) for lang in SUPPORTED_LANGS
+)
 
 
 @dataclass
@@ -124,6 +151,8 @@ class _CloseoutDoc:
     detection: Detection
     type_name: str | None
     mtime: float
+    # 文書の言語（出力に載せる固定の見出し名をこの言語で書く）。
+    lang: str
     sections: list[tuple[str, str, str]] = field(default_factory=list)
 
     @property
@@ -167,10 +196,10 @@ def _find_project_root(parent: Path, explicit: Path | None, markers: list[str]) 
     if explicit is not None:
         root = _lexical_path(explicit)
         if not root.is_dir():
-            raise CloseoutInputError(f"project-dir がディレクトリではありません: {root}")
+            raise CloseoutInputError(t("closeout.project_dir_not_dir", root=root))
         if not _is_under(parent, root):
             raise CloseoutInputError(
-                f"親 plan が project-dir の外側です: {parent} (project-dir={root})"
+                t("closeout.parent_outside_project_dir", parent=parent, root=root)
             )
         return root
 
@@ -205,11 +234,24 @@ def _sections(text: str) -> list[tuple[str, str, str]]:
     return result
 
 
+def _doc_lang(text: str, config: Config) -> str:
+    """文書の言語。H1 のラベルの表記（``[計画]`` / ``[Planned]``）から決め、ラベルが無い・
+    読めないときは設定の文書の言語（``services/status.py`` がラベルを書き換えるときと同じ決め方）。"""
+    m = _H1_RE.search(mask_code_fences(text))
+    if m:
+        lm = _H1_LABEL_RE.match(m.group(1).strip())
+        if lm:
+            lang = config.state_model.label_lang(lm.group(1))
+            if lang:
+                return lang
+    return config.document_lang()
+
+
 def _read_doc(path: Path, config: Config) -> _CloseoutDoc:
     try:
         text = path.open("r", encoding="utf-8", newline="").read()
     except (OSError, UnicodeError) as exc:
-        raise CloseoutInputError(f"plan を読み込めません: {path}: {exc}") from exc
+        raise CloseoutInputError(t("closeout.plan_unreadable", path=path, error=exc)) from exc
     data, body = read_frontmatter_text(text)
     fm = data if body != text and isinstance(data, dict) else None
     type_def = config.match_type(path.name)
@@ -222,7 +264,7 @@ def _read_doc(path: Path, config: Config) -> _CloseoutDoc:
     try:
         mtime = path.stat().st_mtime
     except OSError as exc:
-        raise CloseoutInputError(f"plan の stat を取得できません: {path}: {exc}") from exc
+        raise CloseoutInputError(t("closeout.plan_stat_failed", path=path, error=exc)) from exc
     return _CloseoutDoc(
         path=path,
         text=text,
@@ -230,6 +272,7 @@ def _read_doc(path: Path, config: Config) -> _CloseoutDoc:
         detection=detection,
         type_name=type_def.name if type_def else None,
         mtime=mtime,
+        lang=_doc_lang(text, config),
         sections=_sections(text),
     )
 
@@ -272,9 +315,9 @@ def _iter_plan_paths(project_root: Path, anchor: Path, config: Config) -> list[P
     found: dict[str, Path] = {}
     archive_names = {str(config.archive_dir or "archive").replace("\\", "/").rstrip("/").split("/")[-1]}
     archive_names.update(
-        str(t.archive_dir).replace("\\", "/").rstrip("/").split("/")[-1]
-        for t in config.types
-        if t.archive_dir
+        str(type_def.archive_dir).replace("\\", "/").rstrip("/").split("/")[-1]
+        for type_def in config.types
+        if type_def.archive_dir
     )
     ignore_patterns = list(config.ignore)
     if config.use_gitignore:
@@ -424,6 +467,15 @@ def _section_kind(title: str) -> str | None:
     return None
 
 
+# ``docsweep new plan`` が置く未記入の節の本文（全言語）。同じ種類の節がほかにもあれば数えない。
+# 生成された節を埋めずに同じ見出しを書き足した文書が、残った <TODO> の節で止まらないようにする。
+_UNFILLED_BODIES = frozenset(
+    text
+    for key in ("plan_completion", "plan_verification")
+    for text in variants(f"doc.placeholder.{key}")
+)
+
+
 def _relevant_sections(doc: _CloseoutDoc) -> dict[str, list[tuple[str, str]]]:
     result: dict[str, list[tuple[str, str]]] = {
         "completion": [], "verification": [], "acceptance": [], "changed_files": [],
@@ -432,6 +484,10 @@ def _relevant_sections(doc: _CloseoutDoc) -> dict[str, list[tuple[str, str]]]:
         kind = _section_kind(title)
         if kind:
             result[kind].append((title, body))
+    for kind, sections in result.items():
+        filled = [section for section in sections if section[1].strip() not in _UNFILLED_BODIES]
+        if filled and len(filled) < len(sections):
+            result[kind] = filled
     return result
 
 
@@ -554,44 +610,46 @@ def _inspect_document(
         blockers.append({
             "code": "not_plan",
             "path": doc.path.as_posix(),
-            "message": "親子 closeout の対象は type: plan です",
+            "message": t("closeout.not_plan"),
         })
     if doc.detection.parse_error or doc.detection.state_key is None:
         blockers.append({
             "code": "state_unresolved",
             "path": doc.path.as_posix(),
-            "message": "H1 / docsweep_state から作業状態を解決できません",
+            "message": t("closeout.state_unresolved"),
         })
-    if doc.detection.conflict or any("作業状態" in warning for warning in doc.detection.frontmatter_warnings):
+    if doc.detection.conflict or any(
+        warning in _LEGACY_STATE_MISMATCH for warning in doc.detection.frontmatter_warnings
+    ):
         blockers.append({
             "code": "state_conflict",
             "path": doc.path.as_posix(),
-            "message": "H1 と frontmatter の作業状態が一致しません",
+            "message": t("closeout.state_conflict"),
         })
     if doc.detection.type_conflict:
         blockers.append({
             "code": "type_conflict",
             "path": doc.path.as_posix(),
-            "message": "filename と frontmatter の type が一致しません",
+            "message": t("closeout.type_conflict"),
         })
     if doc.detection.due_parse_error:
         blockers.append({
             "code": "due_invalid",
             "path": doc.path.as_posix(),
-            "message": "due を YYYY-MM-DD として解釈できません",
+            "message": t("closeout.due_invalid"),
         })
 
     for kind in ("completion", "verification"):
         if not sections[kind]:
-            label = {
-                "completion": "完了条件（子 plan は子 plan 完了条件を含む）",
-                "verification": "検証",
-            }[kind]
+            label = t({
+                "completion": "closeout.section_completion",
+                "verification": "closeout.section_verification",
+            }[kind])
             blockers.append({
                 "code": "missing_section",
                 "path": doc.path.as_posix(),
                 "section": kind,
-                "message": f"必須セクションがありません: {label}",
+                "message": t("closeout.missing_section", label=label),
             })
 
     # ``受入条件`` は done 遷移でだけ求めるが、**blocker にはしない**。
@@ -599,9 +657,10 @@ def _inspect_document(
     # 「節を足すこと自体が gate 通過のための作業」になってしまう（2026-08-30 に実際に
     # 発生し、7 本の plan が同じ理由で止まった）。書式は templates/CLAUDE.md が
     # 必須として教えるので、足すかどうかの判断は人が manual check として行う。
+    # ``section`` は足すべき見出し名なので、文書の言語の表記で出す。
     if target_state == "done" and not sections["acceptance"]:
         manual.append(_manual_check(
-            doc.path, "受入条件", "", reason="missing_acceptance_section",
+            doc.path, heading("acceptance", doc.lang), "", reason="missing_acceptance_section",
         ))
 
     for kind in ("completion", "verification", "acceptance"):
@@ -620,7 +679,7 @@ def _inspect_document(
                         "path": doc.path.as_posix(),
                         "section": title,
                         "evidence": line,
-                        "message": "未完了 checkbox が残っています",
+                        "message": t("closeout.unchecked_checkbox"),
                     })
                 if _TODO_RE.search(line):
                     if _is_quoted_todo(line):
@@ -635,7 +694,7 @@ def _inspect_document(
                             "path": doc.path.as_posix(),
                             "section": title,
                             "evidence": line,
-                            "message": "完了条件または検証に TODO/TBD が残っています",
+                            "message": t("closeout.todo_remaining"),
                         })
                 if kind == "verification":
                     entry = _verification_entry(doc.path, title, line)
@@ -652,7 +711,7 @@ def _inspect_document(
                             "path": doc.path.as_posix(),
                             "section": title,
                             "evidence": line,
-                            "message": "検証の失敗または未実施が明示されています",
+                            "message": t("closeout.verification_failed_or_not_run"),
                         })
 
                 if checked:
@@ -669,10 +728,13 @@ def _inspect_document(
         blockers.append({
             "code": "verification_evidence_missing",
             "path": doc.path.as_posix(),
-            "message": "検証セクションに証跡がありません",
+            "message": t("closeout.verification_evidence_missing"),
         })
     if not any(entry["kind"] == "automatic" for entry in evidence) and sections["verification"]:
-        manual.append(_manual_check(doc.path, "検証", "自動検証の証跡", reason="automatic_evidence_not_explicit"))
+        manual.append(_manual_check(
+            doc.path, heading("verification", doc.lang), t("closeout.automatic_evidence"),
+            reason="automatic_evidence_not_explicit",
+        ))
 
     for title, body in sections["acceptance"]:
         if _MANUAL_RE.search(title) and not _line_items(body):
@@ -733,7 +795,7 @@ def _item(doc: _CloseoutDoc, project_root: Path, *, relation: str | None = None)
 def _git_dirty(project_root: Path) -> tuple[list[str], str | None]:
     git_dir = project_root / ".git"
     if not git_dir.exists():
-        return [], "project-dir に .git がありません"
+        return [], t("closeout.git_dir_missing")
     try:
         result = subprocess.run(
             ["git", "-C", str(project_root), "status", "--porcelain=v1", "--untracked-files=all"],
@@ -745,9 +807,9 @@ def _git_dirty(project_root: Path) -> tuple[list[str], str | None]:
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return [], f"git status を取得できません: {exc}"
+        return [], t("closeout.git_status_failed", error=exc)
     if result.returncode != 0:
-        return [], (result.stderr or "git status failed").strip()
+        return [], (result.stderr or t("closeout.git_status_exit_nonzero")).strip()
     paths: list[str] = []
     for line in result.stdout.splitlines():
         if len(line) < 4:
@@ -849,22 +911,22 @@ def check_closeout(
 ) -> CloseoutResult:
     """Inspect one parent plan without changing any file, Git state, or archive."""
     if target_state not in {"watching", "done"}:
-        raise CloseoutInputError("--to は watching または done を指定してください")
+        raise CloseoutInputError(t("closeout.invalid_target_state"))
 
     parent = _lexical_path(parent_path)
     if not parent.is_file():
-        raise CloseoutInputError(f"親 plan がファイルではありません: {parent}")
+        raise CloseoutInputError(t("closeout.parent_not_file", path=parent))
     project = _find_project_root(
         parent,
         _lexical_path(project_dir) if project_dir is not None else None,
         (config.project_markers if config else DEFAULT_PROJECT_MARKERS),
     )
     if not _is_under(parent, project):
-        raise CloseoutInputError(f"親 plan が project 境界の外側です: {parent}")
+        raise CloseoutInputError(t("closeout.parent_outside_project", path=parent))
     cfg = config or load_config(project_dir=project, explicit_roots=[project.as_posix()])
     parent_doc = _read_doc(parent, cfg)
     if parent_doc.type_name != "plan":
-        raise CloseoutInputError(f"指定 path は plan_*.md ではありません: {parent}")
+        raise CloseoutInputError(t("closeout.parent_not_plan", path=parent))
 
     paths = _iter_plan_paths(project, parent.parent, cfg)
     if _path_key(parent) not in {_path_key(path) for path in paths}:
@@ -914,7 +976,7 @@ def check_closeout(
             relation_errors.append({
                 "code": "ambiguous_parent",
                 "path": doc.path.as_posix(),
-                "message": "docsweep_parent は 1 件の repo-relative path に限定されます",
+                "message": t("closeout.parent_ref_not_single"),
             })
             continue
         resolved, relation_error = _resolve_parent_ref(
@@ -927,10 +989,10 @@ def check_closeout(
             warnings.append({
                 "code": "parent_moved",
                 "paths": [doc.path.as_posix()],
-                "message": (
-                    f"docsweep_parent の参照先が移動しています: {refs[0]} -> "
-                    f"{_relative(resolved[0].path, project)}"
-                    "（basename が一致する 1 件で解決しました。参照の更新を推奨）"
+                "message": t(
+                    "closeout.parent_moved",
+                    reference=refs[0],
+                    resolved=_relative(resolved[0].path, project),
                 ),
             })
         elif relation_error:
@@ -938,21 +1000,21 @@ def check_closeout(
                 "code": relation_error,
                 "path": doc.path.as_posix(),
                 "reference": refs[0],
-                "message": "docsweep_parent は project 境界内の repo-relative path だけを指定できます",
+                "message": t("closeout.parent_ref_outside"),
             })
         elif len(resolved) == 0:
             relation_errors.append({
                 "code": "unresolved_parent",
                 "path": doc.path.as_posix(),
                 "reference": refs[0],
-                "message": "docsweep_parent の参照先が project 境界内に見つかりません",
+                "message": t("closeout.parent_ref_unresolved"),
             })
         elif len(resolved) > 1:
             relation_errors.append({
                 "code": "ambiguous_parent",
                 "path": doc.path.as_posix(),
                 "reference": refs[0],
-                "message": "docsweep_parent の basename が複数候補に解決されます",
+                "message": t("closeout.parent_ref_ambiguous"),
             })
 
     child_docs: list[tuple[_CloseoutDoc, str]] = []
@@ -971,7 +1033,7 @@ def check_closeout(
                     "code": "generic_related_not_child",
                     "path": doc.path.as_posix(),
                     "reference_from": doc.path.as_posix(),
-                    "message": "related だけでは child と確定しません（legacy child filename 不一致）",
+                    "message": t("closeout.related_not_child"),
                 })
             continue
         points, ambiguous = _related_points_to(doc, parent_doc, project_root=project, docs=docs)
@@ -979,7 +1041,7 @@ def check_closeout(
             relation_errors.append({
                 "code": "ambiguous_parent",
                 "path": doc.path.as_posix(),
-                "message": "legacy related 参照が複数候補に解決されます",
+                "message": t("closeout.legacy_related_ambiguous"),
             })
         if points:
             child_docs.append((doc, "inferred"))
@@ -987,7 +1049,7 @@ def check_closeout(
             warnings.append({
                 "code": "legacy_child_not_confirmed",
                 "path": doc.path.as_posix(),
-                "message": "filename は child 候補ですが、related が親を指していないため child 確定しません",
+                "message": t("closeout.legacy_child_not_confirmed"),
             })
 
     # A parent-side related link is diagnostic only.  It must not promote a
@@ -1000,14 +1062,14 @@ def check_closeout(
                     "code": "self_reference",
                     "path": parent_doc.path.as_posix(),
                     "reference": ref,
-                    "message": "親 plan 自身への参照があります",
+                    "message": t("closeout.self_reference"),
                 })
             elif not any(child.key == candidate.key for child, _kind in child_docs):
                 warnings.append({
                     "code": "generic_related_not_child",
                     "path": candidate.path.as_posix(),
                     "reference_from": parent_doc.path.as_posix(),
-                    "message": "親の related だけでは child と確定しません",
+                    "message": t("closeout.parent_related_not_child"),
                 })
 
     # Parent itself must remain a top-level plan.  A nested relation is shown as
@@ -1018,13 +1080,13 @@ def check_closeout(
             relation_errors.append({
                 "code": "self_reference",
                 "path": parent_doc.path.as_posix(),
-                "message": "親 plan の docsweep_parent が自身を指しています",
+                "message": t("closeout.parent_points_to_itself"),
             })
         else:
             warnings.append({
                 "code": "grandchild_detected",
                 "path": parent_doc.path.as_posix(),
-                "message": "指定された親 plan 自体に親があり、標準の 1 階層を越えています",
+                "message": t("closeout.grandchild_detected"),
             })
 
     # Cycle detection over explicit parent edges.  Only cycles touching the
@@ -1052,7 +1114,7 @@ def check_closeout(
                 relation_errors.append({
                     "code": "cycle",
                     "path": cycle_doc.path.as_posix(),
-                    "message": "親子関係が循環しています",
+                    "message": t("closeout.cycle"),
                 })
 
     children: list[dict[str, Any]] = []
@@ -1086,26 +1148,28 @@ def check_closeout(
         blockers.append({
             "code": "target_state_unavailable",
             "path": parent_doc.path.as_posix(),
-            "message": f"設定された state model に {target_state!r} がありません",
+            "message": t("closeout.target_state_unavailable", state=target_state),
         })
     for doc, _relation in [(parent_doc, "parent"), *child_docs]:
         if doc.detection.state_key in {"done", "discarded"} and target_state == "watching":
             warnings.append({
                 "code": "already_terminal",
                 "path": doc.path.as_posix(),
-                "message": "既に終端状態なので watching への順序変更対象から除外します",
+                "message": t("closeout.already_terminal"),
             })
         if doc.type_name not in _CLOSEOUT_TYPES:
             blockers.append({
                 "code": "unsupported_type_transition",
                 "path": doc.path.as_posix(),
-                "message": "親子 closeout は plan / bugfix のみを対象にします",
+                "message": t("closeout.unsupported_type"),
             })
         elif target_state == "done" and doc.type_name not in {"plan", "bugfix"}:
             blockers.append({
                 "code": "target_state_not_allowed",
                 "path": doc.path.as_posix(),
-                "message": f"{doc.type_name} は {target_state} へ進められません",
+                "message": t(
+                    "closeout.target_state_not_allowed", type=doc.type_name, state=target_state
+                ),
             })
 
     parent_rank = _STATE_RANK.get(parent_doc.detection.state_key or "")
@@ -1115,7 +1179,7 @@ def check_closeout(
             blockers.append({
                 "code": "state_order_conflict",
                 "path": child.path.as_posix(),
-                "message": "child plan が parent plan より前段の状態です",
+                "message": t("closeout.state_order_conflict"),
                 "parent_state": parent_doc.detection.state_key,
                 "child_state": child.detection.state_key,
             })
@@ -1149,7 +1213,8 @@ def check_closeout(
     if overlap:
         manual_checks.append({
             "path": parent_doc.path.as_posix(),
-            "section": "Git dirty overlap",
+            # 文書の見出しではない確認項目名なので、表示言語で出す
+            "section": t("closeout.section.git_dirty_overlap"),
             "description": ", ".join(overlap),
             "reason": "planned_file_is_dirty",
             "status": "pending",
@@ -1157,13 +1222,13 @@ def check_closeout(
         warnings.append({
             "code": "dirty_overlap",
             "paths": overlap,
-            "message": "変更予定ファイルと現在の dirty file が重なっています",
+            "message": t("closeout.dirty_overlap"),
         })
     if unrelated:
         warnings.append({
             "code": "dirty_unrelated",
             "paths": unrelated,
-            "message": "plan と直接関係しない dirty file があります（blocker にはしません）",
+            "message": t("closeout.dirty_unrelated"),
         })
 
     suggested = [

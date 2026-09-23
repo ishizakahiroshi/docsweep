@@ -101,6 +101,22 @@ docsweep はこの角括弧ラベルを正規表現で抽出します。
 > 上表は内蔵デフォルトで、利用者は状態の追加・改名・言語追加（日英）ができます。
 > `python -m docsweep inject` は `states:` から `CLAUDE.md` のラベル節を生成するので、設定・AI への指示・検出が常に同期します。
 
+### 文書の言語と表示言語
+
+作業文書は日本語でも英語でも書けます（見出し・列名・ラベルの対応は
+`docsweep/i18n/locales/<言語>/terms.json`。docsweep はどちらの言語の文書も同じように読みます）。
+docsweep は 2 つの言語を分けて扱います。
+
+- **表示言語**（エラー・出力・`--help`・Web UI）: `--lang` → 環境変数 `DOCSWEEP_LANG` →
+  設定の `lang`（書いたときだけ）→ OS の表示言語 → `en`。
+- **文書の言語**（`new` が作るテンプレート・注入するルール文）: `.docsweep.yaml` の `lang` →
+  `~/.docsweep/config.yaml` の `lang` → 表示言語。複数人のリポジトリは `.docsweep.yaml` に
+  `lang` を書いて固定します。状態ラベルの書き換えは、その文書にすでにあるラベルの言語で書きます。
+
+文言と用語はコードに持たず、言語ごとの JSON（`docsweep/i18n/locales/<言語>/`）に置いています。
+言語はフォルダを 1 つ足すと増やせます（足りないキーは英語で出ます）。正本の規約は
+`templates/CLAUDE.md` の「文書の言語」。
+
 ---
 
 ## 期日（due）と看板方式
@@ -210,7 +226,7 @@ due: 2026-06-29
 
 詳細な必須セクションは `templates/CLAUDE.md` を参照。ここでは差分のみ:
 
-- **plan**: 先頭に `## context配分` 表（章番号 `C1/C2/C3`、種別は `planned`/`done` の 2 値・旧表記の `plan`/`fix` は同義）。列順は `C` / `種別` / `内容` / `備考/注意点`（2026-08-27 統一。旧い順 `C` / `内容` / `種別` の既存 md も読める＝列は名前と中身で解決している）。`AI実行` と `実行モデル` は provenance が `start` 時に自動追加する列で、手で書かない（前者は実行 ID、後者は `<role>: <provider> / <model_id> / <reasoning_profile>`）。リリース plan は `リリース引数` / `実行計画` / `申し送り` の専用構成を使う。
+- **plan**: 先頭に `## context配分` 表（章番号 `C1/C2/C3`、種別は `planned`/`done` の 2 値・旧表記の `plan`/`fix` は同義）。列順は `C` / `種別` / `内容` / `備考/注意点`（2026-08-27 統一。旧い順 `C` / `内容` / `種別` の既存 md も読める＝列は名前と中身で解決している）。`AI実行` と `実行モデル` は provenance が `start` 時に自動追加する列で、手で書かない（前者は実行 ID、後者は `<role>: <provider> / <model_id> / <reasoning_profile>`）。リリース plan は `リリース引数` / `実行計画` / `申し送り` の専用構成を使う。`docsweep new plan` は `## 概要` の後に、closeout-check が必須にする `## 完了条件` と `## 検証` も置く（設定の `template_sections` に同じ見出しがあればそちらを使う）。
 - **bugfix**: 先頭に plan と同じ列順の `## context配分` 表（1 行でも可）、続けて
   `## 症状 / 根本原因 / 修正内容 / 変更ファイル / 検証 / 備忘` の 6 セクション。
   表を持つのは `provenance start --context C<N>` を bugfix でも使えるようにするため（2026-08-27 変更）。
@@ -240,6 +256,26 @@ git 追跡され得る場所へ黙って移送する**ことになります。
 移送先とその選択根拠は `docsweep sweep --dry-run --json` の `archive_routes` で確認できます
 （`source` は `explicit_project` / `explicit_global` / `private_queue` / `shared_root`）。
 
+queue をフォルダで分けている場合は `archive_layout: mirror` を書くと、queue 内のサブフォルダを
+archive の中でも保ちます（`docs/local/app-a/plan_x.md` → `docs/local/archive/app-a/plan_x.md`）。
+既定の `flat` は archive 直下へ平置きです。queue の外にある文書はどちらでも平置きです。
+
+### 移動と参照の書き換え
+
+archive へ移送したとき、同じ project の queue にある他の文書（archive の中は除く）のうち、
+移した文書を指す `docsweep_parent` と、パスで書かれた `related`（repo 相対・絶対パス）を新しい
+パスへ書き換えます。bare name の `related`（`plan_x.md`）は basename で解決されるので触りません。
+本文の Markdown の相対リンク（`[text](plan_x.md)`・`![alt](img.png)`・参照定義 `[id]: plan_x.md`）も、
+移した文書を指していれば移動先へ直します。移した文書自身の本文の相対リンクは、移した後の場所から
+同じ先を指すように直します。`#節` と `?query` は残し、コードの中・URL・絶対パス・もともと切れていた
+リンクは触りません。書き換えは `--json` の `ref_updates` に出て、移動ログへ `ref_rewrite` として残ります。
+
+queue の中で文書を移すときは `docsweep mv <src>... --to <dir>` を使います。archive と同じ参照に加えて、
+本文中の repo 相対パスの完全一致（`docs/local/plan_x.md`）も書き換えます（`--no-body` で本文は、
+相対リンクを含めて触らない）。
+git で追跡されているファイルと archive の中は動かしません。`--dry-run` で予定を確認でき、
+`docsweep undo` でファイルと参照をまとめて戻せます。
+
 ### Git release tracking と版別 archive
 
 リリースとの対応付けは既定では無効です。`release_tracking.mode: enabled` と
@@ -263,6 +299,7 @@ python -m docsweep release close v0.9.1 --json
 ```
 
 設定なし、`mode: disabled`、`archive_partition: flat` の場合は従来経路を変更しません。
+`archive_layout: mirror` と併用すると `archive/<サブフォルダ>/<版>/` の順になります。
 `release close` はタグ未存在、target 未設定、target 不一致、watching、未完了、
 `docsweep_policy: never_archive` を移送せず診断として返します。
 
@@ -329,10 +366,12 @@ AI は生成後、追加された節の TODO を埋めてから実装へ進み�
   スコープ外 / 検証方法 / 完了条件` の 8 項目を固定順で置く。
 - 完了条件は観測可能な結果で書く（「正しく動く」等の曖昧表現を使わない）。
   また `closeout-check` が見出しタイトルの部分一致で分類するため、
-  `完了条件` / `検証` / `受入` / `変更予定ファイル` などの語を H2 / H3 見出しに入れない
+  `完了条件` / `検証` / `受入` / `変更予定ファイル` などの語（英語の文書では `completion criteria` /
+  `verification` / `acceptance` / `files to change` など）を H2 / H3 見出しに入れない
   （例外は正規セクションそのもの＝`## 完了条件` / `## 検証` / `## 受入条件` /
-  bugfix の `## 変更ファイル` / 委譲 plan の `## 変更予定ファイル`、C 詳細の H4 8 項目、
-  plan 全体の `## 全体の検証手順`）。
+  bugfix の `## 変更ファイル` / 委譲 plan の `## 変更予定ファイル` と、その英語の表記、
+  C 詳細の H4 8 項目、plan 全体の `## 全体の検証手順`）。語の一覧の正本は
+  `templates/CLAUDE.md` の「見出しに分類語を入れない」。
 
 `plan_*.md` の必須セクションは `## context配分` に続けて `## 完了条件` と `## 検証`。
 `[完了]`（`done`）へ進めるときは `## 受入条件` も書きます。

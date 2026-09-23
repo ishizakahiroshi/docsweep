@@ -13,6 +13,8 @@ from datetime import date, datetime
 import yaml
 
 from .config import TypeDef
+from .doc_vocab import variants
+from .i18n import current_lang, t
 from .okf import is_okf_lifecycle_status
 from .services.frontmatter import read_frontmatter_text
 from .states import StateModel
@@ -346,7 +348,7 @@ def detect_status(
         legacy_status = sm.match(okf["okf_status"])
     if okf["docsweep_state"] and docsweep_state is None:
         warnings.append(
-            f"docsweep_state='{okf['docsweep_state']}' を docsweep state に解決できません"
+            t("detect.docsweep_state_unresolved", value=okf["docsweep_state"])
         )
 
     # frontmatter type と filename 由来 type の食い違いを warn 扱いで surface する。
@@ -356,18 +358,15 @@ def detect_status(
     if fm_type and _type and fm_type != _type.name:
         type_conflict = True
         warnings.append(
-            f"frontmatter type='{fm_type}' と filename 由来 type='{_type.name}' が食い違います"
+            t("detect.type_mismatch", frontmatter_type=fm_type, filename_type=_type.name)
         )
     # status の frontmatter vs H1 ラベル食い違いも warn として明示する
     # （既存の `conflict` フラグだけだと「どこが」分からないため）。
     if fm is not None and h1_key is not None and fm != h1_key:
-        warnings.append(
-            f"frontmatter 作業状態 status='{fm}' と H1 ラベル由来 state='{h1_key}' が食い違います"
-        )
+        warnings.append(t("detect.status_h1_mismatch", status=fm, state=h1_key))
     if docsweep_state and legacy_status and docsweep_state.key != legacy_status.key:
-        warnings.append(
-            "docsweep_state と旧 status の docsweep 作業状態が食い違います"
-        )
+        # closeout はこの文言（両言語）で食い違いを拾う。キーを変えるときは closeout も直す。
+        warnings.append(t("detect.legacy_status_mismatch"))
 
     # 検出された候補（None 以外）が複数あり食い違うか。
     candidates = [c for c in (fm, h1_key, fn) if c is not None]
@@ -391,7 +390,8 @@ def detect_status(
     if label is None and key is not None:
         st = sm.by_key(key)
         if st:
-            label = f"[{st.label()}]"
+            # 文書に H1 ラベルが無い（frontmatter / ファイル名から決めた）ときの表示用
+            label = f"[{st.label(current_lang())}]"
 
     return Detection(
         state_key=key,
@@ -440,10 +440,15 @@ def detect_h1_state(text: str, sm: StateModel) -> str | None:
 
 
 def extract_summary(text: str, section: str) -> str | None:
-    """``## <section>`` セクション直下の先頭 1〜2 行（非空）を返す。"""
+    """``## <section>`` セクション直下の先頭 1〜2 行（非空）を返す。
+
+    ``section`` と同じ意味の見出しは言語を問わず受け付ける（``概要`` を指定しても
+    英語の文書の ``## Summary`` を読む。語彙は ``doc_vocab``）。
+    """
     # コードフェンスの ``` 行やフェンス内見出しを概要本文に拾わないようマスクする。
     text = mask_code_fences(text)
-    pat = re.compile(rf"^#{{2,3}}\s+{re.escape(section)}\s*$", re.MULTILINE)
+    names = "|".join(re.escape(name) for name in variants(section))
+    pat = re.compile(rf"^#{{2,3}}\s+(?:{names})\s*$", re.MULTILINE)
     m = pat.search(text)
     if not m:
         return None

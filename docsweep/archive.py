@@ -3,6 +3,7 @@
 - 場所は config 可変（既定 archive/）。同名衝突は連番（_2）。
 - 移動ログ {ts, op, project, status, src, dst} を JSONL 追記（eject/復元の土台）。
 - 同一ボリューム前提に依存しない（shutil.move で吸収）。
+- 移送した文書の provenance 台帳の work_path も移送先へ付け替える（provenance.follow_move）。
 """
 
 from __future__ import annotations
@@ -12,12 +13,15 @@ import importlib
 import os
 import shutil
 import sys
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO, Iterator
 
+from .i18n import t
 from .models import MoveLogEntry
+from .provenance import follow_move_safely
 
 MOVE_LOG_NAME = "moves.jsonl"
 
@@ -71,6 +75,11 @@ def _reserve_destination(dst: Path) -> Path:
 
 def move_log_path(root: Path) -> Path:
     return root / ".docsweep" / MOVE_LOG_NAME
+
+
+def new_batch_id() -> str:
+    """利用者の 1 回の操作で動かした文書をまとめる ID（``docsweep undo`` はこの単位で戻す）。"""
+    return uuid.uuid4().hex[:12]
 
 
 @contextmanager
@@ -140,7 +149,9 @@ def archive_file(
         try:
             fd = os.open(requested, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError as exc:
-            raise FileExistsError(f"archive destination already exists: {requested}") from exc
+            raise FileExistsError(
+                t("archive.move_destination_exists", path=requested)
+            ) from exc
         os.close(fd)
         dst = requested
     else:
@@ -212,13 +223,11 @@ def archive_file(
                 if dst.exists():
                     if src.exists():
                         raise FileExistsError(
-                            f"rollback destination already exists: {src}"
+                            t("archive.rollback_destination_exists", path=src)
                         )
                     shutil.move(str(dst), str(src))
                 elif not src.exists():
-                    raise FileNotFoundError(
-                        f"moved file is missing from both source and destination: {src}"
-                    )
+                    raise FileNotFoundError(t("archive.moved_file_lost", path=src))
             except Exception as rollback_exc:
                 rollback_error = str(rollback_exc)
             details = {
@@ -236,4 +245,7 @@ def archive_file(
             if log_rollback_error:
                 details["log_rollback_error"] = log_rollback_error
             raise ArchiveTransactionError(details) from exc
+    # provenance 台帳の work_path も移送先へ付け替える（archive 系と mv の両方がここを通る）。
+    # 付け替えに失敗しても移送は戻さない（警告を出し、check --fix-work-path で直せる）。
+    follow_move_safely(src, dst, project_dir=project_dir)
     return dst

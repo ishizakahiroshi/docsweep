@@ -76,7 +76,8 @@ body {
 .search-clear { padding: 2px 8px; font-size: 12px; }
 .card[hidden] { display: none; }
 .col[data-empty="true"] .col-cards::before {
-  content: "（該当なし）";
+  /* 文言は画面の言語で template が data-empty-text に入れる（ui.search_no_match） */
+  content: attr(data-empty-text);
   display: block; color: var(--fg-dim2); font-size: 11px;
   text-align: center; padding: 16px 0;
 }
