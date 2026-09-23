@@ -13,13 +13,14 @@ import yaml
 from ...atomic import write_atomic
 from ...config import Config, archive_route_for_project, load_config
 from ...engine import apply_action, auto_sweep, doc_for_path, run_scan
+from ..interactive import stdin_is_interactive
 from ..parser import _build_config
 
 
 def _new_release_setup_allowed() -> bool:
     if os.environ.get("CI", "").strip().lower() not in {"", "0", "false", "no", "off"}:
         return False
-    return bool(getattr(sys.stdin, "isatty", lambda: False)())
+    return stdin_is_interactive()
 
 
 def _new_prompt(message: str) -> str:

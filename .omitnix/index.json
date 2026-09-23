@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generated": {
-    "commit": "564be956df14e846800956cfb5bb940988fbc6f0",
+    "commit": "19a9a705fe5dc891ee577e3dfa898f6562ae12aa",
     "dirty": true,
     "tool": "omitnix 0.1.3",
     "partial": false,
@@ -134,8 +134,8 @@
     "discovery_note": ""
   },
   "coverage": {
-    "discovered": 342,
-    "analyzed": 222,
+    "discovered": 344,
+    "analyzed": 224,
     "unresolved": 6,
     "unknown": 3,
     "unclaimed": 111,
@@ -1726,6 +1726,35 @@
         "summary": {
           "state": "value",
           "value": "CLI command handlers: write."
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
+      "path": "docsweep/cli/interactive.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "stdin が人の操作する端末かを判定する（確認を出してよいか）。"
         },
         "authentication": {
           "state": "not_configured"
@@ -6097,6 +6126,35 @@
         "summary": {
           "state": "value",
           "value": "C2 (wings): capture — heuristics / Mock LLM / save flow の単体テスト。"
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
+      "path": "tests/test_cli_interactive.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "stdin の対話判定（確認を出してよいか）の回帰防止。"
         },
         "authentication": {
           "state": "not_configured"

@@ -32,6 +32,13 @@
 - configured archive rootがwork queue外でもarchive metadata actionを安全に適用し、move logの
   rollback区間はworker間で排他する。
 
+### Fixed
+
+- Windows で stdin が NUL のとき（AI エージェントのシェル実行など）、`isatty()` が True を
+  返すため `docsweep new` の release tracking 初回確認と workspace migration の `--review` が
+  対話と誤判定して止まっていた。Windows ではコンソールかどうか（GetConsoleMode）まで確かめ、
+  非対話なら確認を出さずに警告だけで続ける。
+
 ## [0.6.0] - 2026-09-11
 
 ### Changed

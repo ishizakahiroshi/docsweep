@@ -8,6 +8,8 @@ import os
 import sys
 from pathlib import Path
 
+from ..interactive import stdin_is_interactive
+
 
 def _ci_enabled() -> bool:
     value = os.environ.get("CI", "").strip().lower()
@@ -29,7 +31,7 @@ def _interactive_review_allowed(args: argparse.Namespace) -> bool:
         return False
     if _ci_enabled():
         return False
-    return bool(getattr(sys.stdin, "isatty", lambda: False)())
+    return stdin_is_interactive()
 
 
 def _prompt(prompt: str) -> str:
