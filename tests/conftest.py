@@ -78,3 +78,16 @@ def isolate_doc_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         config_module, "GLOBAL_CONFIG_PATH", tmp_path / "no-such-docsweep-config.yaml"
     )
     monkeypatch.setattr(frontmatter_module, "_git_user_name", lambda cwd=None: None)
+
+
+@pytest.fixture(autouse=True)
+def isolate_ci_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """テストを流した環境の ``CI`` を持ち込まない。
+
+    ``docsweep new`` の release tracking 初回確認と workspace migration の ``--review`` は、
+    ``CI`` が立っていると確認を出さない（CI で止まらないため）。GitHub Actions は
+    ``CI=true`` を立てるので、遮断しないと端末を模したテストが CI の上でだけ落ちる
+    （2026-09-15 から develop の CI が赤かった原因）。``CI`` での挙動を見るテストは
+    自分で ``setenv`` する（後勝ち）。
+    """
+    monkeypatch.delenv("CI", raising=False)

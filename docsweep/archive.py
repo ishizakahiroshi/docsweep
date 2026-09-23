@@ -11,6 +11,7 @@ import json
 import importlib
 import os
 import shutil
+import sys
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -78,7 +79,9 @@ def _move_log_lock(root: Path) -> Iterator[BinaryIO]:
     lock_path = move_log_path(root).with_suffix(".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+b") as lock_file:
-        if os.name == "nt":
+        # os.name ではなく sys.platform で分ける（mypy が OS ごとに片方を読み飛ばせるように。
+        # os.name だと Linux の型検査が msvcrt の属性を探して落ちる）
+        if sys.platform == "win32":
             import msvcrt
 
             if lock_file.seek(0, os.SEEK_END) == 0:
