@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from docsweep import session_logs
+from docsweep.provenance import ENV_FIELDS
 
 
 @pytest.fixture(autouse=True)
@@ -48,12 +49,17 @@ def isolate_session_log_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     探すため、テストを流した開発者の実ホームに同じ cwd のセッションが残っていると
     それを拾う。``_home`` だけを差し替えるのは、``HOME`` / ``USERPROFILE`` を丸ごと
     移すと git config などテスト外の挙動まで巻き込むため。
+
+    ``DOCSWEEP_AI_*``（agent・model 等）も落とす。AI CLI をまとめて起動する道具が
+    子セッションへ渡すことがあり、残すと「AI 情報が取れない」前提のテストが
+    テストを流したセッションの値を拾って落ちる（2026-09-24 に 4 件で実測）。
     """
     for name in (
         "CLAUDE_CODE_SESSION_ID",
         "CLAUDE_CONFIG_DIR",
         "DOCSWEEP_AI_SESSION_LOG",
         "CODEX_HOME",
+        *ENV_FIELDS.values(),
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(session_logs, "_home", lambda: tmp_path / "no-such-home")
