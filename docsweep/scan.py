@@ -91,6 +91,35 @@ def _is_work_queue_path(
         return False
 
 
+def _is_followable_queue_link(
+    path: Path,
+    root: Path,
+    config: Config,
+    cache: dict[Path, Path],
+    aliases: dict[Path, Path] | None = None,
+) -> bool:
+    """ディレクトリ symlink のうち、中へ降りてよいのは設定済み queue の link そのものだけ。
+
+    os.walk は既定で symlink の中へ降りないが、Windows の junction は symlink 扱いされないので
+    降りる。queue を repo の外へ逃がす構成を Linux / macOS の symlink でも同じに扱うため、
+    queue の link だけを辿る（workspace migration・closeout と同じ範囲）。ほかの symlink まで
+    辿ると、link のループや repo の外の大きな木を拾うので辿らない。
+    """
+    try:
+        project_root = detect_project_root(
+            path.parent, root, config.project_markers, cache, aliases
+        )
+        queue = resolve_work_dir(project_root, project_work_settings(project_root, config)[0])
+        if os.path.normcase(os.path.abspath(queue)) != os.path.normcase(os.path.abspath(path)):
+            return False
+        # 自分の祖先を指す link は、辿ると同じ木を際限なく回る。
+        target = path.resolve()
+        parent = path.parent.resolve()
+        return not (parent == target or parent.is_relative_to(target))
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
 def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
     """1 つのスキャンルート配下を走査し ScannedDoc のリストを返す。"""
     root = root.resolve()
@@ -122,17 +151,22 @@ def scan_root(root: Path, config: Config) -> list[ScannedDoc]:
     docs: list[ScannedDoc] = []
     proj_cache: dict[Path, Path] = {}
     aliases = work_dir_aliases(root, config)
-    for dirpath, dirnames, filenames in os.walk(root):
+    # followlinks=True でも、下の枝刈りで queue 以外の symlink を落とすので、降りる symlink は queue だけ。
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
         cur = Path(dirpath)
         rel_dir = cur.relative_to(root).as_posix()
 
-        # ディレクトリ枝刈り（archive・常時除外・ignore）。
+        # ディレクトリ枝刈り（archive・常時除外・queue 以外の symlink・ignore）。
         pruned: list[str] = []
         for d in dirnames:
             if d in ALWAYS_SKIP_DIRS or d in archive_names:
                 continue
             child_rel = f"{rel_dir}/{d}".lstrip("/") if rel_dir != "." else d
             child_path = cur / d
+            if os.path.islink(child_path) and not _is_followable_queue_link(
+                child_path, root, config, proj_cache, aliases
+            ):
+                continue
             if _is_ignored(child_rel, d, base_patterns) and not _is_work_queue_path(
                 child_path, root, config, proj_cache, aliases
             ):

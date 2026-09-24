@@ -90,6 +90,58 @@ def test_linked_work_dir_is_attributed_to_declaring_project(tmp_path: Path) -> N
     assert projects == {"myrepo"}, projects
 
 
+def test_symlinked_work_dir_outside_scan_root_is_scanned(tmp_path: Path) -> None:
+    """queue の実体がスキャンルートの外にあっても、symlink の queue の中を走査する。
+
+    os.walk は既定でディレクトリ symlink の中へ降りない（Windows の junction は symlink 扱い
+    されないので降りる）。以前は Linux / macOS で queue を symlink にすると、sweep も triage も
+    その中の文書を 1 件も拾わなかった（2026-09-24 の CI で実測）。
+    """
+    root = tmp_path / "dev"
+    repo = _make_repo(root, "myrepo")
+    external = tmp_path / "external" / "local"
+    external.mkdir(parents=True)
+    (external / "plan_dummy.md").write_text(PLAN_BODY, encoding="utf-8")
+
+    if not _link_dir(repo / "docs" / "local", external):
+        pytest.skip("ディレクトリリンクを作成できない環境")
+
+    docs = scan_root(root, _cfg(root, tmp_path))
+
+    assert [(d.record.project, d.record.path) for d in docs] == [
+        ("myrepo", (external / "plan_dummy.md").resolve().as_posix())
+    ]
+
+
+def test_symlink_other_than_work_dir_is_not_followed(tmp_path: Path) -> None:
+    """辿るのは設定された queue の link だけ。ほかのディレクトリ symlink は今までどおり辿らない。"""
+    root = tmp_path / "dev"
+    repo = _make_repo(root, "myrepo")
+    (repo / "docs" / "local").mkdir(parents=True)
+    external = tmp_path / "external" / "other"
+    external.mkdir(parents=True)
+    (external / "plan_dummy.md").write_text(PLAN_BODY, encoding="utf-8")
+
+    if not _link_dir(repo / "docs" / "other", external):
+        pytest.skip("ディレクトリリンクを作成できない環境")
+
+    assert scan_root(root, _cfg(root, tmp_path)) == []
+
+
+def test_work_dir_symlink_to_its_own_project_does_not_loop(tmp_path: Path) -> None:
+    """queue の link が自分の祖先を指していても、走査が循環しない。"""
+    root = tmp_path / "dev"
+    repo = _make_repo(root, "myrepo")
+    (repo / "plan_top.md").write_text(PLAN_BODY, encoding="utf-8")
+
+    if not _link_dir(repo / "docs" / "local", repo):
+        pytest.skip("ディレクトリリンクを作成できない環境")
+
+    docs = scan_root(root, _cfg(root, tmp_path))
+
+    assert [d.record.path for d in docs] == [(repo / "plan_top.md").resolve().as_posix()]
+
+
 def test_no_alias_when_work_dir_is_inside_project(tmp_path: Path) -> None:
     """通常構成（docs/local が実体）では alias を作らない。"""
     root = tmp_path / "dev"

@@ -39,21 +39,26 @@ from docsweep.services.frontmatter import read_frontmatter
 _H1 = {"done": "完了", "in-progress": "実行中"}
 
 
-def _directory_link(link: Path, target: Path) -> None:
-    """queue を repo の外へ逃がす構成（実環境の docs/local と同じ junction を優先）。"""
-    if os.name == "nt":
+def _directory_link(link: Path, target: Path, kind: str) -> None:
+    """queue を repo の外へ逃がす構成。junction（実環境の docs/local と同じ）は Windows だけ。"""
+    if kind == "junction":
+        if os.name != "nt":
+            pytest.skip("junction は Windows だけ")
         result = subprocess.run(
             ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True, text=True
         )
-        if result.returncode == 0:
-            return
+        if result.returncode != 0:
+            pytest.skip("directory junction creation is unavailable")
+        return
     try:
         os.symlink(target, link, target_is_directory=True)
     except (OSError, NotImplementedError):
-        pytest.skip("directory junction / symlink creation is unavailable")
+        pytest.skip("directory symlink creation is unavailable")
 
 
-def _project(base: Path, *, linked_to: Path | None = None, git: bool = False) -> tuple[Path, Path]:
+def _project(
+    base: Path, *, linked_to: Path | None = None, link_kind: str = "junction", git: bool = False
+) -> tuple[Path, Path]:
     """provenance を有効にした project と、その作業 queue（docs/local）を返す。"""
     project = base / "repo"
     project.mkdir(parents=True)
@@ -76,7 +81,7 @@ def _project(base: Path, *, linked_to: Path | None = None, git: bool = False) ->
     else:
         (project / "docs").mkdir()
         linked_to.mkdir(parents=True)
-        _directory_link(queue, linked_to)
+        _directory_link(queue, linked_to, link_kind)
     return project, queue
 
 
@@ -261,18 +266,13 @@ def test_mv_and_undo_move_the_work_path(
     assert _check(moved, project, cfg)["warnings"] == []
 
 
-@pytest.mark.skipif(
-    os.name != "nt",
-    reason="sweep の scan は Windows の junction は辿るが、ディレクトリ symlink は辿らない（os.walk の既定）",
-)
-def test_linked_queue_keeps_the_repo_relative_route(tmp_path: Path) -> None:
-    """queue が junction で repo の外にあっても、台帳には repo 相対の経路を書く（実体パスを書かない）。
-
-    Windows の junction だけで確かめる。Linux / macOS の symlink では scan が queue の中へ
-    降りないので、sweep が文書を見つけられず、台帳の話の手前で止まる（2026-09-24 の CI で実測）。
-    """
+@pytest.mark.parametrize("link_kind", ["junction", "symlink"])
+def test_linked_queue_keeps_the_repo_relative_route(tmp_path: Path, link_kind: str) -> None:
+    """queue が junction / symlink で repo の外にあっても、台帳には repo 相対の経路を書く（実体パスを書かない）。"""
     workspace = tmp_path / "ws"
-    project, queue = _project(workspace, linked_to=tmp_path / "external" / "local")
+    project, queue = _project(
+        workspace, linked_to=tmp_path / "external" / "local", link_kind=link_kind
+    )
     cfg = _cfg(tmp_path, project, root=workspace)
     moved = _doc(queue / "plan_moved.md", state="done")
     refs = _track(moved, project, cfg)
