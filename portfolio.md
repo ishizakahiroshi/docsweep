@@ -1,4 +1,11 @@
 ---
+cover:
+  path: portfolio/overview-2026-09-28.jpg
+  alt: {ja: "docsweep の紹介動画", en: "docsweep overview video"}
+video:
+  provider: youtube
+  id: "UBuD0XyxwZQ"
+  durationSeconds: 20
 schemaVersion: 1
 color: "#7a9e2f"
 initials: "do"
