@@ -10,6 +10,7 @@ from ..config import Config
 from ..doc_vocab import heading_variants
 from ..engine import scan_records
 from ..models import FileRecord
+from ..scan import linked_work_queues
 from .embedding import EmbeddingUnavailable, encode
 from .similarity import cosine_similarity, jaccard_similarity
 
@@ -96,19 +97,22 @@ def _walk_archive(config: Config) -> list[tuple[Path, str]]:
     seen: set[str] = set()
     for root in config.roots:
         root = Path(root).resolve()
-        for ad_name in archive_dir_names:
-            for md_path in root.rglob(f"{ad_name}/**/*.md"):
-                key = md_path.resolve().as_posix()
-                if key in seen:
-                    continue
-                seen.add(key)
-                try:
-                    text = md_path.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-                if _is_dismissed(text):
-                    continue
-                out.append((md_path, text))
+        # rglob は queue のディレクトリ symlink の中へ降りない（junction は降りる）ので、
+        # その中は別に探す。同じ実体を 2 回拾わないのは下の seen が受け持つ。
+        for start in (root, *linked_work_queues(root, config)):
+            for ad_name in archive_dir_names:
+                for md_path in start.rglob(f"{ad_name}/**/*.md"):
+                    key = md_path.resolve().as_posix()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    try:
+                        text = md_path.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        continue
+                    if _is_dismissed(text):
+                        continue
+                    out.append((md_path, text))
     return out
 
 

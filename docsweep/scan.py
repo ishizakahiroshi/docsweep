@@ -280,6 +280,26 @@ def work_dir_aliases(root: Path, config: Config) -> dict[Path, Path]:
     return cached
 
 
+def linked_work_queues(root: Path, config: Config) -> list[Path]:
+    """``root`` の下にある、中へ降りてよい queue のディレクトリ symlink（字面のパス）を返す。
+
+    ``Path.rglob`` の ``**`` も os.walk と同じく既定で symlink の中へ降りない。archive を
+    ``rglob`` で探す処理（export・resurrect）は、この一覧の中を別に探す。判定は scan と同じ
+    ``_is_followable_queue_link``。junction は symlink 扱いされず既定で辿られるので含めない。
+    """
+    cache: dict[Path, Path] = {}
+    aliases = work_dir_aliases(root, config)
+    links: list[Path] = []
+    for project_root in _iter_project_roots(root, config):
+        try:
+            queue = resolve_work_dir(project_root, project_work_settings(project_root, config)[0])
+        except (OSError, ValueError):
+            continue
+        if os.path.islink(queue) and _is_followable_queue_link(queue, root, config, cache, aliases):
+            links.append(queue)
+    return links
+
+
 def _alias_project(aliases: dict[Path, Path] | None, start_dir: Path) -> Path | None:
     """``start_dir`` が work_dir の実体配下なら、宣言元プロジェクトを返す。"""
     if not aliases:

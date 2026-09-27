@@ -27,6 +27,7 @@ from .config import Config, config_for_project, project_work_settings, privacy_e
 from .engine import run_scan
 from .i18n import t
 from .okf import OkfProfile, bundled_okf_profile, load_okf_profile
+from .scan import linked_work_queues
 
 
 # docsweep 固定 type 集合と、それに当たる OKF の語。OKF v0.2 は type を登録制にしていないため、
@@ -172,19 +173,38 @@ def _gather_archive_files(config: Config) -> list[tuple[str, str, str, str]]:
         root = root.resolve()
         if not root.is_dir():
             continue
-        for adir_name in archive_names:
-            for ad in root.rglob(adir_name):
-                if not ad.is_dir():
-                    continue
-                # archive の親をプロジェクト境界とみなす（その親フォルダ名を project に）。
-                project = ad.parent.name
-                project_root = ad.parent
-                for md in ad.rglob("*.md"):
-                    try:
-                        rel = md.relative_to(project_root).as_posix()
-                    except ValueError:
-                        rel = md.name
-                    entries.append((f"{project}/{rel}", str(md), project, str(project_root)))
+        found = _archive_entries_under(root, archive_names)
+        # rglob は queue のディレクトリ symlink の中へ降りない（junction は降りる）ので、
+        # その中は別に探す。実体がスキャンルートの中にもあって既に拾った文書は重ねない。
+        seen = {Path(abs_path).resolve() for _entry, abs_path, _proj, _root in found}
+        for queue in linked_work_queues(root, config):
+            for item in _archive_entries_under(queue, archive_names):
+                key = Path(item[1]).resolve()
+                if key not in seen:
+                    seen.add(key)
+                    found.append(item)
+        entries.extend(found)
+    return entries
+
+
+def _archive_entries_under(
+    start: Path, archive_names: set[str]
+) -> list[tuple[str, str, str, str]]:
+    """``start`` の下の archive ディレクトリにある md を (zip_entry, abs_path, project, project_root) で返す。"""
+    entries: list[tuple[str, str, str, str]] = []
+    for adir_name in archive_names:
+        for ad in start.rglob(adir_name):
+            if not ad.is_dir():
+                continue
+            # archive の親をプロジェクト境界とみなす（その親フォルダ名を project に）。
+            project = ad.parent.name
+            project_root = ad.parent
+            for md in ad.rglob("*.md"):
+                try:
+                    rel = md.relative_to(project_root).as_posix()
+                except ValueError:
+                    rel = md.name
+                entries.append((f"{project}/{rel}", str(md), project, str(project_root)))
     return entries
 
 
