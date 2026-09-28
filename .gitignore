@@ -114,3 +114,23 @@ docs/local/
 # === obsidian-link: managed ===
 /docs/obsidian/
 # === /obsidian-link: managed ===
+
+# Local promo video sources and renders
+/brag-output/
+
+# === project-init 推奨の追記（2026-09-28・templates/gitignore から不足分のみ） ===
+*.swo
+.codex-tmp/
+.wrangler/
+.vercel/
+.netlify/
+.firebase/
+.turbo/
+.parcel-cache/
+.terraform/
+.serverless/
+**/supabase/.temp/
+!.env.example
+*.local.md
+*.local.json
+scripts/local/
