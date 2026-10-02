@@ -32,6 +32,10 @@ if ! "$PY" -c "import pytest" 2>/dev/null; then
     exit 0
 fi
 
+# git が hook に渡す GIT_DIR 等を引き継ぐと、テストが一時リポジトリではなく
+# この作業コピーの git を操作してしまう（index・作業ツリーを書き換える）。外してから走らせる。
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+
 echo "[pre-push] pytest -q を実行中（push 前検証）..."
 if ! "$PY" -m pytest -q; then
     echo ""
