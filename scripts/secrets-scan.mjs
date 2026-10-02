@@ -238,14 +238,14 @@ function getFilesByMode(mode) {
   try {
     switch (mode) {
       case 'staged':
-        return execSync('git diff --cached --name-only --diff-filter=ACM', { encoding: 'utf8' })
-          .trim().split('\n').filter(Boolean);
+        return execSync('git diff --cached --name-only -z --diff-filter=ACM', { encoding: 'utf8' })
+          .split('\0').filter(Boolean);
       case 'files-from-diff':
-        return execSync('git diff --name-only --diff-filter=ACM HEAD', { encoding: 'utf8' })
-          .trim().split('\n').filter(Boolean);
+        return execSync('git diff --name-only -z --diff-filter=ACM HEAD', { encoding: 'utf8' })
+          .split('\0').filter(Boolean);
       case 'all-tracked':
-        return execSync('git ls-files', { encoding: 'utf8' })
-          .trim().split('\n').filter(Boolean);
+        return execSync('git ls-files -z', { encoding: 'utf8' })
+          .split('\0').filter(Boolean);
       case 'packaged':
         console.error('ERROR: --packaged mode not yet implemented (TODO: read npm pack output for layer 4)');
         process.exit(2);
