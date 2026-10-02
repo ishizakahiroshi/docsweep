@@ -16,8 +16,8 @@ REPO="$SCRIPT_DIR"
 # ▼ 既定のスキャンルート（自分の開発フォルダに書き換えてください）。
 ROOT="${1:-$HOME/dev}"
 PORT="${PORT:-8765}"
-# アクセストークンを固定（URL が毎回同じになる）。気になるなら好きな文字列に変更。
-TOKEN="${TOKEN:-docsweep}"
+# アクセストークンは起動のたびに乱数で生成される（固定値は使わない）。
+# 固定したい場合は環境変数 DOCSWEEP_TOKEN に自分だけが知る値を設定する。
 
 PY="$(command -v python3 || command -v python || true)"
 if [ -z "$PY" ]; then
@@ -29,10 +29,9 @@ fi
 cd "$REPO"
 echo
 echo " docsweep Web UI を起動します"
-echo " ブラウザで開くアドレス: http://127.0.0.1:$PORT/?token=$TOKEN"
-echo " （ブラウザが自動で開きます / 停止は Ctrl+C）"
+echo " （ブラウザが自動で開きます / 停止は Ctrl+C。アドレスは下に表示されます）"
 echo
-"$PY" -m docsweep serve --root "$ROOT" --port "$PORT" --token "$TOKEN"
+"$PY" -m docsweep serve --root "$ROOT" --port "$PORT"
 
 echo
 read -r -p "終了しました。Enter で閉じます… " _

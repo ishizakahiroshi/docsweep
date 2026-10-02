@@ -20,8 +20,8 @@ ROOT="${1:-$HOME/dev}"
 # 起動ポート（使用中なら変更）。
 PORT="${PORT:-8765}"
 
-# アクセストークンを固定（URL が毎回同じになる）。気になるなら好きな文字列に変更。
-TOKEN="${TOKEN:-docsweep}"
+# アクセストークンは起動のたびに乱数で生成される（固定値は使わない）。
+# 固定したい場合は環境変数 DOCSWEEP_TOKEN に自分だけが知る値を設定する。
 
 # python3 を優先、無ければ python。
 PY="$(command -v python3 || command -v python || true)"
@@ -33,7 +33,6 @@ fi
 cd "$REPO"
 echo
 echo " docsweep Web UI を起動します"
-echo " ブラウザで開くアドレス: http://127.0.0.1:$PORT/?token=$TOKEN"
-echo " （ブラウザが自動で開きます / 停止は Ctrl+C）"
+echo " （ブラウザが自動で開きます / 停止は Ctrl+C。アドレスは下に表示されます）"
 echo
-exec "$PY" -m docsweep serve --root "$ROOT" --port "$PORT" --token "$TOKEN"
+exec "$PY" -m docsweep serve --root "$ROOT" --port "$PORT"
