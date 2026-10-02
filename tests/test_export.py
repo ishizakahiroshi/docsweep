@@ -143,6 +143,23 @@ def test_export_include_archive_picks_up_archive_files(
     assert manifest["include_archive"] is True
 
 
+def test_export_include_archive_excludes_private_queue_archive(
+    workspace: Path, tmp_path: Path
+):
+    """既定の private queue 配下の archive は --include-archive でも同梱されない。"""
+    _write(workspace / "demo" / ".docsweep.yaml", "work_policy: private\n")
+    _write(
+        workspace / "demo" / "docs" / "local" / "archive" / "plan" / "plan_private_old.md",
+        "# [完了] private old plan\n",
+    )
+    out = tmp_path / "out.zip"
+    run_export(_cfg(workspace), out=out, include_archive=True)
+    with zipfile.ZipFile(out) as zf:
+        names = zf.namelist()
+    assert not any("plan_private_old.md" in n for n in names)
+    assert any("plan_old.md" in n for n in names)
+
+
 def test_export_status_vocabulary_converts_to_okf(workspace: Path, tmp_path: Path):
     """manifest の files[].status が OKF 互換語彙に丸められている。"""
     out = tmp_path / "out.zip"

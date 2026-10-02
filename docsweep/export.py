@@ -390,7 +390,21 @@ def collect_export(
             if not allow_sensitive:
                 archive_path = Path(abs_path)
                 try:
-                    if is_private_path(archive_path, Path(project_root)):
+                    # archive の親は実際のプロジェクト境界とは限らない（例: private queue の
+                    # <repo>/docs/local/archive では親が queue 自身）。親側の祖先も候補に
+                    # して、どれかの private queue の下なら除外する。
+                    candidates = [Path(project_root), *Path(project_root).parents]
+                    roots = [r.resolve() for r in config.roots]
+
+                    def _within_scan_root(p: Path) -> bool:
+                        rp = p.resolve()
+                        return any(rp == r or r in rp.parents for r in roots)
+
+                    if any(
+                        is_private_path(archive_path, cand)
+                        for cand in candidates
+                        if _within_scan_root(cand)
+                    ):
                         excluded_private += 1
                         continue
                 except OSError:
