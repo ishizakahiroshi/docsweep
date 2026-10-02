@@ -307,6 +307,12 @@ def _normalize_export_text(
     return "---" + newline + inner + "---" + newline + text[match.end() :], True
 
 
+def _within_roots(p: Path, roots: list[Path]) -> bool:
+    """p がスキャンルート（解決済み）のどれかの配下、またはそのもの自身か。"""
+    rp = p.resolve()
+    return any(rp == r or r in rp.parents for r in roots)
+
+
 def collect_export(
     config: Config,
     *,
@@ -384,6 +390,7 @@ def collect_export(
         pairs.append((zip_entry, rec.path))
 
     if include_archive:
+        scan_roots = [r.resolve() for r in config.roots]
         for zip_entry, abs_path, proj, project_root in _gather_archive_files(config):
             if project and proj != project:
                 continue
@@ -394,16 +401,10 @@ def collect_export(
                     # <repo>/docs/local/archive では親が queue 自身）。親側の祖先も候補に
                     # して、どれかの private queue の下なら除外する。
                     candidates = [Path(project_root), *Path(project_root).parents]
-                    roots = [r.resolve() for r in config.roots]
-
-                    def _within_scan_root(p: Path) -> bool:
-                        rp = p.resolve()
-                        return any(rp == r or r in rp.parents for r in roots)
-
                     if any(
                         is_private_path(archive_path, cand)
                         for cand in candidates
-                        if _within_scan_root(cand)
+                        if _within_roots(cand, scan_roots)
                     ):
                         excluded_private += 1
                         continue
