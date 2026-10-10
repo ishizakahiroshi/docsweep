@@ -90,7 +90,7 @@
     "PATH に `docsweep` コマンドが無くても、この `python -m docsweep` 形式を優先すること。"
   ],
   "inject.guidance.continue": [
-    "ユーザーが「続きやって」「今日の続き」と言ったら、`brief` の `today_pick.path` を対象にする。",
+    "ユーザーが「続きやって」「今日の続き」と言ったら、プロジェクトの指示ファイル（`CLAUDE.md` / `AGENTS.md` 等）が再開の入口（看板・マスター計画など）を定めていればそちらを優先し、無ければ `brief` の `today_pick.path` を対象にする。",
     "複数プロジェクトを横断したい時は `{cross_cmd}` か MCP `cross()` を使う。"
   ],
   "inject.guidance.routes_heading": "### 経路選択（全 AI 対応）",

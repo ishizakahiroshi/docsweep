@@ -94,7 +94,7 @@
     "cwd project. Prefer this `python -m docsweep` form even if no `docsweep` command is on PATH."
   ],
   "inject.guidance.continue": [
-    "When the user says \"continue\" / \"pick up today's work\", target `today_pick.path` from `brief`.",
+    "When the user says \"continue\" / \"pick up today's work\", follow the resume entry point (board, master plan, etc.) if the project's instruction file (`CLAUDE.md` / `AGENTS.md`, etc.) defines one; otherwise target `today_pick.path` from `brief`.",
     "To work across multiple projects, use `{cross_cmd}` or MCP `cross()`."
   ],
   "inject.guidance.routes_heading": "### Choosing a route (all AI tools)",
