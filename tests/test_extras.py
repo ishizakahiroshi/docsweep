@@ -353,6 +353,22 @@ def test_generate_guidance_closeout_contract_ja_en():
             assert fragment in text, fragment
 
 
+def test_generate_guidance_continue_prefers_project_entry_ja_en():
+    """「続きやって」は、プロジェクトの指示ファイルが再開の入口を定めていればそれを優先する。
+
+    brief の today_pick だけを対象にすると、看板やマスター計画で次の 1 個を決めているプロジェクトでは
+    指示ファイルと食い違い、AI がどちらで再開するか割れる（2026-10-10 実測）。
+    """
+    from docsweep.inject import generate_guidance_block
+
+    ja = generate_guidance_block("ja")
+    en = generate_guidance_block("en")
+    for fragment in ("再開の入口", "そちらを優先", "無ければ `brief` の `today_pick.path`"):
+        assert fragment in ja, fragment
+    for fragment in ("resume entry point", "otherwise target `today_pick.path` from `brief`"):
+        assert fragment in en, fragment
+
+
 def test_generate_guidance_provenance_contract_ja_en():
     """JA/EN guidance はrepo委譲とdocsweep台帳の境界を同じ意味で伝える。"""
     from docsweep.inject import generate_guidance_block
@@ -639,7 +655,7 @@ def test_inject_label_block_mentions_delegated_plan_guidance(tmp_path, manifest)
     assert "docsweep_delegation: external" in text
     assert "--delegate" in text
     assert "1〜4 ファイル" in text
-    assert GUIDANCE_VERSION == "13"
+    assert GUIDANCE_VERSION == "14"
 
 
 def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypatch):

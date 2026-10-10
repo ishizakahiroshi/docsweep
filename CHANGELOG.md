@@ -36,6 +36,9 @@
 
 ### Changed
 
+- グローバル導線（guidance）の「続きやって」を、プロジェクトの指示ファイル（`CLAUDE.md` / `AGENTS.md` 等）が
+  再開の入口を定めていればそちらを優先し、無ければ `brief` の `today_pick.path` を使う、に改めた
+  （`GUIDANCE_VERSION` 14）。看板で次の 1 個を決めているプロジェクトで、指示ファイルと食い違っていたため。
 - archive へ移送したとき、同じ project の queue にある他の文書の `docsweep_parent`・パス形式の
   `related`・本文の Markdown の相対リンク（`[text](plan_x.md)` など）を新しいパスへ書き換えるようにした。
   移した文書自身の本文の相対リンクも、移した後の場所から同じ先を指すように直す（bare name の `related`・
