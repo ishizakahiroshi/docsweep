@@ -42,7 +42,7 @@ const MAX_FILE_SIZE = 1024 * 1024;
 // メールアドレスは構造 regex で全件検知し、「公開する前提のアドレス」だけをここで通す。
 // 非公開アドレスそのものは絶対にここへ書かない（allowlist 方式なら書かずに防げる）。
 const ALLOWED_EMAILS = [
-  'ishizakahiroshi.dev@gmail.com', // 公開コミット名義・package manifest 用
+  'ishizakahiroshi.dev@gmail.com', // 公開コミット名義・package manifest 用 doxguard: allow ishizakahiroshi.dev@gmail.com
 ];
 const ALLOWED_EMAIL_DOMAINS = [
   'users.noreply.github.com',  // GitHub の noreply
@@ -53,6 +53,20 @@ const ALLOWED_EMAIL_DOMAINS = [
   'example.invalid',           // テスト fixture 用（RFC 2606 予約・名前解決されない）
   // ここに各プロジェクトの公開窓口ドメインを追記する（例: 'manabi-map.app'）
 ];
+
+// 一致した値そのものはレポートへ出さない。
+// このレポートは CI のログと端末のスクロールバックに残り、どちらも保持される。
+// 公開リポの Actions ログは誰でも読めるので、検知した秘密をそこへ書き出しては
+// 走査器自身が漏洩経路になる。突き合わせに要る情報（長さ・先頭末尾 1 文字）だけ残し、
+// 中身は file:line を開いて確認させる。
+// Do not print the matched value. This report lands in CI logs and terminal scrollback,
+// both retained and public for public repos; writing a detected secret there makes the
+// scanner its own leak path.
+function maskMatch(matched) {
+  const s = String(matched);
+  if (s.length <= 2) return `<${s.length} chars, masked>`;
+  return `${s[0]}...${s[s.length - 1]} <${s.length} chars, masked>`;
+}
 
 function isAllowedEmail(matched) {
   const email = matched.toLowerCase();
@@ -66,8 +80,8 @@ function isAllowedEmail(matched) {
 // 衝突して誤検知だけを生む場合にここへ書く。括弧付きフル名（例: 'ServiceName(CompanyName)'）と
 // servers.csv のホスト名は引き続き検知されるため、会社との紐付き漏洩は別途捕捉される。
 const ALLOWED_PUBLIC_NAMES = [
-  'Nextcloud', // 公開 OSS 製品名
-  'Portal',    // 一般英単語（社内ポータル台帳名の bare variant）
+  'Nextcloud', // 公開 OSS 製品名 doxguard: allow Nextcloud
+  'Portal',    // 一般英単語（社内ポータル台帳名の bare variant） doxguard: allow Portal
 ];
 
 const BINARY_EXTS = new Set([
@@ -265,8 +279,8 @@ function getFilesByMode(mode) {
 // === Inline exempt directive ===
 // Lines containing `secrets-scan: allow` are exempted.
 //   `secrets-scan: allow`            -> allow all hits on this line
-//   `secrets-scan: allow Nextcloud`  -> allow only matches whose needle
-//                                       contains (case-insensitive) "Nextcloud"
+//   `secrets-scan: allow Example`    -> allow only matches whose needle
+//                                       contains (case-insensitive) "Example"
 // Multiple directives per line are OR'd.
 function isAllowedByDirective(line, matchedNeedle) {
   const re = /secrets-scan:\s*allow(?:\s+([^\s\->]+))?/gi;
@@ -305,9 +319,9 @@ function isSkipFilename(path) {
 
 // === Short-needle boundary rule ===
 // 2 文字以下の watchlist 名は、そのままの部分文字列一致だと乱数めいた文字列に
-// 無数に当たる（実例: YouTube の動画 ID `5vudjnGWFKc` の中の `WF` が kb のアプリ名に
+// 無数に当たる（実例: YouTube の動画 ID の途中にある 2 文字が kb のアプリ名に
 // 一致して push がブロックされた・2026-08-30）。短い needle は「前後が英数字でない」
-// ときだけ一致させる。実際の言及（`WF の設定` / `（WF）` / 行頭・行末）は引き続き当たり、
+// ときだけ一致させる。実際の言及（`<名前> の設定` / `（<名前>）` / 行頭・行末）は引き続き当たり、
 // 検知の網は落ちない。3 文字以上は従来どおり素の部分文字列一致。
 const SHORT_NEEDLE_MAX = 2;
 const ALNUM = /[A-Za-z0-9]/;
@@ -393,9 +407,14 @@ function formatHitsText(hits, mode) {
   lines.push(`ブロック: スキャン対象に ${hits.length} 件の混入を検知`);
   lines.push('================================================================');
   lines.push('');
+  lines.push('Matched values are masked on purpose: this report is written to CI logs and');
+  lines.push('terminal scrollback, both of which are retained. Open the cited file:line yourself.');
+  lines.push('一致した値は意図的に伏せている。本レポートは CI ログと端末のスクロールバックに残るため。');
+  lines.push('中身は引用された file:line を自分で開いて確認すること。');
+  lines.push('');
   for (const h of hits) {
     lines.push(`  ${h.file}:${h.lineNumber}`);
-    lines.push(`    matched : '${h.matched}'`);
+    lines.push(`    matched : ${maskMatch(h.matched)}`);
     lines.push(`    source  : ${h.source}`);
     lines.push(`    suggest : ${h.suggestion}`);
     lines.push('');
