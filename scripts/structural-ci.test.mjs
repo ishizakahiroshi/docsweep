@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { symlinkSync, unlinkSync, mkdtempSync, readFileSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { statSync, symlinkSync, unlinkSync, mkdtempSync, readFileSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -144,6 +144,9 @@ test('exact public runtime provisioning preserves failure and rejects missing en
   try {assert.equal(b.ready,false);assert.equal(b.failure.error.code,'PUBLIC_RUNTIME_SETUP');} finally {rmSync(b.root,{recursive:true,force:true});}
   assert.equal(failureReason({stderr:'doxguard: GLIBC_2.39 not found'}),'native-loader');
 });
+// Synthetic Linux mode is explicit: Windows chmod does not emulate POSIX
+// execute bits. Actual production calls always use the default real statSync.
+const syntheticExecutableStat = path => ({isFile:()=>statSync(path).isFile(),mode:0o755});
 function syntheticRuntime() {
   const root=mkdtempSync(join(tmpdir(),'runtime-unit-'));
   const a=join(root,'node_modules','doxguard');
@@ -159,12 +162,12 @@ function syntheticRuntime() {
 test('runtime identity matches exact root/platform relationship and both hashes',()=>{
   const f=syntheticRuntime();
   try {
-    const identity=verifyRuntime(f.root,'x64',f.expected);
+    const identity=verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat);
     assert.equal(identity.receipt.canonical_match,true);
     assert.equal(identity.receipt.payload_sha256,f.expected.payload);
     assert.equal(identity.receipt.launcher_sha256,f.expected.launcher);
-    assert.throws(()=>verifyRuntime(f.root)); // synthetic bytes are never accepted as public release
-    assert.throws(()=>verifyRuntime(f.root,'arm64',f.expected));
+    assert.throws(()=>verifyRuntime(f.root,'x64',canonicalRuntime,syntheticExecutableStat), /canonical hash mismatch/); // synthetic bytes are never accepted as public release
+    assert.throws(()=>verifyRuntime(f.root,'arm64',f.expected,syntheticExecutableStat));
     assert.equal(canonicalRuntime.payload,'5458f08f85753cf6d33ad869063af16ca8f55a800bb9d17a78c4b6adc0651279');
   } finally {rmSync(f.root,{recursive:true,force:true});}
 });
@@ -172,10 +175,10 @@ test('runtime rejects wrong optional pin, bin, module type and platform metadata
   const f=syntheticRuntime();
   try {
     for(const change of [{version:'0.2.1'},{name:'other'},{type:'commonjs'},{bin:{doxguard:'other.js'}},{optionalDependencies:{}},{optionalDependencies:{'@ishizakahiroshi/doxguard-linux-x64':'^0.2.0'}}]) {
-      f.reset();writeFileSync(join(f.a,'package.json'),JSON.stringify({...f.rootMeta,...change}));assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+      f.reset();writeFileSync(join(f.a,'package.json'),JSON.stringify({...f.rootMeta,...change}));assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));
     }
     for(const change of [{name:'other'},{version:'0.2.1'},{bin:{doxguard:'elsewhere'}},{os:['darwin']},{os:['linux','darwin']},{cpu:['arm64']},{cpu:['x64','arm64']}]) {
-      f.reset();writeFileSync(join(f.b,'package.json'),JSON.stringify({...f.platformMeta,...change}));assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+      f.reset();writeFileSync(join(f.b,'package.json'),JSON.stringify({...f.platformMeta,...change}));assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));
     }
   } finally {rmSync(f.root,{recursive:true,force:true});}
 });
@@ -183,16 +186,19 @@ test('runtime rejects either altered payload and nonexecutable native before inv
   const f=syntheticRuntime();
   try {
     for(const path of [join(f.a,'bin','doxguard.js'),join(f.b,'bin','doxguard')]) {
-      f.reset();writeFileSync(path,'different-bytes');assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+      f.reset();writeFileSync(path,'different-bytes');assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));
     }
-    f.reset();chmodSync(join(f.b,'bin','doxguard'),0o644);assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+    f.reset();
+    assert.doesNotThrow(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));
+    const nonExecutableStat=path=>({...syntheticExecutableStat(path),mode:0o644});
+    assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,nonExecutableStat), /entrypoint mismatch/);
   } finally {rmSync(f.root,{recursive:true,force:true});}
 });
 test('runtime rejects nested platform package resolution despite matching outer package',()=>{
   const f=syntheticRuntime();
   try {
     const nested=join(f.a,'node_modules','@ishizakahiroshi','doxguard-linux-x64');mkdirSync(nested,{recursive:true});writeFileSync(join(nested,'package.json'),JSON.stringify(f.platformMeta));
-    assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+    assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));
   } finally {rmSync(f.root,{recursive:true,force:true});}
 });
 test('preflight never invokes unverified synthetic runtime or leaks paths',()=>{
@@ -208,7 +214,7 @@ test('runtime rejects symlinked launcher and payload despite matching bytes',()=
   try {
     for(const [path,bytes] of [[join(f.a,'bin','doxguard.js'),'synthetic-launcher'],[join(f.b,'bin','doxguard'),'synthetic-native']]) {
       const target=join(f.root,'redirected');writeFileSync(target,bytes);chmodSync(target,0o755);unlinkSync(path);symlinkSync(target,path);
-      assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));unlinkSync(path);f.reset();
+      assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));unlinkSync(path);f.reset();
     }
   } finally {rmSync(f.root,{recursive:true,force:true});}
 });

@@ -90,7 +90,7 @@ export const canonicalRuntime = Object.freeze({
   // https://github.com/ishizakahiroshi/doxguard/blob/v0.2.0/bin/doxguard.js
   launcher: '5374a0b83149b3ca78ad897c2475c6dbbbb44b55c4c6671f762c4e2bd8312b28',
 });
-export function verifyRuntime(root, arch = process.arch, expected = canonicalRuntime) {
+export function verifyRuntime(root, arch = process.arch, expected = canonicalRuntime, fileStat = statSync) {
   if (arch !== expected.arch) throw new Error('unsupported canonical architecture');
   const rootDir = join(root,'node_modules','doxguard');
   const platformName = '@ishizakahiroshi/doxguard-linux-' + arch;
@@ -106,7 +106,7 @@ export function verifyRuntime(root, arch = process.arch, expected = canonicalRun
   for (const path of [rootDir, platformDir, launcher, binary, join(rootDir,'package.json'), join(platformDir,'package.json')]) {
     if (realpathSync(path) !== resolve(path)) throw new Error('redirected runtime path');
   }
-  if (!statSync(launcher).isFile() || !statSync(binary).isFile() || !(statSync(binary).mode & 0o111)) throw new Error('entrypoint mismatch');
+  if (!fileStat(launcher).isFile() || !fileStat(binary).isFile() || !(fileStat(binary).mode & 0o111)) throw new Error('entrypoint mismatch');
   // Resolve exactly as the canonical launcher does, excluding a nested or
   // redirected platform package with otherwise plausible outer metadata.
   if (realpathSync(createRequire(launcher).resolve(platformName + '/package.json')) !== realpathSync(join(platformDir,'package.json'))) throw new Error('platform resolution mismatch');
