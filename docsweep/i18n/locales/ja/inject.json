@@ -56,6 +56,7 @@
     "- `manager: repo`: `delegate_skill` の手順だけに従い、汎用docsweep台帳へ二重記録しない。",
     "- `manager: docsweep`: `docsweep new` に `--ai-*` metadataを付け、変更前にC実行を",
     "  `{start_cmd}` で開始する（`role` は `implementation` / `review` / `verification`）。",
+    "  `--model-id` / `--model-display` / `--model-source` には、いま動いている自分のモデルの値を毎回渡す。環境変数の固定値に任せない。",
     "  終了時は `{finish_cmd}` で閉じ、証跡がある場合は `--evidence-ref` を繰り返し指定する。",
     "  完了報告前に `{check_cmd}` を実行し、MDと台帳の不一致を解消する。",
     "- 設定なし・無効: 勝手に有効化や設定変更をせず、`provenance check` の結果を報告する。",

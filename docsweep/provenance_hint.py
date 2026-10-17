@@ -26,8 +26,21 @@ def warn_if_unresolved(metadata, *, config, command: str, stream=None) -> bool:
     enabled = bool(getattr(config, "provenance_enabled", False)) or (
         getattr(config, "provenance_manager", None) == "repo"
     )
-    if not enabled or not metadata.is_unresolved():
+    if not enabled:
         return False
+    out = stream or sys.stderr
+    if not metadata.is_unresolved():
+        # AI の種類は取れているのにモデルだけ既定値のまま、も黙らせない。
+        if not metadata.is_model_unresolved():
+            return False
+        model_flags = {
+            "new": "--ai-model-id / --ai-model-display / --ai-model-source",
+            "provenance start": "--model-id / --model-display / --model-source",
+            "provenance init": "--model-id / --model-display / --model-source",
+        }.get(command) or t("provenance_hint.flags_fallback")
+        message = t("provenance_hint.model_unknown", command=command, flags=model_flags)
+        print(t("common.warning", message=message), file=out)
+        return True
 
     flags = {
         "new": "--ai-agent / --ai-runtime / --ai-provider / --ai-model-id / "
@@ -36,7 +49,6 @@ def warn_if_unresolved(metadata, *, config, command: str, stream=None) -> bool:
                             "--model-display / --model-source",
     }.get(command) or t("provenance_hint.flags_fallback")
     envs = " / ".join(ENV_FIELDS[name] for name in ("agent", "runtime", "provider"))
-    out = stream or sys.stderr
     message = t("provenance_hint.author_unknown", command=command, flags=flags, envs=envs)
     print(t("common.warning", message=message), file=out)
     return True

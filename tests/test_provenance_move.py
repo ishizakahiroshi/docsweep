@@ -111,7 +111,7 @@ def _doc(path: Path, *, state: str) -> Path:
         "\n"
         "| C | 種別 | 内容 | 備考/注意点 |\n"
         "|---|---|---|---|\n"
-        "| C1 | 実装 | 合成データ | - |\n",
+        "| C1 | planned | 合成データ | - |\n",
         encoding="utf-8",
         newline="",
     )

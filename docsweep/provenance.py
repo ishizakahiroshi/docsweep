@@ -173,6 +173,15 @@ class AIMetadata:
         """
         return self.agent == "unknown" and self.model_source == "unavailable"
 
+    def is_model_unresolved(self) -> bool:
+        """AI の種類は分かっていても、実行モデルが ID・表示名とも既定値のままか。
+
+        環境変数で agent / provider だけを固定している運用では ``is_unresolved`` が
+        偽になり、モデルが ``unknown`` のまま黙って記録される。表示名だけでも取れて
+        いれば記録として成り立つので、両方とも既定値のときだけ真にする。
+        """
+        return self.model_id == "unknown" and self.model_display == "unknown"
+
     @classmethod
     def unknown(cls, *, actor_key: str | None = None) -> AIMetadata:
         # Backfill path: the caller is filling in a document written earlier, so
@@ -643,6 +652,46 @@ def _context_execution_refs(text: str) -> set[str]:
     return refs
 
 
+# 種別列の語彙は planned / done の 2 値。旧表記の plan / fix は同義として読む。
+_CONTEXT_STATUS_WORDS = frozenset({"planned", "done", "plan", "fix"})
+_STATUS_COLUMNS = frozenset(column_variants("status"))
+
+
+def _nonstandard_context_statuses(text: str) -> list[tuple[str, str]]:
+    """context配分 の種別列で、語彙外の値が入っている (C, 値) の一覧。
+
+    行を書き換える AI が ``in-progress`` や「実装・検証済み」のような途中経過を種別へ
+    書くと、表を読む道具はその C を未着手にも完了にも数えず黙って落とす。途中経過は
+    備考列に書く決まりなので、check で気づけるようにする。
+    """
+    lines = text.splitlines()
+    section, _lang = _find_context_section(lines)
+    if section is None:
+        return []
+    end = next((i for i in range(section + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    header = next((i for i in range(section + 1, end) if lines[i].lstrip().startswith("|")), None)
+    if header is None:
+        return []
+    header_cells = [part.strip() for part in lines[header].strip().strip("|").split("|")]
+    status_col = next(
+        (i for i, value in enumerate(header_cells) if value in _STATUS_COLUMNS), None
+    )
+    if status_col is None:
+        return []
+    found: list[tuple[str, str]] = []
+    for line in lines[header + 2:end]:
+        # 同じ節に別の表（決定事項の表など）が続くことがあるので、最初の表の終わりで止める。
+        if not line.lstrip().startswith("|"):
+            break
+        cells = [part.strip() for part in line.strip().strip("|").split("|")]
+        if len(cells) <= status_col:
+            continue
+        value = cells[status_col]
+        if value.strip("*` ").lower() not in _CONTEXT_STATUS_WORDS:
+            found.append((cells[0], value))
+    return found
+
+
 _CORRECTION_NOTE = "ai-metadata-corrected"
 
 
@@ -940,6 +989,15 @@ def start_execution(
         "work_id": work_id,
         "contexts": normalized,
         "role": role,
+        # 何のモデルとして台帳に残ったかを呼び出し側へ返す。返さないと、環境変数の
+        # 固定値が実際のモデルと食い違っていても、実行した AI は気づけない。
+        "recorded": {
+            "agent": metadata.agent,
+            "provider": metadata.provider,
+            "model_id": metadata.model_id,
+            "model_display": metadata.model_display,
+            "model_source": metadata.model_source,
+        },
         "ledger": str(config.provenance_ledger),
     }
 
@@ -1087,6 +1145,15 @@ def check_document(
             warnings.append(t("provenance.work_path_changed", ref=ref))
     text = path.open("r", encoding="utf-8", newline="").read()
     table_refs = _context_execution_refs(text)
+    for context, value in _nonstandard_context_statuses(text):
+        warnings.append(
+            t(
+                "provenance.context_status_nonstandard",
+                section=_CONTEXT_SECTION,
+                context=context,
+                value=value,
+            )
+        )
     for ref in table_refs - set(refs):
         errors.append(
             t(

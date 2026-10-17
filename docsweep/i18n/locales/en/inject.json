@@ -60,6 +60,7 @@
     "- `manager: repo`: follow only its `delegate_skill`; do not also write to the generic docsweep ledger.",
     "- `manager: docsweep`: pass the `--ai-*` metadata options to `docsweep new`, then start the C execution before making changes",
     "  with `{start_cmd}` (`role` is `implementation`, `review`, or `verification`).",
+    "  Pass the currently running model's values to `--model-id` / `--model-display` / `--model-source` every time; do not rely on fixed environment variables.",
     "  Close it with `{finish_cmd}`, adding repeatable `--evidence-ref` options when evidence exists.",
     "  Before claiming completion, run `{check_cmd}` and resolve any MD/ledger mismatch.",
     "- Missing/disabled configuration: do not enable or rewrite it automatically; report the result from `provenance check`.",

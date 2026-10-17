@@ -67,7 +67,7 @@ def guidance_import_path() -> str:
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
-GUIDANCE_VERSION = "14"
+GUIDANCE_VERSION = "15"
 
 
 def _shell_command(parts: list[str]) -> str:
@@ -279,6 +279,14 @@ def generate_provenance_block(lang: str = "ja") -> str:
         "<C>",
         "--role",
         "<role>",
+        # モデルは毎回引数で渡させる。環境変数の固定値に任せると、途中でモデルを
+        # 切り替えたセッションでも起動時の設定値のまま記録される（2026-09-29 実測）。
+        "--model-id",
+        "<model-id>",
+        "--model-display",
+        "<model-display>",
+        "--model-source",
+        "<model-source>",
         "--json",
     )
     finish_cmd = docsweep_command(

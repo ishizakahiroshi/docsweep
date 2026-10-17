@@ -413,6 +413,8 @@ def test_generate_guidance_provenance_contract_ja_en():
                 "`manager: docsweep`",
                 "`--ai-*`",
                 "provenance start",
+                "--model-id",
+                "環境変数の固定値に任せない",
                 "provenance finish",
                 "--evidence-ref",
                 "provenance check",
@@ -433,6 +435,8 @@ def test_generate_guidance_provenance_contract_ja_en():
                 "`manager: docsweep`",
                 "`--ai-*`",
                 "provenance start",
+                "--model-id",
+                "do not rely on fixed environment variables",
                 "provenance finish",
                 "--evidence-ref",
                 "provenance check",
@@ -680,7 +684,7 @@ def test_inject_label_block_mentions_delegated_plan_guidance(tmp_path, manifest)
     assert "docsweep_delegation: external" in text
     assert "--delegate" in text
     assert "1〜4 ファイル" in text
-    assert GUIDANCE_VERSION == "14"
+    assert GUIDANCE_VERSION == "15"
 
 
 def test_inject_global_guidance_includes_due_rules(tmp_path, manifest, monkeypatch):

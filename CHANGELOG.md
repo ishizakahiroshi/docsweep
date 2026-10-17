@@ -7,6 +7,13 @@
 
 ### Added
 
+- `provenance check` が、`## context配分` 表の種別列に `planned` / `done`（旧表記の `plan` / `fix`）
+  以外の値があると C ごとに警告するようにした。`in-progress` や途中経過の文章を種別へ書くと、
+  表を読む道具がその C を未着手にも完了にも数えず黙って落とすため。合否は変えない。
+- `provenance start` が、台帳に記録した AI とモデル（`recorded`）を JSON で返すようにした。AI の種類は
+  分かっていてもモデルの ID と表示名が既定値のままなら警告する。グローバル導線は `--model-id` /
+  `--model-display` / `--model-source` を毎回渡すよう案内する（`GUIDANCE_VERSION` 15）。環境変数の
+  固定値に任せると、途中でモデルを切り替えたセッションでも起動時の値のまま記録されるため。
 - Git release tracking を opt-in で追加。`target_release` と正確な `released_in` を分離し、
   `release close` と patch / minor / major bucket archive を提供する。
 - 複数リポジトリを本文非収集で棚卸しする workspace migration manifest と、リポジトリ単位の

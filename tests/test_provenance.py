@@ -83,6 +83,14 @@ def test_initialize_start_finish_and_check(tmp_path: Path):
     assert started["execution_id"] in body
     assert "implementation: openai / unknown / unknown" in body
     assert _context_execution_refs(body) == {started["execution_id"]}
+    # 何のモデルとして台帳に残ったかを返す（呼び出し側が食い違いに気づけるように）。
+    assert started["recorded"] == {
+        "agent": "codex",
+        "provider": "openai",
+        "model_id": "unknown",
+        "model_display": "GPT-5",
+        "model_source": "orchestrator",
+    }
 
     finished = finish_execution(
         started["execution_id"],
@@ -423,6 +431,32 @@ def test_guard_warns_only_when_provenance_is_enabled(tmp_path: Path, capsys) -> 
     assert capsys.readouterr().err == ""
 
 
+def test_guard_warns_when_only_the_model_is_unresolved(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """agent / provider だけ環境変数で固定し、モデルを渡さなかったときも黙らない。"""
+    from docsweep.provenance_hint import warn_if_unresolved
+
+    for name in ("DOCSWEEP_AI_MODEL_ID", "DOCSWEEP_AI_MODEL_DISPLAY", "DOCSWEEP_AI_MODEL_SOURCE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DOCSWEEP_AI_AGENT", "claude")
+    monkeypatch.setenv("DOCSWEEP_AI_PROVIDER", "anthropic")
+    _project, config = _config(tmp_path)
+    metadata = AIMetadata.resolve(actor_default="ishizaka")
+    assert metadata.is_unresolved() is False
+    assert metadata.is_model_unresolved() is True
+
+    assert warn_if_unresolved(metadata, config=config, command="provenance start") is True
+    err = capsys.readouterr().err
+    assert "--model-id" in err
+
+    # 表示名だけでも取れていれば記録として成り立つので黙る。
+    named = AIMetadata.resolve(actor_default="ishizaka", model_display="GPT-5", model_source="orchestrator")
+    assert named.is_model_unresolved() is False
+    assert warn_if_unresolved(named, config=config, command="provenance start") is False
+    assert capsys.readouterr().err == ""
+
+
 def test_guard_is_silent_when_provenance_is_disabled(tmp_path: Path, capsys) -> None:
     from docsweep.provenance_hint import warn_if_unresolved
 
@@ -628,3 +662,32 @@ def test_start_without_a_resolvable_log_leaves_the_field_alone(tmp_path: Path, m
     )
 
     assert SESSION_LOG_FIELD not in (read_frontmatter(doc.path) or {})
+
+def test_check_warns_on_nonstandard_context_status(tmp_path: Path):
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "status-vocab", project_dir=project, config=config, offset_days={})
+    initialize_document(doc.path, project_dir=project, config=config, metadata=_metadata())
+    body = doc.path.read_text(encoding="utf-8").replace(
+        "| C1 | planned | <TODO> | — |",
+        "| C1 | done | 調査 | — |\n"
+        "| C2 | **planned** | 実装 | — |\n"
+        "| C3 | fix | 旧表記 | — |\n"
+        "| C4 | in-progress | 途中経過を種別へ書いた | — |\n"
+        "| C5 | 実装・検証済み | 文章を種別へ書いた | — |\n"
+        "\n"
+        "### 決定事項\n"
+        "\n"
+        "| C | 種別 | 内容 |\n"
+        "|---|---|---|\n"
+        "| C6 | 現行仕様 | 同じ節の別の表は種別列として読まない |",
+    )
+    doc.path.write_text(body, encoding="utf-8")
+
+    checked = check_document(doc.path, project_dir=project, config=config)
+
+    # 警告であって不合格にはしない（既存の文書を一斉に赤くしないため）。
+    assert checked["valid"] is True
+    flagged = [w for w in checked["warnings"] if "planned / done" in w]
+    assert len(flagged) == 2
+    assert "C4" in flagged[0] and "in-progress" in flagged[0]
+    assert "C5" in flagged[1] and "実装・検証済み" in flagged[1]
