@@ -56,6 +56,11 @@ export function nativeInvocation(args, platform = process.platform, windowsOptio
 }
 export function native(args, cwd, execute = run) {
   try {
+    if (process.env.CI && process.platform === 'linux' && execute === run) {
+      const runtime = getPublicRuntime();
+      if (!runtime.ready) return runtime.failure;
+      return execute(process.execPath, [runtime.launcher, ...args], cwd);
+    }
     const invocation = nativeInvocation(args, process.platform, { cwd: cwd ?? process.cwd() });
     return execute(invocation.command, invocation.args, cwd);
   } catch { return { status: -1, stdout: '', stderr: '', error: { code: 'INVALID_ARGUMENT' } }; }
@@ -67,12 +72,39 @@ export function failureReason(result) {
   if (result.error?.code === 'ENOEXEC') return 'executable-format';
   if (result.error) return 'spawn-or-timeout';
   const stderr = String(result.stderr || '');
-  if (/error while loading shared libraries|symbol lookup error|bad ELF interpreter/i.test(stderr)) return 'native-loader';
+  if (/error while loading shared libraries|symbol lookup error|bad ELF interpreter|(?:GLIBC|GLIBCXX|CXXABI)[^\n]*not found/i.test(stderr)) return 'native-loader';
   if (/permission denied/i.test(stderr)) return 'executable-permission';
   if (/command not found|(?:^|[:\n])[^\n]*doxguard[^\n]*not found/i.test(stderr)) return 'command-not-found';
   if (/\b(?:E404|ETARGET)\b/.test(stderr)) return 'package-unavailable';
   if (/\b(?:ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/.test(stderr)) return 'package-network';
   return 'invalid-or-missing-scanner-report';
+}
+let publicRuntime;
+export function provisionPublicRuntime(execute = run, arch = process.arch) {
+  const root = mkdtempSync(join(tmpdir(), 'structural-runtime-'));
+  const failure = {status:-1,stdout:'',stderr:'',error:{code:'PUBLIC_RUNTIME_SETUP'}};
+  try {
+    if (!['x64','arm64'].includes(arch)) throw new Error('unsupported architecture');
+    const install = execute('npm',['install','--prefix',root,'--cache',join(root,'cache'),'--ignore-scripts','--no-audit','--no-fund','--package-lock=false','--include=optional',packagePin],root,180_000);
+    if (install.status !== 0 || install.error || install.signal) return {ready:false,root,failure:install};
+    const modules = join(root,'node_modules');
+    const rootDir = join(modules,'doxguard');
+    const platformDir = join(modules,'@ishizakahiroshi','doxguard-linux-' + arch);
+    const a = JSON.parse(readFileSync(join(rootDir,'package.json'),'utf8'));
+    const b = JSON.parse(readFileSync(join(platformDir,'package.json'),'utf8'));
+    if(a.name !== 'doxguard' || a.version !== '0.2.0' || b.name !== '@ishizakahiroshi/doxguard-linux-' + arch || b.version !== '0.2.0') throw new Error('package identity mismatch');
+    const launcher = join(rootDir,'bin','doxguard.js');
+    const binary = join(platformDir,'bin','doxguard');
+    if (!statSync(launcher).isFile() || !statSync(binary).isFile()) throw new Error('missing entrypoint');
+    return {ready:true,root,launcher,binary};
+  } catch { return {ready:false,root,failure}; }
+}
+function getPublicRuntime() {
+  if (!publicRuntime) {
+    publicRuntime = provisionPublicRuntime();
+    process.once('exit', () => { try { rmSync(publicRuntime.root,{recursive:true,force:true}); } catch { console.log('public_runtime_cleanup_failed=true'); process.exitCode = 1; } });
+  }
+  return publicRuntime;
 }
 export function exactNativeVersion(result) {
   return !result.error && !result.signal && result.status === 0 && /^doxguard 0\.2\.0\s*$/.test(result.stdout || '');
@@ -108,7 +140,8 @@ export function runtimePreflight({ execute = run, platform = process.platform, a
     receipt.launcher = exactNativeVersion(launcher) ? 'version-ok' : failureReason(launcher);
     const viaExec = bounded('npm',[...nativeArgs,'--version'],root);
     receipt.npm_exec = exactNativeVersion(viaExec) ? 'version-ok' : failureReason(viaExec);
-    receipt.accepted = receipt.direct === 'version-ok' && receipt.launcher === 'version-ok' && receipt.npm_exec === 'version-ok';
+    receipt.accepted = receipt.direct === 'version-ok' && receipt.launcher === 'version-ok';
+    receipt.selected_route = 'verified-root-launcher';
     return receipt;
   } catch { return { ...receipt, reason: 'preflight-setup-or-payload-missing' }; }
   finally {
@@ -208,7 +241,7 @@ export function main() {
   let configValid = false;
   try { configValid = validateConfig(JSON.parse(readFileSync(configPath, 'utf8'))); } catch { /* fail closed */ }
   console.log('legacy_command=node scripts/secrets-scan.mjs --all-tracked --block --format=json');
-  console.log('native_command=npm exec --yes --package=doxguard@0.2.0 -- doxguard scan --all-tracked --block --strict --format=json --config doxguard.ci.json');
+  console.log('native_command=exact-doxguard-0.2.0-verified-root-launcher scan --all-tracked --block --strict --format=json --config doxguard.ci.json');
   // Version verification is independent of the legacy scan. A missing package
   // must still leave evidence for legacy, and must never make the gate green.
   const version = native(['--version'], cwd);

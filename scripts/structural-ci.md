@@ -57,3 +57,10 @@ exec version probes. Only fixed categories, exact versions and hashes are logged
 cleanup failures fail closed without path-bearing errors. Outside CI this
 additional installation is not requested. Existing scans remain the acceptance
 requirement; diagnostics cannot turn missing or failed native execution green.
+
+The observed Linux npm exec command-resolution failure is bypassed only by
+launching the same exact installed public root launcher with Node and an
+absolute path. The temporary installation has scripts disabled and root and
+platform identities fixed at0.2.0; no system/package PATH command is selected.
+Both scanners still receive the same checkout and flags. npm exec failure remains
+a diagnostic field; actual native scans, version, coverage and controls must pass.

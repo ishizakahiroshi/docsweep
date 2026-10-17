@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig, nativeInvocation, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools, runtimePreflight, exactNativeVersion } from './structural-ci.mjs';
+import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig, nativeInvocation, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools, runtimePreflight, exactNativeVersion, provisionPublicRuntime } from './structural-ci.mjs';
 const report = (kind, hits = []) => ({
   scanned: 3, total_files: 3, exempt_or_skipped: 0, structural_patterns: 4, hits,
   ...(kind === 'legacy' ? { kb_needles: 0, family_needles: 0 } : {
@@ -147,7 +147,8 @@ test('preflight distinguishes direct and launcher success from npm exec failure'
     return {status:0,stdout:'doxguard 0.2.0\n'};
   }});
   assert.equal(receipt.direct,'version-ok');assert.equal(receipt.launcher,'version-ok');
-  assert.equal(receipt.npm_exec,'command-not-found');assert.equal(receipt.accepted,false);
+  assert.equal(receipt.npm_exec,'command-not-found');assert.equal(receipt.accepted,true);
+  assert.equal(receipt.selected_route,'verified-root-launcher');
   assert.match(receipt.payload_sha256,/^[a-f0-9]{64}$/);
   assert.ok(!JSON.stringify(receipt).includes('HIDDEN_SENTINEL'));
   assert.ok(calls.find(c=>c.args[0]==='install').args.includes('--ignore-scripts'));
@@ -157,4 +158,25 @@ test('preflight missing package and unsupported platforms never fabricate runtim
   const result=runtimePreflight({platform:'linux',arch:'x64',execute:()=>({status:1,stderr:'npm error E404 HIDDEN_SENTINEL'})});
   assert.equal(result.reason,'package-unavailable');assert.equal(result.accepted,false);
   assert.ok(!JSON.stringify(result).includes('HIDDEN_SENTINEL'));
+});
+
+test('exact public runtime provisioning preserves failure and rejects missing entrypoints', () => {
+  const a=provisionPublicRuntime(()=>({status:127,stderr:'SENTINEL'}),'x64');
+  try { assert.equal(a.ready,false);assert.equal(a.failure.status,127); } finally {rmSync(a.root,{recursive:true,force:true});}
+  const b=provisionPublicRuntime(()=>({status:0}),'x64');
+  try {assert.equal(b.ready,false);assert.equal(b.failure.error.code,'PUBLIC_RUNTIME_SETUP');} finally {rmSync(b.root,{recursive:true,force:true});}
+  assert.equal(failureReason({stderr:'doxguard: GLIBC_2.39 not found'}),'native-loader');
+});
+test('exact public runtime selects the verified package launcher rather than a PATH command', () => {
+  const runtime=provisionPublicRuntime((command,args,cwd)=>{
+    assert.equal(command,'npm');assert.ok(args.includes('doxguard@0.2.0'));assert.ok(args.includes('--ignore-scripts'));
+    const root=join(cwd,'node_modules','doxguard');const platform=join(cwd,'node_modules','@ishizakahiroshi','doxguard-linux-x64');
+    for(const dir of [root,platform])mkdirSync(join(dir,'bin'),{recursive:true});
+    writeFileSync(join(root,'package.json'),JSON.stringify({name:'doxguard',version:'0.2.0'}));
+    writeFileSync(join(platform,'package.json'),JSON.stringify({name:'@ishizakahiroshi/doxguard-linux-x64',version:'0.2.0'}));
+    writeFileSync(join(root,'bin','doxguard.js'),'synthetic-not-executed');writeFileSync(join(platform,'bin','doxguard'),'synthetic-not-executed');
+    return {status:0};
+  },'x64');
+  try {assert.equal(runtime.ready,true);assert.equal(runtime.launcher,join(runtime.root,'node_modules','doxguard','bin','doxguard.js'));}
+  finally {rmSync(runtime.root,{recursive:true,force:true});}
 });
