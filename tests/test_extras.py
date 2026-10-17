@@ -251,11 +251,35 @@ def test_inject_global_claude_uses_import(tmp_path, manifest, monkeypatch):
     I.inject_global(agent="claude", target=target)
     text = target.read_text(encoding="utf-8")
     assert "手書き。" in text  # 個人ファイルは温存
-    assert f"@{I.GUIDANCE_IMPORT}" in text  # @import 1 行
+    assert f"@{I.guidance_import_path()}" in text  # @import 1 行（中央 guidance.md の絶対パス）
+    assert f"@{I.GUIDANCE_IMPORT}" not in text  # ~ 形式は使わない（ホームを変えて起動すると読まれない）
     assert "docsweep inject が自動追加・管理" in text  # 注記
     assert "docsweep:managed:start" in text
     assert gpath.is_file()  # 中央ファイル生成
     assert "残作業" in gpath.read_text(encoding="utf-8")
+
+
+def test_guidance_import_path_is_absolute(tmp_path, monkeypatch):
+    """Claude の @import 先は中央 guidance.md の絶対パス。~ にするとホームを変えて起動したときに読まれない。"""
+    from docsweep import inject as I
+
+    gpath = tmp_path / "abs_docsweep" / "guidance.md"
+    monkeypatch.setattr(I, "GUIDANCE_PATH", gpath)
+    got = I.guidance_import_path()
+    if " " in str(tmp_path):  # 一時フォルダ自体に空白がある環境では下の後退の確認だけになる
+        assert got == I.GUIDANCE_IMPORT
+        return
+    assert got == gpath.resolve().as_posix()
+    assert not got.startswith("~")
+    assert "\\" not in got  # @import は / 区切り
+
+
+def test_guidance_import_path_falls_back_when_path_has_space(tmp_path, monkeypatch):
+    """空白入りのパスは @import が切れないか未確認なので、~ 形式に戻す。"""
+    from docsweep import inject as I
+
+    monkeypatch.setattr(I, "GUIDANCE_PATH", tmp_path / "with space" / "guidance.md")
+    assert I.guidance_import_path() == I.GUIDANCE_IMPORT
 
 
 def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
@@ -270,6 +294,7 @@ def test_inject_global_codex_inlines_guidance(tmp_path, manifest, monkeypatch):
     I.inject_global(agent="codex", target=target)
     text = target.read_text(encoding="utf-8")
     assert "@" + I.GUIDANCE_IMPORT not in text  # import 行ではない
+    assert "@" + I.guidance_import_path() not in text
     assert "-m docsweep brief" in text  # 本文がインライン（PATH 非依存）
     assert "docsweep inject が自動追加・管理" in text
     # Codex はインライン展開で中央ファイルを参照しない → 孤児 guidance.md を作らない。

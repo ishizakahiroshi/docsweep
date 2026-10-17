@@ -28,6 +28,7 @@ from .api import (
     generate_managed_block,
     generate_okf_block,
     generate_template_sections_block,
+    guidance_import_path,
     inject,
     inject_global,
     list_injected,
@@ -58,7 +59,8 @@ __all__ = [
     "GUIDANCE_PATH", "GUIDANCE_VERSION", "InjectResult", "MANIFEST_PATH",
     "MARK_END", "MARK_START", "SUPPORTED_GLOBAL_AGENTS", "docsweep_command",
     "eject", "eject_global", "generate_due_block", "generate_delegation_block", "generate_guidance_block",
-    "generate_label_block", "generate_managed_block", "generate_okf_block", "generate_template_sections_block", "inject",
+    "generate_label_block", "generate_managed_block", "generate_okf_block", "generate_template_sections_block",
+    "guidance_import_path", "inject",
     "inject_global", "list_injected", "load_manifest", "preview_global",
     "preview_inject", "resolve_global_target", "save_manifest", "write_guidance_file",
 ]

@@ -47,7 +47,23 @@ SUPPORTED_GLOBAL_AGENTS = ("claude", "codex")
 # docsweep が所有する中央導線ファイル。実体はここ 1 つに集約し、各ツールには最小フックだけ書く
 # （Claude=@import 1 行で取り込み / Codex 等=@import 非対応のため本文をブロック展開）。
 GUIDANCE_PATH = Path.home() / ".docsweep" / "guidance.md"
-GUIDANCE_IMPORT = "~/.docsweep/guidance.md"  # Claude の @import 行（先頭 ~ は Claude が展開する）
+# ~ 形式の @import 先。いまは guidance_import_path() が絶対パスにできないときの代わりにだけ使う。
+GUIDANCE_IMPORT = "~/.docsweep/guidance.md"
+
+
+def guidance_import_path() -> str:
+    """Claude の @import 行に書くパス。中央 guidance.md を実際に書いた場所の絶対パス（/ 区切り）。
+
+    ~ にしないのは、Claude が ~ を「起動したセッションのホーム」で展開するため。ホームを変えて
+    Claude を起動するツール（many-ai-cli など）経由だと、~ が inject したときと別の場所を指し、
+    guidance.md が読まれないまま黙って抜け落ちる（2026-10-17 実測）。
+    パスに空白があると @import が途中で切れないかを確かめていないので、そのときだけ ~ 形式に戻す。
+    GUIDANCE_PATH は呼んだ時点の値を読む（テストが差し替えるため、読み込み時に固定しない）。
+    """
+    path = GUIDANCE_PATH.expanduser().resolve().as_posix()
+    if any(ch.isspace() for ch in path):
+        return GUIDANCE_IMPORT
+    return path
 
 # グローバル導線ブロック（generate_guidance_block の出力）の改訂版。文言を変えたら手で bump する。
 # 注入時にマニフェストへ記録し UI が「どの版が入っているか」を表示する。
@@ -433,7 +449,7 @@ def _project_inners(
 def _global_inner(agent: str, lang: str) -> str:
     """グローバル先へ書く最小フック inner。claude=@import 1 行 / その他=本文インライン。inject と preview で共有。"""
     if agent == "claude":
-        return _hook_inner(f"@{GUIDANCE_IMPORT}", docsweep_command("eject", "--global"), lang)
+        return _hook_inner(f"@{guidance_import_path()}", docsweep_command("eject", "--global"), lang)
     return _hook_inner(
         generate_guidance_block(lang),
         docsweep_command("eject", "--global", "--agent", agent),

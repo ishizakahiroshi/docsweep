@@ -73,6 +73,11 @@
 
 ### Fixed
 
+- `inject --global --agent claude` が Claude のグローバル設定に書く取り込みの行を、`@~/.docsweep/guidance.md`
+  から中央 guidance.md の絶対パス（`/` 区切りの `@<ホームの絶対パス>/.docsweep/guidance.md`）に変えた。Claude は `~` を
+  起動したセッションのホームで展開するため、ホームを変えて Claude を起動するツール経由では別の場所を指し、
+  導線が黙って読まれていなかった。パスに空白が入るときだけ、従来の `~` 形式のまま書く。反映は
+  `docsweep inject --global` の再実行で行う。
 - Windows で stdin が NUL のとき（AI エージェントのシェル実行など）、`isatty()` が True を
   返すため `docsweep new` の release tracking 初回確認と workspace migration の `--review` が
   対話と誤判定して止まっていた。Windows ではコンソールかどうか（GetConsoleMode）まで確かめ、
@@ -401,7 +406,7 @@
   よって別の列と比較されていた**。索引が有効だと `docsweep triage --project mer` が
   エラーも警告も出さずに 0 件を返し、「残作業なし」と誤読する状態だった。
   併せて `projects.root_path` は project_root、`files.rel_path` は project_root 相対に
-  なる。副作用として、basename が同じスキャンルート（`D:/dev` と `C:/Users/x/dev`）が <!-- secrets-scan: allow -->
+  なる。副作用として、basename が同じスキャンルート（`D:/dev` と `C:/Users/x/dev`）が <!-- secrets-scan: allow --> <!-- doxguard: allow Users -->
   同一 project_id に潰れて互いの登録を消し合う問題も解消した（実測で
   `files_added: 639 / files_deleted: 639 / files_unchanged: 0` だった差分同期が、
   `files_unchanged: 641` の真の no-op になった）。処理順次第で索引が空のまま終わり得た

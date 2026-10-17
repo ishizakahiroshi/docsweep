@@ -149,13 +149,17 @@ def test_inject_rejects_project_outside_roots(client, iso_inject):
     assert r.status_code == 403
 
 
-def test_inject_global_preview_uses_import(client, iso_inject):
+def test_inject_global_preview_uses_import(client, iso_inject, tmp_path):
+    from docsweep import inject as I
+
     c, root, _ = client
     r = c.post("/api/inject", data={"token": TOKEN, "scope": "global", "agent": "claude", "dry_run": "true"})
     assert r.status_code == 200
     pv = r.json()
     assert pv["scope"] == "global"
-    assert "@~/.docsweep/guidance.md" in pv["blocks"][0]["text"]
+    # 取り込みの行は中央 guidance.md の絶対パス（~ はホームを変えて起動すると別の場所を指すため）
+    assert f"@{I.guidance_import_path()}" in pv["blocks"][0]["text"]
+    assert I.guidance_import_path() == (tmp_path / "guidance.md").resolve().as_posix() or " " in str(tmp_path)
     assert "残作業" in pv["guidance"]
 
 
