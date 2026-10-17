@@ -56,3 +56,14 @@ test('public config has no watchlists or broad exemptions; all four structural r
   for (const change of [{watchlists:[{}]}, {exemptPaths:['tests/']}, {includeDefaultExemptPaths:true}, {failOnSkip:false}, {structural:{}}]) assert.equal(validateConfig({...config,...change}),false);
   assert.deepEqual(isolatedEnv({KB_ROOT:'synthetic',FAMILY_ROOT:'synthetic',DOXGUARD_CONFIG:'synthetic',DOXGUARD_BASELINE:'synthetic',PATH:'keep'}),{PATH:'keep'});
 });
+
+test('malformed counter strings never reach public summaries', () => {
+  const sentinel = 'SYNTHETIC_NOT_FOR_LOGS';
+  for (const [kind, fields] of [['legacy', ['kb_needles', 'family_needles']], ['doxguard', ['watchlist_needles', 'coverage_skips']]]) {
+    for (const field of fields) {
+      const summary = inspect({status: 0, stdout: JSON.stringify({...report(kind), [field]: sentinel})}, kind);
+      assert.equal(passed(summary), false);
+      assert.ok(!JSON.stringify(summary).includes(sentinel));
+    }
+  }
+});

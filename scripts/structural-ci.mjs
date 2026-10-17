@@ -30,6 +30,7 @@ export function inspect(result, kind) {
     if (result.error || result.signal) return summary;
     const data = JSON.parse(result.stdout);
     const numeric = ['scanned', 'total_files', 'exempt_or_skipped', 'structural_patterns'];
+    numeric.push(...(kind === 'legacy' ? ['kb_needles', 'family_needles'] : ['watchlist_needles', 'coverage_skips']));
     if (!numeric.every(key => Number.isSafeInteger(data[key]) && data[key] >= 0) || !Array.isArray(data.hits)) return summary;
     summary.scanned = data.scanned;
     summary.total = data.total_files;
