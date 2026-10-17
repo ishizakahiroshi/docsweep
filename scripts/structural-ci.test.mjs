@@ -177,7 +177,7 @@ test('runtime rejects wrong optional pin, bin, module type and platform metadata
     for(const change of [{version:'0.2.1'},{name:'other'},{type:'commonjs'},{bin:{doxguard:'other.js'}},{optionalDependencies:{}},{optionalDependencies:{'@ishizakahiroshi/doxguard-linux-x64':'^0.2.0'}}]) {
       f.reset();writeFileSync(join(f.a,'package.json'),JSON.stringify({...f.rootMeta,...change}));assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));
     }
-    for(const change of [{name:'other'},{version:'0.2.1'},{bin:{doxguard:'elsewhere'}},{os:['darwin']},{os:['linux','darwin']},{cpu:['arm64']},{cpu:['x64','arm64']}]) {
+    for(const change of [{name:'other'},{version:'0.2.1'},{exports:{'./package.json':'./other.json'}},{bin:{doxguard:'elsewhere'}},{os:['darwin']},{os:['linux','darwin']},{cpu:['arm64']},{cpu:['x64','arm64']}]) {
       f.reset();writeFileSync(join(f.b,'package.json'),JSON.stringify({...f.platformMeta,...change}));assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));
     }
   } finally {rmSync(f.root,{recursive:true,force:true});}
@@ -217,4 +217,16 @@ test('runtime rejects symlinked launcher and payload despite matching bytes',()=
       assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));unlinkSync(path);f.reset();
     }
   } finally {rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('runtime rejects nested candidates added after successful cached resolution',()=>{
+  for(const sub of ['', 'bin']) {
+    const f=syntheticRuntime();
+    try {
+      assert.doesNotThrow(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat));
+      const nested=join(f.a,sub,'node_modules','@ishizakahiroshi','doxguard-linux-x64');
+      mkdirSync(nested,{recursive:true});writeFileSync(join(nested,'package.json'),JSON.stringify(f.platformMeta));
+      assert.throws(()=>verifyRuntime(f.root,'x64',f.expected,syntheticExecutableStat), /nested platform candidate/);
+    } finally {rmSync(f.root,{recursive:true,force:true});}
+  }
 });

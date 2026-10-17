@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Public structural-only gate. Raw child output stays in memory, never CI logs.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, statSync, lstatSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { resolve, join, win32 } from 'node:path';
@@ -99,7 +99,7 @@ export function verifyRuntime(root, arch = process.arch, expected = canonicalRun
   const b = JSON.parse(readFileSync(join(platformDir,'package.json'),'utf8'));
   if (a.name !== 'doxguard' || a.version !== '0.2.0' || a.type !== 'module'
       || a.bin?.doxguard !== 'bin/doxguard.js' || a.optionalDependencies?.[platformName] !== '0.2.0'
-      || b.name !== platformName || b.version !== '0.2.0' || b.bin?.doxguard !== 'bin/doxguard'
+      || b.name !== platformName || b.version !== '0.2.0' || b.bin?.doxguard !== 'bin/doxguard' || b.exports !== undefined
       || JSON.stringify(b.os) !== '["linux"]' || JSON.stringify(b.cpu) !== JSON.stringify([arch])) throw new Error('package identity mismatch');
   const launcher = join(rootDir,'bin','doxguard.js');
   const binary = join(platformDir,'bin','doxguard');
@@ -107,6 +107,14 @@ export function verifyRuntime(root, arch = process.arch, expected = canonicalRun
     if (realpathSync(path) !== resolve(path)) throw new Error('redirected runtime path');
   }
   if (!fileStat(launcher).isFile() || !fileStat(binary).isFile() || !(fileStat(binary).mode & 0o111)) throw new Error('entrypoint mismatch');
+  // Node's in-process resolver caches successful results. A fresh launcher
+  // must not see a higher-priority package added after a prior verification.
+  for (const directory of [join(rootDir,'bin','node_modules'),join(rootDir,'node_modules')]) {
+    try {
+      lstatSync(join(directory,'@ishizakahiroshi','doxguard-linux-' + arch));
+      throw new Error('nested platform candidate');
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
   // Resolve exactly as the canonical launcher does, excluding a nested or
   // redirected platform package with otherwise plausible outer metadata.
   if (realpathSync(createRequire(launcher).resolve(platformName + '/package.json')) !== realpathSync(join(platformDir,'package.json'))) throw new Error('platform resolution mismatch');
