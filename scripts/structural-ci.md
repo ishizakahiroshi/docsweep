@@ -4,7 +4,7 @@
 `doxguard@0.2.0` on the same checkout. A scanner failure does not prevent the
 other scan, and every failed result fails the job. Synthetic scanner controls
 run even when the tracked scan fails. Existing CI and the legacy workflow/hook
-remain; the legacy workflow now uses the count-only wrapper for safe output.
+remain; the legacy workflow now uses the metadata-filtering wrapper for safe output.
 Only the owner may remove legacy after real dual CI acceptance.
 
 The explicit `doxguard.ci.json` has no watchlist sources, no path exemptions and
@@ -12,8 +12,9 @@ no default exemptions. All four default structural rules are enabled; strict
 mode rejects bare directives and coverage skips. This public gate does not
 replace private local watchlists. The wrapper removes watchlist/config override
 environment variables for children, rejects nonzero watchlist counts and
-baseline suppression, captures both output streams and logs only numeric
-summaries. It does not print matched values, source lines or raw child errors.
+baseline suppression, captures both output streams and logs numeric summaries plus safe file, line,
+kind and detector metadata. Matched strings stay in memory and are removed
+from metadata too, including when a filename itself contains a matched value. It does not print matched values, source lines or raw child errors.
 
 Allowances:
 - The single exact author email is already public in `pyproject.toml` at the
@@ -42,5 +43,8 @@ The last two commands resolve the exact npm package and are intended for CI;
 no dependency download is required for the orchestration unit tests. A missing
 0.2.0 package fails the gate and waits for the release coordinator. Do not
 unpin, skip the native job, soften strict mode or print raw npm/scanner output.
-Failure summaries intentionally omit raw diagnostics; investigate a package
-availability/configuration problem without exposing scan input values.
+Failures report fixed reason categories without raw diagnostics. Both workflows
+check out the exact pull-request head and require git HEAD to equal the expected
+SHA. Windows invokes npm through a constrained cmd.exe command line; shell
+metacharacters are rejected. Child environment filtering is case-insensitive.
+Investigate availability/configuration failures without exposing scan input values.

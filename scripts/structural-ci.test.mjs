@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig } from './structural-ci.mjs';
+import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig, nativeInvocation, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools } from './structural-ci.mjs';
 const report = (kind, hits = []) => ({
   scanned: 3, total_files: 3, exempt_or_skipped: 0, structural_patterns: 4, hits,
   ...(kind === 'legacy' ? { kb_needles: 0, family_needles: 0 } : {
@@ -22,7 +22,7 @@ test('exact release, strict explicit config, same checkout and both scanners aft
     });
     assert.equal(calls.length, 2);
     assert.ok(calls.every(call => call.cwd === '/fixture'));
-    for (const flag of ['--strict', '--block', '--all-tracked', '--format=json', '--config', '/public-config.json']) assert.ok(calls[1].args.includes(flag));
+    for (const flag of ['--strict', '--block', '--all-tracked', '--format=json', '--config', '/public-config.json']) assert.ok(/(?:^|[\\/])cmd\.exe$/i.test(calls[1].cmd) ? calls[1].args[3].includes('"' + flag + '"') : calls[1].args.includes(flag));
     assert.equal(summaries.every(passed), exits.every(exit => exit === 0));
   }
 });
@@ -66,4 +66,59 @@ test('malformed counter strings never reach public summaries', () => {
       assert.ok(!JSON.stringify(summary).includes(sentinel));
     }
   }
+});
+
+test('finding metadata is actionable but matching values in filenames and sources are redacted', () => {
+  const needle = ['10', '23', '45', '67'].join('.');
+  const hits = [
+    {matched: needle, file: needle + '.txt', lineNumber: 12, kind:'structural', source:'structural: Private IPv4 (RFC1918)'},
+    {matched:'Windows', file:'normal.txt', lineNumber:7, kind:'structural', source:'structural: Windows absolute path'},
+  ];
+  const details = safeFindings(hits);
+  assert.equal(details[0].file, '[redacted metadata]');
+  assert.equal(details[0].line, 12);
+  assert.equal(details[0].source, 'structural: Private IPv4 (RFC1918)');
+  assert.equal(details[1].file, 'normal.txt');
+  assert.equal(details[1].source, '[redacted metadata]');
+  assert.ok(!JSON.stringify(details).includes(needle));
+});
+test('Windows npm uses cmd explicitly and rejects expansion or injection characters', () => {
+  const options = {env:{SystemRoot:'C:\\Windows',Path:'C:\\Program Files\\nodejs'},cwd:'C:\\fixture',isFile:() => true};
+  const call = nativeInvocation(['scan','--config','C:/fixture folder/public.json'], 'win32', options);
+  assert.equal(call.command,'C:\\Windows\\System32\\cmd.exe');
+  assert.deepEqual(call.args.slice(0,3),['/d','/s','/c']);
+  assert.ok(call.args[3].startsWith('""C:\\Program Files\\nodejs\\npm.cmd" '));
+  assert.ok(call.args[3].includes('"C:/fixture folder/public.json"'));
+  for (const char of ['%', '!', '&', '|', '<', '>', '^', '"', '\n', '\r', '\0']) assert.throws(() => nativeInvocation(['scan',char], 'win32', options));
+  assert.equal(nativeInvocation(['--version'],'linux').command,'npm');
+});
+test('Windows resolves system cmd and PATH npm without current-directory fallback', () => {
+  const probes = [];
+  const options = {
+    env:{systemroot:'C:\\Windows',pAtH:';.;relative;C:\\fixture;C:\\absent;"C:\\Trusted Node"'},
+    cwd:'c:\\FIXTURE',
+    isFile:path => {
+      probes.push(path);
+      return ['C:\\Windows\\System32\\cmd.exe','C:\\Trusted Node\\npm.cmd'].includes(path);
+    },
+  };
+  assert.deepEqual(resolveWindowsTools(options),{command:'C:\\Windows\\System32\\cmd.exe',npm:'C:\\Trusted Node\\npm.cmd'});
+  assert.deepEqual(probes,['C:\\Windows\\System32\\cmd.exe','C:\\absent\\npm.cmd','C:\\Trusted Node\\npm.cmd']);
+  for (const env of [{Path:'C:\\Trusted Node'}, {SystemRoot:'relative',Path:'C:\\Trusted Node'}, {SystemRoot:'C:\\Windows',Path:'.;C:\\fixture'}]) {
+    assert.throws(() => resolveWindowsTools({...options,env}));
+  }
+  assert.throws(() => resolveWindowsTools({...options,isFile:() => false}));
+});
+test('npm diagnostics are fixed categories, never raw error text', () => {
+  assert.equal(failureReason({stderr:'npm error code ETARGET hidden text'}),'package-unavailable');
+  assert.equal(failureReason({stderr:'npm error code ENOTFOUND hidden text'}),'package-network');
+});
+
+test('expected checkout SHA and case-insensitive environment isolation fail closed', () => {
+  const sha = 'a'.repeat(40);
+  assert.equal(matchesExpectedSha(sha,sha,true),true);
+  assert.equal(matchesExpectedSha(sha,'b'.repeat(40),true),false);
+  assert.equal(matchesExpectedSha(sha,undefined,true),false);
+  assert.equal(matchesExpectedSha('invalid',sha,false),false);
+  assert.deepEqual(isolatedEnv({kb_root:'synthetic',Family_Root:'synthetic',doxguard_config:'synthetic',Path:'keep'}),{Path:'keep'});
 });

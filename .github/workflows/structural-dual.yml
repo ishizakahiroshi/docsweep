@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  STRUCTURAL_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   structural-dual:
     runs-on: ubuntu-latest
@@ -16,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:

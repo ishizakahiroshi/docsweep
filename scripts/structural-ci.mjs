@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Public structural-only gate. Raw child output stays in memory, never CI logs.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, statSync } from 'node:fs';
+import { resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const packagePin = 'doxguard@0.2.0';
@@ -17,15 +17,73 @@ export function isolatedEnv(env = process.env) {
 export function run(command, args, cwd = process.cwd()) {
   return spawnSync(command, args, {
     cwd, env: isolatedEnv(), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
-    timeout: 180_000, windowsHide: true,
+    timeout: 180_000, windowsHide: true, windowsVerbatimArguments: process.platform === 'win32' && win32.basename(command).toLowerCase() === 'cmd.exe',
   });
 }
+const unsafeWindowsArgument = /["%!?^&|<>\r\n\u0000]/;
+export function resolveWindowsTools({ env = process.env, cwd = process.cwd(), isFile = path => {
+  try { return statSync(path).isFile(); } catch { return false; }
+} } = {}) {
+  const value = name => env[Object.keys(env).find(key => key.toLowerCase() === name.toLowerCase())];
+  const absolute = path => typeof path === 'string' && (/^[A-Za-z]:[\\/]/.test(path) || /^\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/.test(path));
+  const root = value('SystemRoot');
+  if (!absolute(root) || unsafeWindowsArgument.test(root)) throw new Error('Windows system directory unavailable');
+  const command = win32.join(root, 'System32', 'cmd.exe');
+  if (!isFile(command)) throw new Error('Windows command processor unavailable');
+  const current = absolute(cwd) ? win32.resolve(cwd).toLowerCase() : null;
+  for (const entry of String(value('PATH') || '').split(';')) {
+    const directory = entry.trim().replace(/^"(.*)"$/, '$1');
+    // Only explicit absolute PATH directories are eligible. Never search cwd,
+    // empty entries, or relative directories supplied by the checkout.
+    if (!absolute(directory) || unsafeWindowsArgument.test(directory)) continue;
+    const normalized = win32.resolve(directory);
+    if (normalized.toLowerCase() === current) continue;
+    const npm = win32.join(normalized, 'npm.cmd');
+    if (isFile(npm)) return { command, npm };
+  }
+  throw new Error('npm command unavailable on absolute PATH');
+}
+export function nativeInvocation(args, platform = process.platform, windowsOptions) {
+  const all = [...nativeArgs, ...args];
+  if (platform !== 'win32') return { command: 'npm', args: all };
+  // cmd expands percent/exclamation even in quotes. Reject shell syntax rather
+  // than passing caller-controlled paths through an unsafe quoting shortcut.
+  if (all.some(arg => unsafeWindowsArgument.test(arg))) throw new Error('unsupported Windows command argument');
+  const { command, npm } = resolveWindowsTools(windowsOptions);
+  return { command, args: ['/d', '/s', '/c', '""' + npm + '" ' + all.map(arg => '"' + arg + '"').join(' ') + '"'] };
+}
 export function native(args, cwd, execute = run) {
-  return execute(process.platform === 'win32' ? 'npm.cmd' : 'npm', [...nativeArgs, ...args], cwd);
+  try {
+    const invocation = nativeInvocation(args, process.platform, { cwd: cwd ?? process.cwd() });
+    return execute(invocation.command, invocation.args, cwd);
+  } catch { return { status: -1, stdout: '', stderr: '', error: { code: 'INVALID_ARGUMENT' } }; }
+}
+export function failureReason(result) {
+  if (result.signal) return 'interrupted';
+  if (result.error) return 'spawn-or-timeout';
+  const stderr = String(result.stderr || '');
+  if (/\b(?:E404|ETARGET)\b/.test(stderr)) return 'package-unavailable';
+  if (/\b(?:ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/.test(stderr)) return 'package-network';
+  return 'invalid-or-missing-scanner-report';
+}
+export function safeFindings(hits) {
+  const fold = value => value.toLowerCase().replace(/[\\/]+/g, '/');
+  const needles = hits.map(hit => hit?.matched).filter(value => typeof value === 'string' && value.length > 0).map(fold);
+  const clean = value => {
+    if (typeof value !== 'string' || value.length > 1024 || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(value)) return '[metadata omitted]';
+    return needles.some(needle => fold(value).includes(needle)) ? '[redacted metadata]' : value;
+  };
+  const sources = new Set(['structural: Windows absolute path', 'structural: Windows personal absolute path', 'structural: POSIX home path', 'structural: Private IPv4 (RFC1918)', 'structural: Email address (not on public allowlist)']);
+  return hits.map(hit => ({
+    file: clean(hit?.file),
+    line: Number.isSafeInteger(hit?.lineNumber ?? hit?.line_number) && (hit.lineNumber ?? hit.line_number) > 0 ? (hit.lineNumber ?? hit.line_number) : null,
+    kind: ['structural', 'watchlist'].includes(hit?.kind) ? hit.kind : 'unknown',
+    source: sources.has(hit?.source) ? clean(hit.source) : 'unrecognized-detector',
+  }));
 }
 export function inspect(result, kind) {
   // No exception message or untrusted field is forwarded to the log.
-  const summary = { scanner: kind, exit: Number.isInteger(result.status) ? result.status : -1, valid: false };
+  const summary = { scanner: kind, exit: Number.isInteger(result.status) ? result.status : -1, valid: false, failure_reason: failureReason(result) };
   try {
     if (result.error || result.signal) return summary;
     const data = JSON.parse(result.stdout);
@@ -36,8 +94,11 @@ export function inspect(result, kind) {
     summary.total = data.total_files;
     summary.exempt_or_skipped = data.exempt_or_skipped;
     summary.hits = data.hits.length;
+    summary.findings = safeFindings(data.hits);
+    delete summary.failure_reason;
     if (kind === 'legacy') {
       summary.needles = data.kb_needles + data.family_needles;
+      summary.coverage_skips = 'not-reported-by-legacy';
       // Legacy has no machine-readable coverage field. Any unexpected warning
       // fails this gate, including oversize/read errors. Native checks all files.
       const lines = String(result.stderr || '').split('\n').filter(Boolean);
@@ -76,20 +137,26 @@ export function validateConfig(config) {
     && ['windowsPath', 'posixHome', 'privateIp', 'email'].every(key => config.structural?.[key] === true)
     && config.allow?.disallowBareAllow === true && config.allow?.disallowInlineAllow !== true;
 }
+export function matchesExpectedSha(sourceSha, expectedSha, inCI) {
+  return /^[a-f0-9]{40}$/.test(sourceSha)
+    && (expectedSha === undefined ? !inCI : /^[a-f0-9]{40}$/.test(expectedSha) && sourceSha === expectedSha);
+}
 export function main() {
   const cwd = process.cwd();
+  const sha = run('git', ['rev-parse', 'HEAD'], cwd);
+  const sourceSha = String(sha.stdout || '').trim();
+  const expectedSha = process.env.STRUCTURAL_EXPECTED_SHA;
+  const shaValid = sha.status === 0 && matchesExpectedSha(sourceSha, expectedSha, process.env.CI);
+  console.log('source_sha=' + (/^[a-f0-9]{40}$/.test(sourceSha) ? sourceSha : 'unavailable'));
+  console.log('expected_sha_match=' + shaValid);
   if (process.argv.includes('--legacy-only')) {
     const summary = inspect(run(process.execPath, ['scripts/secrets-scan.mjs', '--all-tracked', '--block', '--format=json'], cwd), 'legacy');
     console.log(JSON.stringify(summary));
-    return passed(summary) ? 0 : 1;
+    return shaValid && passed(summary) ? 0 : 1;
   }
   const configPath = resolve(cwd, 'doxguard.ci.json');
   let configValid = false;
   try { configValid = validateConfig(JSON.parse(readFileSync(configPath, 'utf8'))); } catch { /* fail closed */ }
-  const sha = run('git', ['rev-parse', 'HEAD'], cwd);
-  const sourceSha = String(sha.stdout || '').trim();
-  const shaValid = sha.status === 0 && /^[a-f0-9]{40}$/.test(sourceSha);
-  console.log('source_sha=' + (shaValid ? sourceSha : 'unavailable'));
   console.log('legacy_command=node scripts/secrets-scan.mjs --all-tracked --block --format=json');
   console.log('native_command=npm exec --yes --package=doxguard@0.2.0 -- doxguard scan --all-tracked --block --strict --format=json --config doxguard.ci.json');
   // Version verification is independent of the legacy scan. A missing package
