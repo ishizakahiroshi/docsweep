@@ -4,34 +4,37 @@ import { statSync, symlinkSync, unlinkSync, mkdtempSync, readFileSync, mkdirSync
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig, nativeInvocation, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools, runtimePreflight, exactNativeVersion, provisionPublicRuntime, verifyRuntime, canonicalRuntime } from './structural-ci.mjs';
+import { inspect, isolatedEnv, packagePin, passed, scanNative, validateConfig, nativeInvocation, nativeRoute, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools, runtimePreflight, exactNativeVersion, provisionPublicRuntime, verifyRuntime, canonicalRuntime } from './structural-ci.mjs';
 const report = (kind, hits = []) => ({
   scanned: 3, total_files: 3, exempt_or_skipped: 0, structural_patterns: 4, hits,
-  ...(kind === 'legacy' ? { kb_needles: 0, family_needles: 0 } : {
+  ...{
     watchlist_needles: 0, coverage_skips: 0, watchlist_statistics: { candidates: 0, loaded: 0 },
     baseline_applied: false, baseline_suppressed_hits: 0,
-  }),
+  },
 });
 const result = (kind, exit = 0, hits = []) => ({ status: exit, stdout: JSON.stringify(report(kind, hits)), stderr: '' });
-test('exact release, strict explicit config, same checkout and both scanners after either failure', () => {
+test('exact release, installed local route, strict explicit config and same checkout', () => {
   assert.equal(packagePin, 'doxguard@0.2.0');
-  assert.ok(nativeArgs.includes('--package=doxguard@0.2.0'));
-  for (const exits of [[0, 0], [1, 0], [0, 1], [1, 1], [-1, 0]]) {
+  for (const platform of ['linux', 'win32', 'darwin']) {
+    for (const inCI of [null, '', false, true, 'true', 'false', 'SYNTHETIC_PRIVATE_VALUE']) {
+      assert.equal(nativeRoute(inCI, platform), inCI && platform === 'linux' ? 'verified-root-launcher' : 'installed-exact-0.2.0');
+    }
+  }
+  for (const exit of [0, 1, -1]) {
     const calls = [];
-    const summaries = scanPair('/fixture', '/public-config.json', (cmd, args, cwd) => {
-      const index = calls.length;
+    const summary = scanNative('/fixture', '/public-config.json', (cmd, args, cwd) => {
       calls.push({ cmd, args, cwd });
-      return result(index === 0 ? 'legacy' : 'doxguard', exits[index]);
-    });
-    assert.equal(calls.length, 2);
+      return result('doxguard', exit);
+    }, { platform: 'linux' });
+    assert.equal(calls.length, 1);
     assert.ok(calls.every(call => call.cwd === '/fixture'));
-    for (const flag of ['--strict', '--block', '--all-tracked', '--format=json', '--config', '/public-config.json']) assert.ok(/(?:^|[\\/])cmd\.exe$/i.test(calls[1].cmd) ? calls[1].args[3].includes('"' + flag + '"') : calls[1].args.includes(flag));
-    assert.equal(summaries.every(passed), exits.every(exit => exit === 0));
+    for (const flag of ['--strict', '--block', '--all-tracked', '--format=json', '--config', '/public-config.json']) assert.ok(/(?:^|[\\/])cmd\.exe$/i.test(calls[0].cmd) ? calls[0].args[3].includes('"' + flag + '"') : calls[0].args.includes(flag));
+    assert.equal(passed(summary), exit === 0);
   }
 });
 test('raw values, source lines, stderr, errors never enter summaries', () => {
   const sentinel = 'SYNTHETIC_NOT_FOR_LOGS';
-  for (const kind of ['legacy', 'doxguard']) {
+  for (const kind of ['doxguard']) {
     const value = result(kind, 1, [{ matched: sentinel, file: sentinel, source: sentinel, line: sentinel }]);
     value.stderr = sentinel;
     const summary = inspect(value, kind);
@@ -41,15 +44,14 @@ test('raw values, source lines, stderr, errors never enter summaries', () => {
   }
 });
 test('invalid JSON, missing fields, errors, watchlists, baselines and coverage fail closed', () => {
-  for (const kind of ['legacy', 'doxguard']) {
+  for (const kind of ['doxguard']) {
     for (const invalid of ['', '{}', 'null']) assert.equal(passed(inspect({ status: 0, stdout: invalid }, kind)), false);
     assert.equal(passed(inspect({ ...result(kind), signal: 'SIGTERM' }, kind)), false);
   }
   for (const change of [{watchlist_needles: 1}, {coverage_skips: 1}, {baseline_applied: true}, {baseline_suppressed_hits: 1}, {watchlist_statistics: { candidates: 1, loaded: 0 }}]) {
     assert.equal(passed(inspect({status: 0, stdout: JSON.stringify({...report('doxguard'), ...change})}, 'doxguard')), false);
   }
-  assert.equal(passed(inspect({...result('legacy'), stderr:'unexpected warning'}, 'legacy')), false);
-  assert.equal(passed(inspect({status:0,stdout:JSON.stringify({...report('legacy'),kb_needles:1})}, 'legacy')), false);
+  assert.equal(passed(inspect({status:0,stdout:JSON.stringify({...report('doxguard'),total_files:4})})), false);
 });
 test('public config has no watchlists or broad exemptions; all four structural rules enabled', () => {
   const config = JSON.parse(readFileSync(new URL('../doxguard.ci.json', import.meta.url), 'utf8'));
@@ -62,7 +64,7 @@ test('public config has no watchlists or broad exemptions; all four structural r
 
 test('malformed counter strings never reach public summaries', () => {
   const sentinel = 'SYNTHETIC_NOT_FOR_LOGS';
-  for (const [kind, fields] of [['legacy', ['kb_needles', 'family_needles']], ['doxguard', ['watchlist_needles', 'coverage_skips']]]) {
+  for (const [kind, fields] of [['doxguard', ['watchlist_needles', 'coverage_skips']]]) {
     for (const field of fields) {
       const summary = inspect({status: 0, stdout: JSON.stringify({...report(kind), [field]: sentinel})}, kind);
       assert.equal(passed(summary), false);
@@ -85,28 +87,28 @@ test('finding metadata is actionable but matching values in filenames and source
   assert.equal(details[1].source, '[redacted metadata]');
   assert.ok(!JSON.stringify(details).includes(needle));
 });
-test('Windows npm uses cmd explicitly and rejects expansion or injection characters', () => {
+test('Windows installed scanner uses cmd explicitly and rejects expansion or injection characters', () => {
   const options = {env:{SystemRoot:'C:\\Windows',Path:'C:\\Program Files\\nodejs'},cwd:'C:\\fixture',isFile:() => true};
   const call = nativeInvocation(['scan','--config','C:/fixture folder/public.json'], 'win32', options);
   assert.equal(call.command,'C:\\Windows\\System32\\cmd.exe');
   assert.deepEqual(call.args.slice(0,3),['/d','/s','/c']);
-  assert.ok(call.args[3].startsWith('""C:\\Program Files\\nodejs\\npm.cmd" '));
+  assert.ok(call.args[3].startsWith('""C:\\Program Files\\nodejs\\doxguard.cmd" '));
   assert.ok(call.args[3].includes('"C:/fixture folder/public.json"'));
   for (const char of ['%', '!', '&', '|', '<', '>', '^', '"', '\n', '\r', '\0']) assert.throws(() => nativeInvocation(['scan',char], 'win32', options));
-  assert.equal(nativeInvocation(['--version'],'linux').command,'npm');
+  assert.equal(nativeInvocation(['--version'],'linux').command,'doxguard');
 });
-test('Windows resolves system cmd and PATH npm without current-directory fallback', () => {
+test('Windows resolves system cmd and PATH scanner without current-directory fallback', () => {
   const probes = [];
   const options = {
     env:{systemroot:'C:\\Windows',pAtH:';.;relative;C:\\fixture;C:\\absent;"C:\\Trusted Node"'},
     cwd:'c:\\FIXTURE',
     isFile:path => {
       probes.push(path);
-      return ['C:\\Windows\\System32\\cmd.exe','C:\\Trusted Node\\npm.cmd'].includes(path);
+      return ['C:\\Windows\\System32\\cmd.exe','C:\\Trusted Node\\doxguard.cmd'].includes(path);
     },
   };
-  assert.deepEqual(resolveWindowsTools(options),{command:'C:\\Windows\\System32\\cmd.exe',npm:'C:\\Trusted Node\\npm.cmd'});
-  assert.deepEqual(probes,['C:\\Windows\\System32\\cmd.exe','C:\\absent\\npm.cmd','C:\\Trusted Node\\npm.cmd']);
+  assert.deepEqual(resolveWindowsTools(options),{command:'C:\\Windows\\System32\\cmd.exe',scanner:'C:\\Trusted Node\\doxguard.cmd'});
+  assert.deepEqual(probes,['C:\\Windows\\System32\\cmd.exe','C:\\absent\\doxguard.cmd','C:\\Trusted Node\\doxguard.cmd']);
   for (const env of [{Path:'C:\\Trusted Node'}, {SystemRoot:'relative',Path:'C:\\Trusted Node'}, {SystemRoot:'C:\\Windows',Path:'.;C:\\fixture'}]) {
     assert.throws(() => resolveWindowsTools({...options,env}));
   }

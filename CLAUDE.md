@@ -107,21 +107,19 @@ AI 作業共通ルールは、各利用者のグローバル AI 設定に従う
 
 ## secrets-scan（このリポジトリの配線）
 
-public リポなので secrets-scan 4 層のうち層 2（pre-commit）・層 3（CI）を配線している
-（2026-09-11 追加。`scripts/secrets-scan.mjs` は house 共通スキャナのそのままコピー）。
+public リポの層 2（pre-commit）・層 3（CI）は公開済み doxguard 0.2.0 を使う。
+詳細と合成対照は [scripts/structural-ci.md](scripts/structural-ci.md) を参照。
 
-- 層 2（per-commit）: `.githooks/pre-commit` が `node scripts/secrets-scan.mjs --staged --block`
-  を実行（`.githooks/pre-push` の pytest ゲートと同じ `core.hooksPath = .githooks` を共有）
-- 層 3（server-side backstop）: `.github/workflows/secrets-scan.yml`
-  （`--all-tracked --block`。CI ランナーには kb が無いため構造 regex のみで検知）
-- 手動実行: `node scripts/secrets-scan.mjs --all-tracked --dry-run`
-- env var（任意・kb 由来 watchlist を使う場合のみ）: `KB_ROOT` / `FAMILY_ROOT`
-  （未設定なら構造 regex のみで継続。CI では未設定のまま運用）
+- 層 2: `.githooks/pre-commit` が installed exact 0.2.0 で `scan --staged --block --strict`。
+  `DOXGUARD_CONFIG` 指定時はその private config、未指定時は `doxguard.ci.json`。
+- 層 3: `.github/workflows/structural.yml` が正典hash確認済み exact 0.2.0 で全trackedを検査。
+- 手動実行: `node scripts/structural-ci.mjs`（事前に doxguard 0.2.0 をインストール）。
+  public config の構造検査のみで、private watchlist 環境を子へ渡さない。
 
 ## 開発者向け git hook（推奨）
 
 `.githooks/` に `pre-push`（push 前に `pytest -q`）と `pre-commit`（commit 前に
-secrets-scan）が用意されている。`pre-push` は 2026-07-16 v0.3.0 release で
+doxguard と omitnix）が用意されている。`pre-push` は 2026-07-16 v0.3.0 release で
 「ローカル pytest せず push → リモート CI で 5 連続失敗」の cascade があった教訓から追加。
 
 **有効化**（clone 後 1 回だけ）:

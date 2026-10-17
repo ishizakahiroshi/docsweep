@@ -1,4 +1,4 @@
-name: Structural dual gate
+name: Structural doxguard gate
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ env:
   STRUCTURAL_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
-  structural-dual:
+  structural:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -25,8 +25,8 @@ jobs:
         with:
           node-version: '22'
       - name: Test gate orchestration (no downloads)
-        run: node --test scripts/structural-ci.test.mjs
-      - name: Scan the same checkout with legacy and exact native package
+        run: node --test scripts/structural-ci.test.mjs scripts/structural-hook.test.mjs
+      - name: Scan tracked files with exact native package
         if: ${{ always() && !cancelled() }}
         run: node scripts/structural-ci.mjs
       - name: Synthetic scanner controls (same exact package)

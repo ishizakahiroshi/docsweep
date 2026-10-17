@@ -9,11 +9,10 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 export const packagePin = 'doxguard@0.2.0';
-export const nativeArgs = ['exec', '--yes', '--package=' + packagePin, '--', 'doxguard'];
 export function isolatedEnv(env = process.env) {
   const result = { ...env };
   for (const key of Object.keys(result)) {
-    if (/^(KB_ROOT|FAMILY_ROOT|DOXGUARD.*)$/i.test(key)) delete result[key];
+    if (/^(KB_ROOT|FAMILY_ROOT|DOXGUARD.*|GIT_.*)$/i.test(key)) delete result[key];
   }
   return result;
 }
@@ -41,30 +40,34 @@ export function resolveWindowsTools({ env = process.env, cwd = process.cwd(), is
     if (!absolute(directory) || unsafeWindowsArgument.test(directory)) continue;
     const normalized = win32.resolve(directory);
     if (normalized.toLowerCase() === current) continue;
-    const npm = win32.join(normalized, 'npm.cmd');
-    if (isFile(npm)) return { command, npm };
+    const scanner = win32.join(normalized, 'doxguard.cmd');
+    if (isFile(scanner)) return { command, scanner };
   }
-  throw new Error('npm command unavailable on absolute PATH');
+  throw new Error('installed doxguard command unavailable on absolute PATH');
 }
 export function nativeInvocation(args, platform = process.platform, windowsOptions) {
-  const all = [...nativeArgs, ...args];
-  if (platform !== 'win32') return { command: 'npm', args: all };
+  const all = [...args];
+  if (platform !== 'win32') return { command: 'doxguard', args: all };
   // cmd expands percent/exclamation even in quotes. Reject shell syntax rather
   // than passing caller-controlled paths through an unsafe quoting shortcut.
   if (all.some(arg => unsafeWindowsArgument.test(arg))) throw new Error('unsupported Windows command argument');
-  const { command, npm } = resolveWindowsTools(windowsOptions);
-  return { command, args: ['/d', '/s', '/c', '""' + npm + '" ' + all.map(arg => '"' + arg + '"').join(' ') + '"'] };
+  const { command, scanner } = resolveWindowsTools(windowsOptions);
+  return { command, args: ['/d', '/s', '/c', '""' + scanner + '" ' + all.map(arg => '"' + arg + '"').join(' ') + '"'] };
 }
-export function native(args, cwd, execute = run) {
+export function nativeRoute(inCI = process.env.CI, platform = process.platform) {
+  return inCI && platform === 'linux' ? 'verified-root-launcher' : 'installed-exact-0.2.0';
+}
+export function native(args, cwd, execute = run, invocationOptions = {}) {
   try {
-    if (process.env.CI && process.platform === 'linux' && execute === run) {
+    if (nativeRoute() === 'verified-root-launcher' && execute === run) {
       const runtime = getPublicRuntime();
       if (!runtime.ready) return runtime.failure;
       const identity = verifyRuntime(runtime.root);
       console.log(JSON.stringify({ runtime_use: args[0] === '--version' ? 'version' : 'scan', ...identity.receipt }));
       return execute(process.execPath, [identity.launcher, ...args], cwd);
     }
-    const invocation = nativeInvocation(args, process.platform, { cwd: cwd ?? process.cwd() });
+    const invocation = nativeInvocation(args, invocationOptions.platform ?? process.platform,
+      invocationOptions.windowsOptions ?? { cwd: cwd ?? process.cwd() });
     return execute(invocation.command, invocation.args, cwd);
   } catch { return { status: -1, stdout: '', stderr: '', error: { code: 'INVALID_ARGUMENT' } }; }
 }
@@ -185,14 +188,13 @@ export function safeFindings(hits) {
     source: sources.has(hit?.source) ? clean(hit.source) : 'unrecognized-detector',
   }));
 }
-export function inspect(result, kind) {
+export function inspect(result) {
   // No exception message or untrusted field is forwarded to the log.
-  const summary = { scanner: kind, exit: Number.isInteger(result.status) ? result.status : -1, valid: false, failure_reason: failureReason(result) };
+  const summary = { scanner: 'doxguard', exit: Number.isInteger(result.status) ? result.status : -1, valid: false, failure_reason: failureReason(result) };
   try {
     if (result.error || result.signal) return summary;
     const data = JSON.parse(result.stdout);
-    const numeric = ['scanned', 'total_files', 'exempt_or_skipped', 'structural_patterns'];
-    numeric.push(...(kind === 'legacy' ? ['kb_needles', 'family_needles'] : ['watchlist_needles', 'coverage_skips']));
+    const numeric = ['scanned', 'total_files', 'exempt_or_skipped', 'structural_patterns', 'watchlist_needles', 'coverage_skips'];
     if (!numeric.every(key => Number.isSafeInteger(data[key]) && data[key] >= 0) || !Array.isArray(data.hits)) return summary;
     summary.scanned = data.scanned;
     summary.total = data.total_files;
@@ -200,36 +202,19 @@ export function inspect(result, kind) {
     summary.hits = data.hits.length;
     summary.findings = safeFindings(data.hits);
     delete summary.failure_reason;
-    if (kind === 'legacy') {
-      summary.needles = data.kb_needles + data.family_needles;
-      summary.coverage_skips = 'not-reported-by-legacy';
-      // Legacy has no machine-readable coverage field. Any unexpected warning
-      // fails this gate, including oversize/read errors. Native checks all files.
-      const lines = String(result.stderr || '').split('\n').filter(Boolean);
-      const expected = [
-        'WARN: KB_ROOT env var not set — kb-derived watchlist skipped, structural regex only',
-        'WARN: KB_ROOT env var が未設定 — kb 由来 watchlist をスキップ・構造 regex のみで継続',
-        'WARN: FAMILY_ROOT env var not set — family watchlist skipped',
-        'WARN: FAMILY_ROOT env var が未設定 — family watchlist をスキップ',
-      ];
-      summary.coverage_warnings = lines.filter(line => !expected.includes(line)).length;
-      summary.valid = data.kb_needles === 0 && data.family_needles === 0 && summary.coverage_warnings === 0;
-    } else {
-      summary.needles = data.watchlist_needles;
-      summary.coverage_skips = data.coverage_skips;
-      summary.valid = data.watchlist_needles === 0 && data.watchlist_statistics?.candidates === 0
-        && data.watchlist_statistics?.loaded === 0 && data.coverage_skips === 0
-        && data.baseline_applied === false && data.baseline_suppressed_hits === 0;
-    }
-    summary.valid &&= data.structural_patterns === 4 && data.scanned > 0 && data.scanned <= data.total_files;
+    summary.needles = data.watchlist_needles;
+    summary.coverage_skips = data.coverage_skips;
+    summary.valid = data.watchlist_needles === 0 && data.watchlist_statistics?.candidates === 0
+      && data.watchlist_statistics?.loaded === 0 && data.coverage_skips === 0
+      && data.baseline_applied === false && data.baseline_suppressed_hits === 0;
+    summary.valid &&= data.structural_patterns === 4 && data.scanned > 0
+      && data.scanned + data.exempt_or_skipped === data.total_files;
   } catch { /* Invalid or incomplete output fails closed. */ }
   return summary;
 }
-export function scanPair(cwd, configPath, execute = run) {
-  // Neither child failure short-circuits the other scanner.
-  const legacy = execute(process.execPath, ['scripts/secrets-scan.mjs', '--all-tracked', '--block', '--format=json'], cwd);
-  const modern = native(['scan', '--all-tracked', '--block', '--strict', '--format=json', '--config', configPath], cwd, execute);
-  return [inspect(legacy, 'legacy'), inspect(modern, 'doxguard')];
+export function scanNative(cwd, configPath, execute = run, invocationOptions = {}) {
+  const modern = native(['scan', '--all-tracked', '--block', '--strict', '--format=json', '--config', configPath], cwd, execute, invocationOptions);
+  return inspect(modern);
 }
 export function passed(summary) {
   return summary.valid && summary.exit === 0 && summary.hits === 0;
@@ -253,30 +238,21 @@ export function main() {
   const shaValid = sha.status === 0 && matchesExpectedSha(sourceSha, expectedSha, process.env.CI);
   console.log('source_sha=' + (/^[a-f0-9]{40}$/.test(sourceSha) ? sourceSha : 'unavailable'));
   console.log('expected_sha_match=' + shaValid);
-  if (process.argv.includes('--legacy-only')) {
-    const summary = inspect(run(process.execPath, ['scripts/secrets-scan.mjs', '--all-tracked', '--block', '--format=json'], cwd), 'legacy');
-    console.log(JSON.stringify(summary));
-    return shaValid && passed(summary) ? 0 : 1;
-  }
   const configPath = resolve(cwd, 'doxguard.ci.json');
   let configValid = false;
   try { configValid = validateConfig(JSON.parse(readFileSync(configPath, 'utf8'))); } catch { /* fail closed */ }
-  console.log('legacy_command=node scripts/secrets-scan.mjs --all-tracked --block --format=json');
-  console.log('native_command=exact-doxguard-0.2.0-verified-root-launcher scan --all-tracked --block --strict --format=json --config doxguard.ci.json');
-  // Version verification is independent of the legacy scan. A missing package
-  // must still leave evidence for legacy, and must never make the gate green.
+  console.log('native_command=' + nativeRoute() + ' scan --all-tracked --block --strict --format=json --config doxguard.ci.json');
+  // Exact version is required for the installed local or verified CI runtime.
   const version = native(['--version'], cwd);
   const versionValid = exactNativeVersion(version);
   console.log('native_version=' + (versionValid ? '0.2.0' : 'unavailable-or-unexpected'));
   console.log('config_valid=' + configValid);
-  const summaries = configValid ? scanPair(cwd, configPath) : [
-    inspect(run(process.execPath, ['scripts/secrets-scan.mjs', '--all-tracked', '--block', '--format=json'], cwd), 'legacy'),
-    { scanner: 'doxguard', valid: false, exit: -1 },
-  ];
-  for (const summary of summaries) console.log(JSON.stringify(summary));
-  // Runtime evidence for both gates is emitted before bounded diagnostics.
+  const summary = configValid && versionValid ? scanNative(cwd, configPath)
+    : { scanner: 'doxguard', valid: false, exit: -1 };
+  console.log(JSON.stringify(summary));
+  // Runtime evidence is emitted before bounded diagnostics.
   const preflight = process.env.CI ? runtimePreflight() : { accepted: false, reason: 'not-requested-outside-ci' };
   console.log(JSON.stringify(preflight));
-  return (preflight.accepted || ['not-requested-outside-ci'].includes(preflight.reason)) && configValid && shaValid && versionValid && summaries.every(passed) ? 0 : 1;
+  return (preflight.accepted || ['not-requested-outside-ci'].includes(preflight.reason)) && configValid && shaValid && versionValid && passed(summary) ? 0 : 1;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main();
