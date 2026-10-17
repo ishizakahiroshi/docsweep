@@ -1,0 +1,30 @@
+name: Structural dual gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  structural-dual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test gate orchestration (no downloads)
+        run: node --test scripts/structural-ci.test.mjs
+      - name: Scan the same checkout with legacy and exact native package
+        if: ${{ always() && !cancelled() }}
+        run: node scripts/structural-ci.mjs
+      - name: Synthetic scanner controls (same exact package)
+        if: ${{ always() && !cancelled() }}
+        run: node scripts/structural-controls.mjs

@@ -213,7 +213,7 @@ class Config:
     user_name: str | None = None
     user_email: str | None = None
     # C1 (wings): SQLite 索引が再帰走査するルート群のグロブパターン。
-    # 例: ["D:/dev/github/public/*", "D:/dev/github/private/*"]  # secrets-scan: allow
+    # 例: ["D:/dev/github/public/*", "D:/dev/github/private/*"]  # doxguard: allow D:/dev; secrets-scan: allow
     # 未設定の場合は索引機能は ``roots`` をフォールバック走査する。
     search_paths: list[str] = field(default_factory=list)
     search_exclude: list[str] = field(default_factory=lambda: list(DEFAULT_SEARCH_EXCLUDE))
