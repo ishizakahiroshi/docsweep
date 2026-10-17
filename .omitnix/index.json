@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated": {
-    "commit": "2e7ab87be88935e3e283963edfcbb0d89fea4bba",
-    "dirty": false,
+    "commit": "6f6184d41d06cad3901630d17cd91e345882bb5e",
+    "dirty": true,
     "tool": "omitnix 0.1.3",
     "partial": false,
     "adapters": [
@@ -138,11 +138,11 @@
     "discovery_note": ""
   },
   "coverage": {
-    "discovered": 385,
+    "discovered": 389,
     "analyzed": 247,
     "unresolved": 6,
     "unknown": 3,
-    "unclaimed": 129,
+    "unclaimed": 133,
     "skipped_by_config": 0
   },
   "files": [
@@ -596,6 +596,38 @@
     },
     {
       "path": "docs/ai-agent-integration.md",
+      "adapter": null,
+      "status": "unclaimed",
+      "fields": {},
+      "unresolved": [],
+      "reason": "no adapter claims '.md'"
+    },
+    {
+      "path": "docs/bot/doxguard-ci-20261018/FACTS.md",
+      "adapter": null,
+      "status": "unclaimed",
+      "fields": {},
+      "unresolved": [],
+      "reason": "no adapter claims '.md'"
+    },
+    {
+      "path": "docs/bot/doxguard-ci-20261018/PROGRESS.md",
+      "adapter": null,
+      "status": "unclaimed",
+      "fields": {},
+      "unresolved": [],
+      "reason": "no adapter claims '.md'"
+    },
+    {
+      "path": "docs/bot/doxguard-ci-20261018/README.md",
+      "adapter": null,
+      "status": "unclaimed",
+      "fields": {},
+      "unresolved": [],
+      "reason": "no adapter claims '.md'"
+    },
+    {
+      "path": "docs/bot/doxguard-ci-20261018/REVIEW.md",
       "adapter": null,
       "status": "unclaimed",
       "fields": {},

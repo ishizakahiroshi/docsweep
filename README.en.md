@@ -58,14 +58,15 @@ as `command`.
 {
   "mcpServers": {
     "docsweep": {
-      "command": "C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": "C:\\Tools\\Python312\\python.exe",
       "args": ["-m", "docsweep", "mcp"]
     }
   }
 }
 ```
 
-> Replace `Python312` above with **the Python version actually installed on your machine**.
+> `C:\Tools\Python312` is a portable example location, not the per-user default.
+> Replace the entire command path with **the Python executable actually installed on your machine**.
 > To check: `where python` on Windows, `which python3` on macOS / Linux.
 > Or get the full path with `python -c "import sys; print(sys.executable)"`.
 
@@ -87,9 +88,9 @@ No separate binary is produced; launching with `python -m docsweep ...` is the s
 
 | Item | Location |
 |---|---|
-| Python itself (standard per-user install) | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` <!-- secrets-scan: allow --> |
-| docsweep package (after pip install) | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` <!-- secrets-scan: allow --> |
-| docsweep config and state | `C:\Users\<you>\.docsweep\` (= `%USERPROFILE%\.docsweep\` = `~/.docsweep`) <!-- secrets-scan: allow --> |
+| Python itself (standard per-user install) | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` <!-- secrets-scan: allow --> <!-- doxguard: allow C:\Users\ --> |
+| docsweep package (after pip install) | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` <!-- secrets-scan: allow --> <!-- doxguard: allow C:\Users\ --> |
+| docsweep config and state | `C:\Users\<you>\.docsweep\` (= `%USERPROFILE%\.docsweep\` = `~/.docsweep`) <!-- secrets-scan: allow --> <!-- doxguard: allow C:\Users\ --> |
 | `docsweep` launcher | `...\Python3XX\Scripts\docsweep.exe` (runs as plain `docsweep` if Scripts is on PATH) |
 
 > **Avoid the Microsoft Store version of Python**. With the Store build behind
@@ -111,7 +112,7 @@ python -m docsweep mcp
 # {
 #   "mcpServers": {
 #     "docsweep": {
-#       "command": "C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+#       "command": "C:\\Tools\\Python312\\python.exe",
 #       "args": ["-m", "docsweep", "mcp"]
 #     }
 #   }
@@ -181,7 +182,7 @@ python3 -m docsweep mcp
 # {
 #   "mcpServers": {
 #     "docsweep": {
-#       "command": "/home/you/.venvs/docsweep/bin/python", secrets-scan: allow
+#       "command": "/home/you/.venvs/docsweep/bin/python", doxguard: allow /home/you/; secrets-scan: allow
 #       "args": ["-m", "docsweep", "mcp"]
 #     }
 #   }

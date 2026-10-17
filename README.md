@@ -54,13 +54,14 @@ MCP クライアントへ登録する場合も、`docsweep mcp` ではなく `py
 {
   "mcpServers": {
     "docsweep": {
-      "command": "C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": "C:\\Tools\\Python312\\python.exe",
       "args": ["-m", "docsweep", "mcp"]
     }
   }
 }
 ```
 
+> `C:\Tools\Python312` は例示用の配置です。per-user の既定配置ではありません。command 全体を実際の Python 実行ファイルの絶対パスに置き換えてください。
 > 上記の `Python312` は **インストールされている Python のバージョンに置き換えてください**。
 > 確認方法: Windows は `where python`、macOS / Linux は `which python3`。
 > もしくは `python -c "import sys; print(sys.executable)"` でフルパスが取れます。
@@ -83,9 +84,9 @@ MCP クライアントへ登録する場合も、`docsweep mcp` ではなく `py
 
 | 項目 | 場所 |
 |---|---|
-| Python 実体（per-user 標準インストール） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` <!-- secrets-scan: allow --> |
-| docsweep 本体（pip install 後） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` <!-- secrets-scan: allow --> |
-| docsweep 設定・状態 | `C:\Users\<you>\.docsweep\`（= `%USERPROFILE%\.docsweep\` = `~/.docsweep`） <!-- secrets-scan: allow --> |
+| Python 実体（per-user 標準インストール） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\python.exe` <!-- secrets-scan: allow --> <!-- doxguard: allow C:\Users\ --> |
+| docsweep 本体（pip install 後） | `C:\Users\<you>\AppData\Local\Programs\Python\Python3XX\Lib\site-packages\docsweep\` <!-- secrets-scan: allow --> <!-- doxguard: allow C:\Users\ --> |
+| docsweep 設定・状態 | `C:\Users\<you>\.docsweep\`（= `%USERPROFILE%\.docsweep\` = `~/.docsweep`） <!-- secrets-scan: allow --> <!-- doxguard: allow C:\Users\ --> |
 | `docsweep` ショートカット | `...\Python3XX\Scripts\docsweep.exe`（PATH 通っていれば `docsweep` 直で起動可） |
 
 > **Windows ストア版 Python は避けることを推奨**。`%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe`
@@ -106,7 +107,7 @@ python -m docsweep mcp
 # {
 #   "mcpServers": {
 #     "docsweep": {
-#       "command": "C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+#       "command": "C:\\Tools\\Python312\\python.exe",
 #       "args": ["-m", "docsweep", "mcp"]
 #     }
 #   }
@@ -175,7 +176,7 @@ python3 -m docsweep mcp
 # {
 #   "mcpServers": {
 #     "docsweep": {
-#       "command": "/home/you/.venvs/docsweep/bin/python", secrets-scan: allow
+#       "command": "/home/you/.venvs/docsweep/bin/python", doxguard: allow /home/you/; secrets-scan: allow
 #       "args": ["-m", "docsweep", "mcp"]
 #     }
 #   }
@@ -645,10 +646,10 @@ MCP 経由でも同じく引数で絞れます。例: `triage(project="many-ai-c
 python -m docsweep project list
 
 # 除外リストへ入れて board / scan から外す
-python -m docsweep project disable D:/dev/github/public/foo  # secrets-scan: allow
+python -m docsweep project disable D:/dev/github/public/foo  # doxguard: allow D:/dev; secrets-scan: allow
 
 # 除外を解除
-python -m docsweep project enable D:/dev/github/public/foo  # secrets-scan: allow
+python -m docsweep project enable D:/dev/github/public/foo  # doxguard: allow D:/dev; secrets-scan: allow
 ```
 
 除外は `~/.docsweep/excluded.json` に root の絶対パスとして記録され、**ファイルは一切動かしません**

@@ -1,0 +1,18 @@
+{
+  "watchlists": [],
+  "requireWatchlists": false,
+  "structural": {
+    "windowsPath": true,
+    "posixHome": true,
+    "privateIp": true,
+    "email": true
+  },
+  "allow": {
+    "emails": ["ishizakahiroshi.dev@gmail.com"],
+    "emailDomains": ["example.com", "example.invalid"],
+    "disallowBareAllow": true
+  },
+  "includeDefaultExemptPaths": false,
+  "exemptPaths": [],
+  "failOnSkip": true
+}
