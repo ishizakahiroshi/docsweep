@@ -1,23 +1,21 @@
 #!/usr/bin/env sh
-# doxguard prerelease opt-in begin
-if [ "$(git config --local --get doxguard.prerelease.enabled)" = true ]; then
-  dg_dir=$(git rev-parse --path-format=absolute --git-common-dir) || exit $?
-  dg_bin="$dg_dir/doxguard/prerelease/doxguard.exe"
-  dg_config="$dg_dir/doxguard/prerelease/config.json"
-  if [ ! -f "$dg_bin" ] || [ ! -f "$dg_config" ]; then
-    echo "doxguard: prerelease candidate or config missing" >&2
-    exit 2
-  fi
-  "$dg_bin" scan --staged --block --strict --config "$dg_config" || exit $?
+# doxguard published gate begin
+dg_install='Install doxguard 0.2.0 once: npm install --global doxguard@0.2.0'
+if ! command -v doxguard >/dev/null 2>&1; then
+  echo "doxguard: required installed version missing. $dg_install" >&2
+  exit 2
 fi
-# doxguard prerelease opt-in end
-# secrets-scan layer 2 (per-commit) — non-pnpm path via core.hooksPath = .githooks
-# 設計詳細: docs/local/secrets-scan-design/ (gitignored)
-# Activate with: bash scripts/install-hooks.sh  or  pwsh scripts/install-hooks.ps1
-#
-# 検査を足すときは必ず `|| exit 1` を付ける。付けずに 2 本目を並べると hook の
-# 終了コードが「最後のコマンドの結果」になり、前段の BLOCKED が握り潰される。
-node scripts/secrets-scan.mjs --staged --block || exit 1
+dg_version=$(doxguard --version 2>/dev/null) || {
+  echo "doxguard: installed version check failed. $dg_install" >&2
+  exit 2
+}
+if [ "$dg_version" != 'doxguard 0.2.0' ]; then
+  echo "doxguard: installed version must be exactly 0.2.0. $dg_install" >&2
+  exit 2
+fi
+dg_config=${DOXGUARD_CONFIG:-doxguard.ci.json}
+doxguard scan --staged --block --strict --config "$dg_config" || exit $?
+# doxguard published gate end
 
 # --- omitnix: 生成物の鮮度検査（2026-09-11 追加） ---
 # コミット済みの .omitnix/index.json が、いまのソースと食い違っていたら止める。

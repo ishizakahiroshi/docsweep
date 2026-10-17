@@ -1,11 +1,10 @@
 # Public structural gate
 
-`structural-dual.yml` runs the unchanged legacy scanner and exactly
-`doxguard@0.2.0` on the same checkout. A scanner failure does not prevent the
-other scan, and every failed result fails the job. Synthetic scanner controls
-run even when the tracked scan fails. Existing CI and the legacy workflow/hook
-remain; the legacy workflow now uses the metadata-filtering wrapper for safe output.
-Only the owner may remove legacy after real dual CI acceptance.
+`structural.yml` runs exactly `doxguard@0.2.0` on the checked-out PR/push head.
+Synthetic scanner controls run even when the tracked scan fails. Python CI,
+pre-push pytest and the independent omitnix hook remain separate gates.
+The accepted dual-run pilot is complete; the obsolete scanner and its workflow
+have been removed.
 
 The explicit `doxguard.ci.json` has no watchlist sources, no path exemptions and
 no default exemptions. All four default structural rules are enabled; strict
@@ -25,27 +24,27 @@ Allowances:
 - Scoped inline path allowances preserve intentional Windows / junction /
   root-configuration fixtures and per-user documentation. A token appears
   inside the actual matched prefix; multi-match lines have separate tokens.
-  Legacy bare comments remain compatible while the native strict scanner uses
-  the additional scoped tokens. No tree-wide fixture exemption is introduced.
+  The native strict scanner requires scoped tokens. No tree-wide fixture
+  exemption is introduced.
 - The four escaped JSON command examples now use a generic Tools location;
   the surrounding instructions require the actual interpreter's absolute path.
 
 Commands:
-- `node --test scripts/structural-ci.test.mjs` tests fail-closed orchestration,
-  output redaction, both-scanners-on-failure, isolation and config invariants.
-- `node scripts/structural-ci.mjs --legacy-only` runs the legacy gate safely.
-- `node scripts/structural-ci.mjs` runs the full dual gate.
+- `node --test scripts/structural-ci.test.mjs scripts/structural-hook.test.mjs`
+  tests fail-closed native orchestration, synthetic installed hook commands,
+  output redaction, isolation and config invariants without downloads.
+- `node scripts/structural-ci.mjs` runs the native structural gate.
 - `node scripts/structural-controls.mjs` runs isolated real-scanner controls.
   Controls include positive matches, scoped/bare/wrong/short/reversed tokens,
   escaped Windows paths, multiple hits, reserved examples and a coverage skip.
 
-The last two commands resolve the exact npm package and are intended for CI;
-no dependency download is required for the orchestration unit tests. A missing
-0.2.0 package fails the gate and waits for the release coordinator. Do not
-unpin, skip the native job, soften strict mode or print raw npm/scanner output.
-Failures report fixed reason categories without raw diagnostics. Both workflows
-check out the exact pull-request head and require git HEAD to equal the expected
-SHA. Windows invokes npm through a constrained cmd.exe command line; shell
+In Linux CI the last two commands provision the verified exact npm package.
+Outside CI they require an installed doxguard 0.2.0; install once with
+`npm install --global doxguard@0.2.0`. No commit-time download occurs.
+Do not unpin, skip the native job, soften strict mode or print raw npm/scanner output.
+Failures report fixed reason categories without raw diagnostics. The workflow
+checks out the exact pull-request head and requires git HEAD to equal the expected
+SHA. Windows invokes the installed scanner through a constrained cmd.exe command line; shell
 metacharacters are rejected. Child environment filtering is case-insensitive.
 Investigate availability/configuration failures without exposing scan input values.
 
@@ -59,8 +58,8 @@ Linux x64 payload hash is 5458f08f85753cf6d33ad869063af16ca8f55a800bb9d17a78c4b6
 from the public v0.2.0 bin/doxguard.js. Other CI architectures fail closed until
 their canonical identities are independently accepted; no hash is guessed.
 
-The bounded three-minute preflight uses the actual scan runtime, after both
-tracked results, and checks direct-native and root-launcher versions. It does
+The bounded three-minute preflight uses the actual scan runtime, after the
+tracked result, and checks direct-native and root-launcher versions. It does
 not install a second diagnostic runtime. The separate controls process verifies
 its own installation against the same canonical hashes before every invocation.
 Fixed runtime_use/identity/hash receipts link version, tracked scan and all
@@ -69,5 +68,12 @@ failure fails the process. Unit tests use synthetic files and no downloads.
 
 The observed npm exec resolution failure is retained in historical receipts.
 The Linux CI route uses the verified absolute public launcher through Node;
-no npm exec or system PATH scanner is used. Actual native scans, version,
-coverage and controls must still pass, and legacy always runs independently.
+no npm exec or system PATH scanner is used in CI. Actual native scans, version,
+coverage and all 15 detection controls plus the coverage-skip control must pass.
+
+The tracked `.githooks/pre-commit` requires installed exact 0.2.0, preserves
+`DOXGUARD_CONFIG` as one argument when supplied, otherwise uses the public
+`doxguard.ci.json`, and runs `scan --staged --block --strict`. Missing or wrong
+versions fail closed with the installation command. Scan failure stops the hook;
+success continues to the unchanged omitnix freshness check. Git-private managed
+hooks/config/watchlists are maintained separately by their owner.
