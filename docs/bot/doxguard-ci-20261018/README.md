@@ -1,6 +1,6 @@
 # P-20261018-006 docsweep: prepare strict doxguard CI migration
 
-Updated: 2026-10-18. Issue: pending publication by owner.
+Updated: 2026-10-18. Issue: https://github.com/ishizakahiroshi/docsweep/issues/1
 
 Read CLAUDE.md, AGENTS.md, FACTS.md, REVIEW.md and PROGRESS.md first.
 Repository: ishizakahiroshi/docsweep (public). Behavior baseline and PR base:

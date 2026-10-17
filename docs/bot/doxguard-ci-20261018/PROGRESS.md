@@ -1,6 +1,6 @@
 # P-20261018-006 docsweep
 
-Updated: 2026-10-18. Management Issue: pending publication by owner.
+Updated: 2026-10-18. Management Issue: https://github.com/ishizakahiroshi/docsweep/issues/1
 Public instructions: ishizakahiroshi/docsweep docs/bot/doxguard-ci-20261018/.
 Behavior baseline: develop 6f6184d41d06cad3901630d17cd91e345882bb5e.
 Implementation branch: dots/doxguard-ci-P-20261018-006. PR base: develop.
@@ -15,3 +15,4 @@ Implementation branch: dots/doxguard-ci-P-20261018-006. PR base: develop.
 
 Issue comments are the source of truth for dispatch and acceptance status.
 Instruction/code/review SHAs and board commits are distinct evidence states.
+Initial published instruction/diff base: 0b46d0674a2e7f62075df327da4e2b10e9cc258e.
