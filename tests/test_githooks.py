@@ -516,3 +516,28 @@ def test_hook_stops_with_one_line_when_i18n_json_is_missing(tmp_path: Path):
     r = _run([p], hook=installed)
 
     assert r.returncode == 0, r.stderr
+
+
+def test_hook_checks_staged_markdown_with_non_ascii_name(tmp_path: Path):
+    """非 ASCII を含むファイル名の staged md も検査対象になる。"""
+    # hook 経由（pre-push 等）で走る場合に備え、親の git 環境変数を引き継がない。
+    base_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+    def git(*a: str) -> None:
+        subprocess.run(
+            ["git", *a], cwd=tmp_path, check=True, capture_output=True, env=base_env
+        )
+
+    git("init", "-q")
+    p = tmp_path / "plan_日本語.md"
+    p.write_text(
+        "---\ntype: plan\nstatus: notavalue\n---\n# [計画] x\n", encoding="utf-8"
+    )
+    git("add", "--", p.name)
+    env = dict(base_env, DOCSWEEP_LANG="ja")
+    r = subprocess.run(
+        [sys.executable, str(HOOK)], cwd=tmp_path, env=env,
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert r.returncode == 1, r.stderr
+    assert "status=" in r.stderr

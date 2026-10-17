@@ -15,19 +15,18 @@ rem If a folder was dropped onto this .cmd, use it
 if not "%~1"=="" set "ROOT=%~1"
 
 rem docsweep repository (works even without pip install)
-set "REPO=D:\dev\github\public\docsweep" & rem secrets-scan: allow
+set "REPO=D:\dev\github\public\docsweep" & rem doxguard: allow D:\dev\ secrets-scan: allow
 
-rem Port and fixed access token (URL stays the same every time)
+rem Port. The access token is generated randomly at each start (no fixed value).
+rem To pin it, set the DOCSWEEP_TOKEN environment variable to a private value.
 set "PORT=8765"
-set "TOKEN=docsweep"
 
 cd /d "%REPO%"
 echo.
 echo  docsweep Web UI
-echo  URL: http://127.0.0.1:%PORT%/?token=%TOKEN%
-echo  (browser opens automatically / stop with Ctrl+C)
+echo  (browser opens automatically / stop with Ctrl+C. The URL is shown below)
 echo.
-python -m docsweep serve --root "%ROOT%" --port %PORT% --token %TOKEN%
+python -m docsweep serve --root "%ROOT%" --port %PORT%
 
 echo.
 echo  Stopped.

@@ -443,14 +443,13 @@ def _staged_md_files() -> list[Path]:
     """``git diff --cached --name-only --diff-filter=AM`` で対象 md を取得。"""
     try:
         out = subprocess.check_output(
-            ["git", "diff", "--cached", "--name-only", "--diff-filter=AM"],
+            ["git", "diff", "--cached", "--name-only", "-z", "--diff-filter=AM"],
             text=True, encoding="utf-8", errors="replace",
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         return []
     files: list[Path] = []
-    for line in out.splitlines():
-        line = line.strip()
+    for line in out.split("\0"):
         if not line.endswith(".md"):
             continue
         name = Path(line).name
@@ -580,14 +579,14 @@ def _repo_root() -> Path | None:
 def _staged_paths() -> list[Path]:
     try:
         out = subprocess.check_output(
-            ["git", "diff", "--cached", "--name-only", "--diff-filter=AM"],
+            ["git", "diff", "--cached", "--name-only", "-z", "--diff-filter=AM"],
             text=True,
             encoding="utf-8",
             errors="replace",
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         return []
-    return [Path(line.strip()) for line in out.splitlines() if line.strip()]
+    return [Path(line) for line in out.split("\0") if line]
 
 
 def _work_settings(root: Path) -> tuple[str, str, str]:
