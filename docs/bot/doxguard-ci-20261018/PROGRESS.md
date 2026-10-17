@@ -7,10 +7,10 @@ Implementation branch: dots/doxguard-ci-P-20261018-006. PR base: develop.
 
 | Stage | Owner | Evidence / remaining |
 |---|---|---|
-| Source corrections and dual CI | dots | Request prepared; acknowledgement not yet observed |
-| Independent review | separate reviewer and local coordinator | Exact submitted SHA required |
-| Package release | local coordinator | 0.2.0 in preparation |
-| Real dual CI and Windows acceptance | local coordinator | Pending published package and submitted code |
+| Source corrections and dual CI | dots | Acknowledged; Draft PR https://github.com/ishizakahiroshi/docsweep/pull/2 submitted. Latest head 689c61873a903fe4e95eccf7d8aba89b5f4aface includes safe file/line/reason diagnostics and exact source binding |
+| Independent review | separate reviewer and local coordinator | Exact 689c618 under review; earlier local candidate comparison had zero hits and zero native skips, and changed Python ASTs were unchanged outside docstrings |
+| Package release | local coordinator | GitHub v0.2.0 archives published from 281b954; npm job failed in run 39058075004. Authentication recovery and fresh install acceptance pending |
+| Real dual CI and Windows acceptance | local coordinator | Latest legacy run 39059525708 and Python CI 39059525482 succeeded. Dual run 39059525579 failed before native acceptance; package and final dual evidence remain pending |
 | Legacy removal and rollout | local coordinator | Only after preceding gates pass |
 
 Issue comments are the source of truth for dispatch and acceptance status.
