@@ -73,6 +73,8 @@
 
 ### Fixed
 
+- `apply --path` が単一ファイルの操作でも設定済みルート全体を走査していたため、
+  `relabel` の連続実行で毎回長く待たされていた。指定ファイルだけを読み込むようにした。
 - `inject --global --agent claude` が Claude のグローバル設定に書く取り込みの行を、`@~/.docsweep/guidance.md`
   から中央 guidance.md の絶対パス（`/` 区切りの `@<ホームの絶対パス>/.docsweep/guidance.md`）に変えた。Claude は `~` を
   起動したセッションのホームで展開するため、ホームを変えて Claude を起動するツール経由では別の場所を指し、

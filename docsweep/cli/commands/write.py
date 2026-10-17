@@ -12,7 +12,7 @@ import yaml
 
 from ...atomic import write_atomic
 from ...config import Config, archive_route_for_project, load_config
-from ...engine import apply_action, auto_sweep, doc_for_path, run_scan
+from ...engine import apply_action, auto_sweep, doc_for_path
 from ..interactive import stdin_is_interactive
 from ..parser import _build_config
 
@@ -224,13 +224,9 @@ def cmd_fix_conflict(args: argparse.Namespace) -> int:
 
 def cmd_apply(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
-    result = run_scan(cfg)
-    target = Path(args.path).resolve().as_posix()
-    doc = next((d for d in result.docs if d.record.path == target), None)
-    if doc is None:
-        # `docs/local` is commonly gitignored.  An explicitly named write target
-        # is still valid and must not be reported as a scan-scope success/empty.
-        doc = doc_for_path(Path(args.path), cfg)
+    # An explicit single-file action must not scan every configured root first.
+    # Keep the lexical path so linked queues retain their owning project.
+    doc = doc_for_path(Path(args.path), cfg)
     if doc is None:
         from ...i18n import t
 
