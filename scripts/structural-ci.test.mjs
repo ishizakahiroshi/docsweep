@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { symlinkSync, unlinkSync, mkdtempSync, readFileSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig, nativeInvocation, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools, runtimePreflight, exactNativeVersion, provisionPublicRuntime } from './structural-ci.mjs';
+import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig, nativeInvocation, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools, runtimePreflight, exactNativeVersion, provisionPublicRuntime, verifyRuntime, canonicalRuntime } from './structural-ci.mjs';
 const report = (kind, hits = []) => ({
   scanned: 3, total_files: 3, exempt_or_skipped: 0, structural_patterns: 4, hits,
   ...(kind === 'legacy' ? { kb_needles: 0, family_needles: 0 } : {
@@ -128,38 +130,13 @@ test('preflight classifies execution errors without raw diagnostics', () => {
   assert.equal(exactNativeVersion({status:0,stdout:'doxguard 0.2.0\n'}),true);
   assert.equal(exactNativeVersion({status:127,stdout:'doxguard 0.2.0'}),false);
 });
-test('preflight distinguishes direct and launcher success from npm exec failure', () => {
-  const calls=[];
-  const receipt=runtimePreflight({platform:'linux',arch:'x64',execute:(command,args,cwd,timeout)=>{
-    assert.ok(timeout > 0 && timeout <= 180_000);
-    calls.push({command,args});
-    if(args[0]==='install') {
-      const root=join(cwd,'node_modules','doxguard');
-      const platform=join(cwd,'node_modules','@ishizakahiroshi','doxguard-linux-x64');
-      mkdirSync(join(root,'bin'),{recursive:true});mkdirSync(join(platform,'bin'),{recursive:true});
-      writeFileSync(join(root,'package.json'),JSON.stringify({name:'doxguard',version:'0.2.0'}));
-      writeFileSync(join(platform,'package.json'),JSON.stringify({name:'@ishizakahiroshi/doxguard-linux-x64',version:'0.2.0'}));
-      writeFileSync(join(platform,'bin','doxguard'),'synthetic-not-executed');chmodSync(join(platform,'bin','doxguard'),0o755);
-      return {status:0,stdout:'',stderr:''};
-    }
-    if(command==='npm' && args[0]==='--version')return {status:0,stdout:'10.9.0'};
-    if(args[0]==='exec')return {status:127,stderr:'sh: 1: doxguard: not found HIDDEN_SENTINEL'};
-    return {status:0,stdout:'doxguard 0.2.0\n'};
-  }});
-  assert.equal(receipt.direct,'version-ok');assert.equal(receipt.launcher,'version-ok');
-  assert.equal(receipt.npm_exec,'command-not-found');assert.equal(receipt.accepted,true);
-  assert.equal(receipt.selected_route,'verified-root-launcher');
-  assert.match(receipt.payload_sha256,/^[a-f0-9]{64}$/);
-  assert.ok(!JSON.stringify(receipt).includes('HIDDEN_SENTINEL'));
-  assert.ok(calls.find(c=>c.args[0]==='install').args.includes('--ignore-scripts'));
-});
-test('preflight missing package and unsupported platforms never fabricate runtime acceptance', () => {
+test('preflight shares the supplied runtime and fails closed on invalid payload', () => {
+  let calls=0;
+  const receipt=runtimePreflight({platform:'linux',arch:'x64',runtime:()=>({ready:false,failure:{status:127,stderr:'doxguard: not found'}}),execute:()=>{calls++;throw Error('must not execute');}});
+  assert.equal(receipt.reason,'command-not-found');assert.equal(receipt.accepted,false);assert.equal(calls,0);
   assert.equal(runtimePreflight({platform:'darwin'}).accepted,false);
-  const result=runtimePreflight({platform:'linux',arch:'x64',execute:()=>({status:1,stderr:'npm error E404 HIDDEN_SENTINEL'})});
-  assert.equal(result.reason,'package-unavailable');assert.equal(result.accepted,false);
-  assert.ok(!JSON.stringify(result).includes('HIDDEN_SENTINEL'));
+  assert.equal(runtimePreflight({platform:'linux',arch:'arm64'}).accepted,false);
 });
-
 test('exact public runtime provisioning preserves failure and rejects missing entrypoints', () => {
   const a=provisionPublicRuntime(()=>({status:127,stderr:'SENTINEL'}),'x64');
   try { assert.equal(a.ready,false);assert.equal(a.failure.status,127); } finally {rmSync(a.root,{recursive:true,force:true});}
@@ -167,16 +144,71 @@ test('exact public runtime provisioning preserves failure and rejects missing en
   try {assert.equal(b.ready,false);assert.equal(b.failure.error.code,'PUBLIC_RUNTIME_SETUP');} finally {rmSync(b.root,{recursive:true,force:true});}
   assert.equal(failureReason({stderr:'doxguard: GLIBC_2.39 not found'}),'native-loader');
 });
-test('exact public runtime selects the verified package launcher rather than a PATH command', () => {
-  const runtime=provisionPublicRuntime((command,args,cwd)=>{
-    assert.equal(command,'npm');assert.ok(args.includes('doxguard@0.2.0'));assert.ok(args.includes('--ignore-scripts'));
-    const root=join(cwd,'node_modules','doxguard');const platform=join(cwd,'node_modules','@ishizakahiroshi','doxguard-linux-x64');
-    for(const dir of [root,platform])mkdirSync(join(dir,'bin'),{recursive:true});
-    writeFileSync(join(root,'package.json'),JSON.stringify({name:'doxguard',version:'0.2.0'}));
-    writeFileSync(join(platform,'package.json'),JSON.stringify({name:'@ishizakahiroshi/doxguard-linux-x64',version:'0.2.0'}));
-    writeFileSync(join(root,'bin','doxguard.js'),'synthetic-not-executed');writeFileSync(join(platform,'bin','doxguard'),'synthetic-not-executed');
-    return {status:0};
-  },'x64');
-  try {assert.equal(runtime.ready,true);assert.equal(runtime.launcher,join(runtime.root,'node_modules','doxguard','bin','doxguard.js'));}
-  finally {rmSync(runtime.root,{recursive:true,force:true});}
+function syntheticRuntime() {
+  const root=mkdtempSync(join(tmpdir(),'runtime-unit-'));
+  const a=join(root,'node_modules','doxguard');
+  const b=join(root,'node_modules','@ishizakahiroshi','doxguard-linux-x64');
+  for(const dir of [a,b])mkdirSync(join(dir,'bin'),{recursive:true});
+  const rootMeta={name:'doxguard',version:'0.2.0',type:'module',bin:{doxguard:'bin/doxguard.js'},optionalDependencies:{'@ishizakahiroshi/doxguard-linux-x64':'0.2.0'}};
+  const platformMeta={name:'@ishizakahiroshi/doxguard-linux-x64',version:'0.2.0',bin:{doxguard:'bin/doxguard'},os:['linux'],cpu:['x64']};
+  const reset=()=>{writeFileSync(join(a,'package.json'),JSON.stringify(rootMeta));writeFileSync(join(b,'package.json'),JSON.stringify(platformMeta));writeFileSync(join(a,'bin','doxguard.js'),'synthetic-launcher');writeFileSync(join(b,'bin','doxguard'),'synthetic-native');chmodSync(join(b,'bin','doxguard'),0o755);};
+  reset();
+  const hash=value=>createHash('sha256').update(value).digest('hex');
+  return {root,a,b,rootMeta,platformMeta,reset,expected:{arch:'x64',payload:hash('synthetic-native'),launcher:hash('synthetic-launcher')}};
+}
+test('runtime identity matches exact root/platform relationship and both hashes',()=>{
+  const f=syntheticRuntime();
+  try {
+    const identity=verifyRuntime(f.root,'x64',f.expected);
+    assert.equal(identity.receipt.canonical_match,true);
+    assert.equal(identity.receipt.payload_sha256,f.expected.payload);
+    assert.equal(identity.receipt.launcher_sha256,f.expected.launcher);
+    assert.throws(()=>verifyRuntime(f.root)); // synthetic bytes are never accepted as public release
+    assert.throws(()=>verifyRuntime(f.root,'arm64',f.expected));
+    assert.equal(canonicalRuntime.payload,'5458f08f85753cf6d33ad869063af16ca8f55a800bb9d17a78c4b6adc0651279');
+  } finally {rmSync(f.root,{recursive:true,force:true});}
+});
+test('runtime rejects wrong optional pin, bin, module type and platform metadata',()=>{
+  const f=syntheticRuntime();
+  try {
+    for(const change of [{version:'0.2.1'},{name:'other'},{type:'commonjs'},{bin:{doxguard:'other.js'}},{optionalDependencies:{}},{optionalDependencies:{'@ishizakahiroshi/doxguard-linux-x64':'^0.2.0'}}]) {
+      f.reset();writeFileSync(join(f.a,'package.json'),JSON.stringify({...f.rootMeta,...change}));assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+    }
+    for(const change of [{name:'other'},{version:'0.2.1'},{bin:{doxguard:'elsewhere'}},{os:['darwin']},{os:['linux','darwin']},{cpu:['arm64']},{cpu:['x64','arm64']}]) {
+      f.reset();writeFileSync(join(f.b,'package.json'),JSON.stringify({...f.platformMeta,...change}));assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+    }
+  } finally {rmSync(f.root,{recursive:true,force:true});}
+});
+test('runtime rejects either altered payload and nonexecutable native before invocation',()=>{
+  const f=syntheticRuntime();
+  try {
+    for(const path of [join(f.a,'bin','doxguard.js'),join(f.b,'bin','doxguard')]) {
+      f.reset();writeFileSync(path,'different-bytes');assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+    }
+    f.reset();chmodSync(join(f.b,'bin','doxguard'),0o644);assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+  } finally {rmSync(f.root,{recursive:true,force:true});}
+});
+test('runtime rejects nested platform package resolution despite matching outer package',()=>{
+  const f=syntheticRuntime();
+  try {
+    const nested=join(f.a,'node_modules','@ishizakahiroshi','doxguard-linux-x64');mkdirSync(nested,{recursive:true});writeFileSync(join(nested,'package.json'),JSON.stringify(f.platformMeta));
+    assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));
+  } finally {rmSync(f.root,{recursive:true,force:true});}
+});
+test('preflight never invokes unverified synthetic runtime or leaks paths',()=>{
+  const f=syntheticRuntime();let calls=0;
+  try {
+    const receipt=runtimePreflight({runtime:()=>({ready:true,root:f.root}),platform:'linux',arch:'x64',execute:()=>{calls++;}});
+    assert.equal(receipt.accepted,false);assert.equal(receipt.reason,'runtime-identity-or-payload-mismatch');assert.equal(calls,0);assert.ok(!JSON.stringify(receipt).includes(f.root));
+  } finally {rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('runtime rejects symlinked launcher and payload despite matching bytes',()=>{
+  const f=syntheticRuntime();
+  try {
+    for(const [path,bytes] of [[join(f.a,'bin','doxguard.js'),'synthetic-launcher'],[join(f.b,'bin','doxguard'),'synthetic-native']]) {
+      const target=join(f.root,'redirected');writeFileSync(target,bytes);chmodSync(target,0o755);unlinkSync(path);symlinkSync(target,path);
+      assert.throws(()=>verifyRuntime(f.root,'x64',f.expected));unlinkSync(path);f.reset();
+    }
+  } finally {rmSync(f.root,{recursive:true,force:true});}
 });

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Public structural-only gate. Raw child output stays in memory, never CI logs.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, statSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { resolve, join, win32 } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 export const packagePin = 'doxguard@0.2.0';
@@ -59,7 +60,9 @@ export function native(args, cwd, execute = run) {
     if (process.env.CI && process.platform === 'linux' && execute === run) {
       const runtime = getPublicRuntime();
       if (!runtime.ready) return runtime.failure;
-      return execute(process.execPath, [runtime.launcher, ...args], cwd);
+      const identity = verifyRuntime(runtime.root);
+      console.log(JSON.stringify({ runtime_use: args[0] === '--version' ? 'version' : 'scan', ...identity.receipt }));
+      return execute(process.execPath, [identity.launcher, ...args], cwd);
     }
     const invocation = nativeInvocation(args, process.platform, { cwd: cwd ?? process.cwd() });
     return execute(invocation.command, invocation.args, cwd);
@@ -79,24 +82,48 @@ export function failureReason(result) {
   if (/\b(?:ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/.test(stderr)) return 'package-network';
   return 'invalid-or-missing-scanner-report';
 }
+// Accepted public release identities. Unknown architectures fail closed until
+// their canonical release hashes are independently accepted.
+export const canonicalRuntime = Object.freeze({
+  arch: 'x64',
+  payload: '5458f08f85753cf6d33ad869063af16ca8f55a800bb9d17a78c4b6adc0651279',
+  // https://github.com/ishizakahiroshi/doxguard/blob/v0.2.0/bin/doxguard.js
+  launcher: '5374a0b83149b3ca78ad897c2475c6dbbbb44b55c4c6671f762c4e2bd8312b28',
+});
+export function verifyRuntime(root, arch = process.arch, expected = canonicalRuntime) {
+  if (arch !== expected.arch) throw new Error('unsupported canonical architecture');
+  const rootDir = join(root,'node_modules','doxguard');
+  const platformName = '@ishizakahiroshi/doxguard-linux-' + arch;
+  const platformDir = join(root,'node_modules','@ishizakahiroshi','doxguard-linux-' + arch);
+  const a = JSON.parse(readFileSync(join(rootDir,'package.json'),'utf8'));
+  const b = JSON.parse(readFileSync(join(platformDir,'package.json'),'utf8'));
+  if (a.name !== 'doxguard' || a.version !== '0.2.0' || a.type !== 'module'
+      || a.bin?.doxguard !== 'bin/doxguard.js' || a.optionalDependencies?.[platformName] !== '0.2.0'
+      || b.name !== platformName || b.version !== '0.2.0' || b.bin?.doxguard !== 'bin/doxguard'
+      || JSON.stringify(b.os) !== '["linux"]' || JSON.stringify(b.cpu) !== JSON.stringify([arch])) throw new Error('package identity mismatch');
+  const launcher = join(rootDir,'bin','doxguard.js');
+  const binary = join(platformDir,'bin','doxguard');
+  for (const path of [rootDir, platformDir, launcher, binary, join(rootDir,'package.json'), join(platformDir,'package.json')]) {
+    if (realpathSync(path) !== resolve(path)) throw new Error('redirected runtime path');
+  }
+  if (!statSync(launcher).isFile() || !statSync(binary).isFile() || !(statSync(binary).mode & 0o111)) throw new Error('entrypoint mismatch');
+  // Resolve exactly as the canonical launcher does, excluding a nested or
+  // redirected platform package with otherwise plausible outer metadata.
+  if (realpathSync(createRequire(launcher).resolve(platformName + '/package.json')) !== realpathSync(join(platformDir,'package.json'))) throw new Error('platform resolution mismatch');
+  const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
+  const payload = hash(binary), launch = hash(launcher);
+  if (payload !== expected.payload || launch !== expected.launcher) throw new Error('canonical hash mismatch');
+  return {launcher,binary,receipt:{package:'doxguard',version:'0.2.0',platform:'linux-' + arch,payload_sha256:payload,launcher_sha256:launch,canonical_match:true}};
+}
 let publicRuntime;
 export function provisionPublicRuntime(execute = run, arch = process.arch) {
   const root = mkdtempSync(join(tmpdir(), 'structural-runtime-'));
   const failure = {status:-1,stdout:'',stderr:'',error:{code:'PUBLIC_RUNTIME_SETUP'}};
   try {
-    if (!['x64','arm64'].includes(arch)) throw new Error('unsupported architecture');
+    if (arch !== canonicalRuntime.arch) throw new Error('unsupported architecture');
     const install = execute('npm',['install','--prefix',root,'--cache',join(root,'cache'),'--ignore-scripts','--no-audit','--no-fund','--package-lock=false','--include=optional',packagePin],root,180_000);
     if (install.status !== 0 || install.error || install.signal) return {ready:false,root,failure:install};
-    const modules = join(root,'node_modules');
-    const rootDir = join(modules,'doxguard');
-    const platformDir = join(modules,'@ishizakahiroshi','doxguard-linux-' + arch);
-    const a = JSON.parse(readFileSync(join(rootDir,'package.json'),'utf8'));
-    const b = JSON.parse(readFileSync(join(platformDir,'package.json'),'utf8'));
-    if(a.name !== 'doxguard' || a.version !== '0.2.0' || b.name !== '@ishizakahiroshi/doxguard-linux-' + arch || b.version !== '0.2.0') throw new Error('package identity mismatch');
-    const launcher = join(rootDir,'bin','doxguard.js');
-    const binary = join(platformDir,'bin','doxguard');
-    if (!statSync(launcher).isFile() || !statSync(binary).isFile()) throw new Error('missing entrypoint');
-    return {ready:true,root,launcher,binary};
+    return {ready:true,root,...verifyRuntime(root,arch)};
   } catch { return {ready:false,root,failure}; }
 }
 function getPublicRuntime() {
@@ -109,45 +136,31 @@ function getPublicRuntime() {
 export function exactNativeVersion(result) {
   return !result.error && !result.signal && result.status === 0 && /^doxguard 0\.2\.0\s*$/.test(result.stdout || '');
 }
-export function runtimePreflight({ execute = run, platform = process.platform, arch = process.arch } = {}) {
+export function runtimePreflight({ execute = run, platform = process.platform, arch = process.arch, runtime = getPublicRuntime } = {}) {
   const receipt = { preflight: 'linux-public-package', node: /^[0-9]+\.[0-9]+\.[0-9]+$/.test(process.versions.node) ? process.versions.node : 'unavailable', accepted: false };
-  if (platform !== 'linux' || !['x64','arm64'].includes(arch)) return { ...receipt, reason: 'not-applicable' };
-  let root;
+  if (platform !== 'linux' || arch !== canonicalRuntime.arch) return { ...receipt, reason: 'unsupported-canonical-platform' };
   const deadline = Date.now() + 180_000;
   const bounded = (command,args,cwd) => {
     const remaining = deadline - Date.now();
     return remaining > 0 ? execute(command,args,cwd,remaining) : { status: -1, error: { code: 'ETIMEDOUT' } };
   };
   try {
-    root = mkdtempSync(join(tmpdir(), 'structural-preflight-'));
-    const npmVersion = bounded('npm', ['--version'], root);
+    // Reuse the actual scan installation, not a second diagnostic install.
+    const actual = runtime();
+    if (!actual.ready) return {...receipt,reason:failureReason(actual.failure)};
+    const identity = verifyRuntime(actual.root,arch);
+    Object.assign(receipt, identity.receipt);
+    const npmVersion = bounded('npm',['--version'],actual.root);
     const version = String(npmVersion.stdout || '').trim();
     receipt.npm = npmVersion.status === 0 && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version) ? version : 'unavailable';
-    const install = bounded('npm', ['install','--prefix',root,'--cache',join(root,'cache'),'--ignore-scripts','--no-audit','--no-fund','--package-lock=false','--include=optional',packagePin], root);
-    if (install.status !== 0 || install.error || install.signal) return { ...receipt, reason: failureReason(install) };
-    const modules = join(root, 'node_modules');
-    const rootPackage = JSON.parse(readFileSync(join(modules,'doxguard','package.json'),'utf8'));
-    const platformName = '@ishizakahiroshi/doxguard-linux-' + arch;
-    const platformDir = join(modules, '@ishizakahiroshi', 'doxguard-linux-' + arch);
-    const platformPackage = JSON.parse(readFileSync(join(platformDir,'package.json'),'utf8'));
-    if (rootPackage.name !== 'doxguard' || rootPackage.version !== '0.2.0' || platformPackage.name !== platformName || platformPackage.version !== '0.2.0') return { ...receipt, reason: 'package-identity-mismatch' };
-    const binary = join(platformDir,'bin','doxguard');
-    receipt.payload_sha256 = createHash('sha256').update(readFileSync(binary)).digest('hex');
-    receipt.payload_executable = (statSync(binary).mode & 0o111) !== 0;
-    const direct = bounded(binary, ['--version'], root);
+    const direct = bounded(identity.binary,['--version'],actual.root);
     receipt.direct = exactNativeVersion(direct) ? 'version-ok' : failureReason(direct);
-    const launcher = bounded(process.execPath,[join(modules,'doxguard','bin','doxguard.js'),'--version'],root);
+    const launcher = bounded(process.execPath,[identity.launcher,'--version'],actual.root);
     receipt.launcher = exactNativeVersion(launcher) ? 'version-ok' : failureReason(launcher);
-    const viaExec = bounded('npm',[...nativeArgs,'--version'],root);
-    receipt.npm_exec = exactNativeVersion(viaExec) ? 'version-ok' : failureReason(viaExec);
     receipt.accepted = receipt.direct === 'version-ok' && receipt.launcher === 'version-ok';
     receipt.selected_route = 'verified-root-launcher';
     return receipt;
-  } catch { return { ...receipt, reason: 'preflight-setup-or-payload-missing' }; }
-  finally {
-    try { if (root) rmSync(root,{recursive:true,force:true}); }
-    catch { return { ...receipt, accepted: false, reason: 'preflight-cleanup-failed' }; }
-  }
+  } catch { return { ...receipt, reason: 'runtime-identity-or-payload-mismatch' }; }
 }
 export function safeFindings(hits) {
   const fold = value => value.toLowerCase().replace(/[\\/]+/g, '/');
@@ -256,6 +269,6 @@ export function main() {
   // Runtime evidence for both gates is emitted before bounded diagnostics.
   const preflight = process.env.CI ? runtimePreflight() : { accepted: false, reason: 'not-requested-outside-ci' };
   console.log(JSON.stringify(preflight));
-  return (preflight.accepted || ['not-applicable','not-requested-outside-ci'].includes(preflight.reason)) && configValid && shaValid && versionValid && summaries.every(passed) ? 0 : 1;
+  return (preflight.accepted || ['not-requested-outside-ci'].includes(preflight.reason)) && configValid && shaValid && versionValid && summaries.every(passed) ? 0 : 1;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main();

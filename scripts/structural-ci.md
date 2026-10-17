@@ -49,18 +49,25 @@ SHA. Windows invokes npm through a constrained cmd.exe command line; shell
 metacharacters are rejected. Child environment filtering is case-insensitive.
 Investigate availability/configuration failures without exposing scan input values.
 
-Linux CI additionally performs a bounded three-minute public-package preflight,
-after both tracked scanner results have been emitted. It installs only exact
-0.2.0 into a temporary prefix/cache with scripts disabled, checks root/platform
-identity, hashes the payload and separates direct-native, root-launcher and npm
-exec version probes. Only fixed categories, exact versions and hashes are logged;
-cleanup failures fail closed without path-bearing errors. Outside CI this
-additional installation is not requested. Existing scans remain the acceptance
-requirement; diagnostics cannot turn missing or failed native execution green.
+Linux x64 CI installs exact 0.2.0 once per Node process into an isolated
+prefix/cache with scripts disabled. Before every native invocation it verifies
+root name/version/type/bin, the exact selected optional dependency, platform
+name/version/os/cpu, launcher resolution to that platform manifest, executable
+native payload, and canonical SHA256 of both launcher and payload. The accepted
+Linux x64 payload hash is 5458f08f85753cf6d33ad869063af16ca8f55a800bb9d17a78c4b6adc0651279
+(owner release acceptance); launcher hash is 5374a0b83149b3ca78ad897c2475c6dbbbb44b55c4c6671f762c4e2bd8312b28
+from the public v0.2.0 bin/doxguard.js. Other CI architectures fail closed until
+their canonical identities are independently accepted; no hash is guessed.
 
-The observed Linux npm exec command-resolution failure is bypassed only by
-launching the same exact installed public root launcher with Node and an
-absolute path. The temporary installation has scripts disabled and root and
-platform identities fixed at0.2.0; no system/package PATH command is selected.
-Both scanners still receive the same checkout and flags. npm exec failure remains
-a diagnostic field; actual native scans, version, coverage and controls must pass.
+The bounded three-minute preflight uses the actual scan runtime, after both
+tracked results, and checks direct-native and root-launcher versions. It does
+not install a second diagnostic runtime. The separate controls process verifies
+its own installation against the same canonical hashes before every invocation.
+Fixed runtime_use/identity/hash receipts link version, tracked scan and all
+controls to the accepted payload without printing paths or raw errors. Cleanup
+failure fails the process. Unit tests use synthetic files and no downloads.
+
+The observed npm exec resolution failure is retained in historical receipts.
+The Linux CI route uses the verified absolute public launcher through Node;
+no npm exec or system PATH scanner is used. Actual native scans, version,
+coverage and controls must still pass, and legacy always runs independently.
