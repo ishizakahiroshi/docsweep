@@ -80,6 +80,10 @@
 
 ### Fixed
 
+- Windows 用の Web UI 起動スクリプト `docsweep-ui.cmd` が、リポジトリの場所と既定のスキャン先を
+  特定の PC のフォルダで決め打ちしていた。リポジトリは `.cmd` の置き場所から決め（別の場所へ
+  コピーしたときは環境変数 `DOCSWEEP_REPO`）、スキャン先は `~/.docsweep/config.yaml` の `roots` を
+  使う（フォルダをドロップしたときはそちら）。ドライブや置き場所が違う PC でも書き換えずに動く。
 - `apply --path` が単一ファイルの操作でも設定済みルート全体を走査していたため、
   `relabel` の連続実行で毎回長く待たされていた。指定ファイルだけを読み込むようにした。
 - `inject --global --agent claude` が Claude のグローバル設定に書く取り込みの行を、`@~/.docsweep/guidance.md`
