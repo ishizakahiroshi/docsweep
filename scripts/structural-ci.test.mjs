@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig, nativeInvocation, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools } from './structural-ci.mjs';
+import { readFileSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { join } from 'node:path';
+import { inspect, isolatedEnv, nativeArgs, packagePin, passed, scanPair, validateConfig, nativeInvocation, safeFindings, failureReason, matchesExpectedSha, resolveWindowsTools, runtimePreflight, exactNativeVersion } from './structural-ci.mjs';
 const report = (kind, hits = []) => ({
   scanned: 3, total_files: 3, exempt_or_skipped: 0, structural_patterns: 4, hits,
   ...(kind === 'legacy' ? { kb_needles: 0, family_needles: 0 } : {
@@ -121,4 +122,39 @@ test('expected checkout SHA and case-insensitive environment isolation fail clos
   assert.equal(matchesExpectedSha(sha,undefined,true),false);
   assert.equal(matchesExpectedSha('invalid',sha,false),false);
   assert.deepEqual(isolatedEnv({kb_root:'synthetic',Family_Root:'synthetic',doxguard_config:'synthetic',Path:'keep'}),{Path:'keep'});
+});
+test('preflight classifies execution errors without raw diagnostics', () => {
+  for (const [input, expected] of [[{error:{code:'ENOENT'}},'executable-or-interpreter-missing'],[{error:{code:'EACCES'}},'executable-permission'],[{stderr:'sh: 1: doxguard: not found'},'command-not-found'],[{stderr:'error while loading shared libraries: hidden'},'native-loader']]) assert.equal(failureReason(input),expected);
+  assert.equal(exactNativeVersion({status:0,stdout:'doxguard 0.2.0\n'}),true);
+  assert.equal(exactNativeVersion({status:127,stdout:'doxguard 0.2.0'}),false);
+});
+test('preflight distinguishes direct and launcher success from npm exec failure', () => {
+  const calls=[];
+  const receipt=runtimePreflight({platform:'linux',arch:'x64',execute:(command,args,cwd,timeout)=>{
+    assert.ok(timeout > 0 && timeout <= 180_000);
+    calls.push({command,args});
+    if(args[0]==='install') {
+      const root=join(cwd,'node_modules','doxguard');
+      const platform=join(cwd,'node_modules','@ishizakahiroshi','doxguard-linux-x64');
+      mkdirSync(join(root,'bin'),{recursive:true});mkdirSync(join(platform,'bin'),{recursive:true});
+      writeFileSync(join(root,'package.json'),JSON.stringify({name:'doxguard',version:'0.2.0'}));
+      writeFileSync(join(platform,'package.json'),JSON.stringify({name:'@ishizakahiroshi/doxguard-linux-x64',version:'0.2.0'}));
+      writeFileSync(join(platform,'bin','doxguard'),'synthetic-not-executed');chmodSync(join(platform,'bin','doxguard'),0o755);
+      return {status:0,stdout:'',stderr:''};
+    }
+    if(command==='npm' && args[0]==='--version')return {status:0,stdout:'10.9.0'};
+    if(args[0]==='exec')return {status:127,stderr:'sh: 1: doxguard: not found HIDDEN_SENTINEL'};
+    return {status:0,stdout:'doxguard 0.2.0\n'};
+  }});
+  assert.equal(receipt.direct,'version-ok');assert.equal(receipt.launcher,'version-ok');
+  assert.equal(receipt.npm_exec,'command-not-found');assert.equal(receipt.accepted,false);
+  assert.match(receipt.payload_sha256,/^[a-f0-9]{64}$/);
+  assert.ok(!JSON.stringify(receipt).includes('HIDDEN_SENTINEL'));
+  assert.ok(calls.find(c=>c.args[0]==='install').args.includes('--ignore-scripts'));
+});
+test('preflight missing package and unsupported platforms never fabricate runtime acceptance', () => {
+  assert.equal(runtimePreflight({platform:'darwin'}).accepted,false);
+  const result=runtimePreflight({platform:'linux',arch:'x64',execute:()=>({status:1,stderr:'npm error E404 HIDDEN_SENTINEL'})});
+  assert.equal(result.reason,'package-unavailable');assert.equal(result.accepted,false);
+  assert.ok(!JSON.stringify(result).includes('HIDDEN_SENTINEL'));
 });

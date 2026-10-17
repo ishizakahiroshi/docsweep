@@ -48,3 +48,12 @@ check out the exact pull-request head and require git HEAD to equal the expected
 SHA. Windows invokes npm through a constrained cmd.exe command line; shell
 metacharacters are rejected. Child environment filtering is case-insensitive.
 Investigate availability/configuration failures without exposing scan input values.
+
+Linux CI additionally performs a bounded three-minute public-package preflight,
+after both tracked scanner results have been emitted. It installs only exact
+0.2.0 into a temporary prefix/cache with scripts disabled, checks root/platform
+identity, hashes the payload and separates direct-native, root-launcher and npm
+exec version probes. Only fixed categories, exact versions and hashes are logged;
+cleanup failures fail closed without path-bearing errors. Outside CI this
+additional installation is not requested. Existing scans remain the acceptance
+requirement; diagnostics cannot turn missing or failed native execution green.

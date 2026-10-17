@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Public structural-only gate. Raw child output stays in memory, never CI logs.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
-import { resolve, win32 } from 'node:path';
+import { readFileSync, statSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { resolve, join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const packagePin = 'doxguard@0.2.0';
@@ -14,10 +16,10 @@ export function isolatedEnv(env = process.env) {
   }
   return result;
 }
-export function run(command, args, cwd = process.cwd()) {
+export function run(command, args, cwd = process.cwd(), timeout = 180_000) {
   return spawnSync(command, args, {
     cwd, env: isolatedEnv(), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
-    timeout: 180_000, windowsHide: true, windowsVerbatimArguments: process.platform === 'win32' && win32.basename(command).toLowerCase() === 'cmd.exe',
+    timeout, windowsHide: true, windowsVerbatimArguments: process.platform === 'win32' && win32.basename(command).toLowerCase() === 'cmd.exe',
   });
 }
 const unsafeWindowsArgument = /["%!?^&|<>\r\n\u0000]/;
@@ -60,11 +62,59 @@ export function native(args, cwd, execute = run) {
 }
 export function failureReason(result) {
   if (result.signal) return 'interrupted';
+  if (result.error?.code === 'ENOENT') return 'executable-or-interpreter-missing';
+  if (result.error?.code === 'EACCES') return 'executable-permission';
+  if (result.error?.code === 'ENOEXEC') return 'executable-format';
   if (result.error) return 'spawn-or-timeout';
   const stderr = String(result.stderr || '');
+  if (/error while loading shared libraries|symbol lookup error|bad ELF interpreter/i.test(stderr)) return 'native-loader';
+  if (/permission denied/i.test(stderr)) return 'executable-permission';
+  if (/command not found|(?:^|[:\n])[^\n]*doxguard[^\n]*not found/i.test(stderr)) return 'command-not-found';
   if (/\b(?:E404|ETARGET)\b/.test(stderr)) return 'package-unavailable';
   if (/\b(?:ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/.test(stderr)) return 'package-network';
   return 'invalid-or-missing-scanner-report';
+}
+export function exactNativeVersion(result) {
+  return !result.error && !result.signal && result.status === 0 && /^doxguard 0\.2\.0\s*$/.test(result.stdout || '');
+}
+export function runtimePreflight({ execute = run, platform = process.platform, arch = process.arch } = {}) {
+  const receipt = { preflight: 'linux-public-package', node: /^[0-9]+\.[0-9]+\.[0-9]+$/.test(process.versions.node) ? process.versions.node : 'unavailable', accepted: false };
+  if (platform !== 'linux' || !['x64','arm64'].includes(arch)) return { ...receipt, reason: 'not-applicable' };
+  let root;
+  const deadline = Date.now() + 180_000;
+  const bounded = (command,args,cwd) => {
+    const remaining = deadline - Date.now();
+    return remaining > 0 ? execute(command,args,cwd,remaining) : { status: -1, error: { code: 'ETIMEDOUT' } };
+  };
+  try {
+    root = mkdtempSync(join(tmpdir(), 'structural-preflight-'));
+    const npmVersion = bounded('npm', ['--version'], root);
+    const version = String(npmVersion.stdout || '').trim();
+    receipt.npm = npmVersion.status === 0 && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version) ? version : 'unavailable';
+    const install = bounded('npm', ['install','--prefix',root,'--cache',join(root,'cache'),'--ignore-scripts','--no-audit','--no-fund','--package-lock=false','--include=optional',packagePin], root);
+    if (install.status !== 0 || install.error || install.signal) return { ...receipt, reason: failureReason(install) };
+    const modules = join(root, 'node_modules');
+    const rootPackage = JSON.parse(readFileSync(join(modules,'doxguard','package.json'),'utf8'));
+    const platformName = '@ishizakahiroshi/doxguard-linux-' + arch;
+    const platformDir = join(modules, '@ishizakahiroshi', 'doxguard-linux-' + arch);
+    const platformPackage = JSON.parse(readFileSync(join(platformDir,'package.json'),'utf8'));
+    if (rootPackage.name !== 'doxguard' || rootPackage.version !== '0.2.0' || platformPackage.name !== platformName || platformPackage.version !== '0.2.0') return { ...receipt, reason: 'package-identity-mismatch' };
+    const binary = join(platformDir,'bin','doxguard');
+    receipt.payload_sha256 = createHash('sha256').update(readFileSync(binary)).digest('hex');
+    receipt.payload_executable = (statSync(binary).mode & 0o111) !== 0;
+    const direct = bounded(binary, ['--version'], root);
+    receipt.direct = exactNativeVersion(direct) ? 'version-ok' : failureReason(direct);
+    const launcher = bounded(process.execPath,[join(modules,'doxguard','bin','doxguard.js'),'--version'],root);
+    receipt.launcher = exactNativeVersion(launcher) ? 'version-ok' : failureReason(launcher);
+    const viaExec = bounded('npm',[...nativeArgs,'--version'],root);
+    receipt.npm_exec = exactNativeVersion(viaExec) ? 'version-ok' : failureReason(viaExec);
+    receipt.accepted = receipt.direct === 'version-ok' && receipt.launcher === 'version-ok' && receipt.npm_exec === 'version-ok';
+    return receipt;
+  } catch { return { ...receipt, reason: 'preflight-setup-or-payload-missing' }; }
+  finally {
+    try { if (root) rmSync(root,{recursive:true,force:true}); }
+    catch { return { ...receipt, accepted: false, reason: 'preflight-cleanup-failed' }; }
+  }
 }
 export function safeFindings(hits) {
   const fold = value => value.toLowerCase().replace(/[\\/]+/g, '/');
@@ -162,7 +212,7 @@ export function main() {
   // Version verification is independent of the legacy scan. A missing package
   // must still leave evidence for legacy, and must never make the gate green.
   const version = native(['--version'], cwd);
-  const versionValid = version.status === 0 && /^doxguard 0\.2\.0\s*$/.test(version.stdout || '');
+  const versionValid = exactNativeVersion(version);
   console.log('native_version=' + (versionValid ? '0.2.0' : 'unavailable-or-unexpected'));
   console.log('config_valid=' + configValid);
   const summaries = configValid ? scanPair(cwd, configPath) : [
@@ -170,6 +220,9 @@ export function main() {
     { scanner: 'doxguard', valid: false, exit: -1 },
   ];
   for (const summary of summaries) console.log(JSON.stringify(summary));
-  return configValid && shaValid && versionValid && summaries.every(passed) ? 0 : 1;
+  // Runtime evidence for both gates is emitted before bounded diagnostics.
+  const preflight = process.env.CI ? runtimePreflight() : { accepted: false, reason: 'not-requested-outside-ci' };
+  console.log(JSON.stringify(preflight));
+  return (preflight.accepted || ['not-applicable','not-requested-outside-ci'].includes(preflight.reason)) && configValid && shaValid && versionValid && summaries.every(passed) ? 0 : 1;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main();
