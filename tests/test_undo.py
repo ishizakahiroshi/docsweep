@@ -78,7 +78,10 @@ def test_undo_restores_only_unrestored_items_in_partial_batch(tmp_path: Path):
     batch_id = next(json.loads(line)["batch_id"] for line in reversed(log) if json.loads(line).get("batch_id"))
 
     # 1 件分だけ undo 済みという状態を move log に再現する。
-    first_archive = Path(arc_res.moved[0].dst)
+    # moved の順は scan の順（Linux ではディレクトリの並び順）なので、files[0] の分を名前で引く。
+    first_archive = Path(
+        next(m.dst for m in arc_res.moved if Path(m.src).name == files[0].name)
+    )
     first_archive.replace(files[0])
     append_move_log(
         root,
