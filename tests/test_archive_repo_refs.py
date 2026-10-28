@@ -248,6 +248,49 @@ def test_hyphen_children_keep_family_together_without_docsweep_parent(
     assert (q / "archive" / "plan_hz-c1.md").is_file()
 
 
+def test_code_mentioning_only_the_file_name_holds_the_doc(tmp_path: Path, capsys):
+    """コードの注釈が ``docs/local/`` を付けずファイル名だけで書いていても、移さない。
+
+    mer で、``src`` の注釈が ``plan_x_c5_y.md`` とだけ書いていた文書が「参照なし」と判定され、
+    移せる一覧に入った事例の再現。別の名前の一部（``old_plan_x.md``・``plan_x.md.bak``）は
+    同じ名前ではないので数えない。docs の中のファイル名だけの記述では止めない。
+    """
+    root = tmp_path / "repo"
+    q = root / "docs" / "local"
+    _put(root / ".docsweep.yaml", "archive_refs:\n  scope: repo\n")
+    _put(root / ".gitignore", ".docsweep/\n")
+    _doc(q / "plan_bare.md")        # コードにファイル名だけで書かれている
+    _doc(q / "plan_bare_end.md")    # 文末の「.」の直前（句点）で書かれている
+    _doc(q / "plan_part.md")        # 別の名前の一部としてだけ書かれている
+    _doc(q / "plan_other.md")       # 拡張子の後に別の名前が続く（.bak）
+    _doc(q / "plan_docmention.md")  # docs の中でファイル名だけで書かれている
+    _doc(q / "plan_free.md")        # どこにも書かれていない
+    _put(root / "src" / "app.py", "\n".join([
+        "# 根拠: plan_bare.md の案 A",
+        "# 詳しくは plan_bare_end.md.",
+        "# old_plan_part.md は別の文書。plan_other.md.bak も別のファイル",
+        "",
+    ]))
+    _put(root / "docs" / "note.md", "メモ: plan_docmention.md を見る\n")
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "init")
+
+    code, payload = _sweep_json(root, tmp_path, capsys=capsys)
+
+    assert code == 0, payload
+    held = {(Path(item["path"]).name, item["reason"]): item for item in payload["held"]}
+    assert set(held) == {
+        ("plan_bare.md", "referenced_by_code"),
+        ("plan_bare_end.md", "referenced_by_code"),
+    }
+    assert held[("plan_bare.md", "referenced_by_code")]["referrers"] == ["src/app.py"]
+    assert _names(payload["moved"]) == {
+        "plan_part.md", "plan_other.md", "plan_docmention.md", "plan_free.md",
+    }
+    assert (q / "plan_bare.md").is_file()
+
+
 def test_repo_scope_second_sweep_does_nothing(repo: Path, tmp_path: Path, capsys):
     _sweep_json(repo, tmp_path, capsys=capsys)
     snapshot = {p: _read(p) for p in repo.rglob("*") if p.is_file() and ".git" not in p.parts

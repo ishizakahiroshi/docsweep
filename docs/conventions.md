@@ -296,7 +296,8 @@ archive_refs:
 - 書き換え: repo の中（git の追跡ファイルと、ignore されていない未追跡ファイル。archive の中も含む）の
   `rewrite_extensions` のファイル。本文の repo 相対パス（`docs/local/plan_x.md`）も直し、html は
   `href` / `src` の相対リンクも直します。`exclude` と、未コミットの変更があるファイルには触りません。
-- 止める（JSON の `held`）: `code_paths` か `rewrite_extensions` 以外の拡張子のファイルから参照されている、
+- 止める（JSON の `held`）: `code_paths` か `rewrite_extensions` 以外の拡張子のファイルから参照されている
+  （`docs/local/` を付けないファイル名だけの記述も含む。別の名前の一部は数えない）、
   未コミット・未追跡の変更がある、未コミットのファイルから参照されている、移すと git の ignore から外れる、
   同じ系統（`plan_x.md` と `plan_x_c1_ui.md`、旧い命名の `plan_x-c1.md`、`docsweep_parent`）の文書が queue に残る（`apply` では見ない）。
   `code_paths` の既定は `.github/**` `.githooks/**` `.claude/**` `src/**` `CLAUDE.md` `AGENTS.md` です。

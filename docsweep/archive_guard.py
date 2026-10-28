@@ -300,6 +300,38 @@ def _families(paths: ProjectPaths) -> tuple[dict[str, set[str]], dict[str, Path]
     return {key: groups[find(key)] for key in parent}, {_key(doc): doc for doc in docs}
 
 
+def _bare_name_sources(text: str, by_name: dict[str, list[str]]) -> set[str]:
+    """``text`` が、ファイル名だけで書いている移す文書の旧パス（repo 相対）の集まり。
+
+    別の名前の一部（``old_plan_x.md``・``plan_x.md.bak``）は数えない。名前の直前が英数字・
+    ``_``・``-`` なら別の名前の続き、直後が英数字・``_``・``-``、または ``.`` と英数字なら
+    別の名前の前半とみなす（文末の「.」は名前の一部にしない）。
+    """
+    found: set[str] = set()
+    lowered = text.casefold()
+    size = len(lowered)
+    for name, olds in by_name.items():
+        start = 0
+        while True:
+            at = lowered.find(name, start)
+            if at < 0:
+                break
+            end = at + len(name)
+            before = lowered[at - 1] if at > 0 else ""
+            after = lowered[end] if end < size else ""
+            after2 = lowered[end + 1] if end + 1 < size else ""
+            part_of_other = (
+                (before != "" and (before.isalnum() or before in "_-"))
+                or (after != "" and (after.isalnum() or after in "_-"))
+                or (after == "." and after2 != "" and after2.isalnum())
+            )
+            if not part_of_other:
+                found.update(olds)
+                break
+            start = at + 1
+    return found
+
+
 def guard_moves(
     moves: list[Move],
     *,
@@ -341,6 +373,11 @@ def guard_moves(
 
     needles = move_refs._name_needles(moves)
     moving_keys = {_key(move.src) for move in moves}
+    scope = settings.repo_scope()
+    by_name: dict[str, list[str]] = {}
+    for old, move in by_old.items():
+        if old is not None:
+            by_name.setdefault(move.src.name.casefold(), []).append(old)
     referrers: list[tuple[Path, set[str], bool]] = []
     for path in _scan_files(paths, settings):
         if not move_refs._mentions_any(path, needles):
@@ -350,9 +387,13 @@ def guard_moves(
         except OSError:
             continue
         olds = move_refs.referenced_sources(path, text, table, links)
+        rel = paths.repo_rel(path) or path.as_posix()
+        if matches_any(rel, settings.code_paths) or not scope.rewritable(path):
+            # コード・設定は ``docs/local/`` を付けずファイル名だけで書くことも多い。
+            # 書き換えられない参照でも、あとで探して辿れなくなるので移さない。
+            olds = olds | _bare_name_sources(text, by_name)
         if olds:
             referrers.append((path, olds, readable))
-    scope = settings.repo_scope()
     for path, olds, readable in referrers:
         rel = paths.repo_rel(path) or path.as_posix()
         own = _key(path)
