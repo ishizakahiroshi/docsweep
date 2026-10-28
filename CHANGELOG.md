@@ -3,6 +3,14 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
+## [Unreleased]
+
+### Changed
+
+- GitHub Release の本文を、`CHANGELOG.md` のその版の節から作るようにした（`scripts/release_notes.py`。
+  PR の一覧と比較リンクはその後ろに続く）。これまでは PR の一覧だけから作っていたため、PR を通さずに出した
+  v0.8.0 の本文は比較リンクの 1 行だけで、v0.7.0 にも CHANGELOG の内容が入っていなかった。
+
 ## [0.8.0] - 2026-10-28
 
 ### Added

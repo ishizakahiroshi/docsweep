@@ -75,11 +75,18 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Create GitHub Release with auto-generated notes
+      # 本文は CHANGELOG.md のその版の節。PR を通さず push した版でも中身が入る
+      # （--generate-notes は PR の一覧だけで、PR が無いと比較リンクしか残らない）。
+      # PR の一覧と比較リンクは、その後ろに自動で足される。
+      - name: Extract release notes from CHANGELOG.md
+        run: python3 scripts/release_notes.py "${GITHUB_REF_NAME}" > release-notes.md
+
+      - name: Create GitHub Release with CHANGELOG notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             dist/*.whl dist/*.tar.gz \
             --title "${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
             --generate-notes

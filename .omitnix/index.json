@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generated": {
-    "commit": "45395290874ee2ef351c60a00927578913a9fe70",
+    "commit": "51b94e9abed7870fb78fa8340f1c59c95151a18a",
     "dirty": true,
     "tool": "omitnix 0.1.4",
     "partial": false,
@@ -138,8 +138,8 @@
     "discovery_note": ""
   },
   "coverage": {
-    "discovered": 400,
-    "analyzed": 255,
+    "discovered": 402,
+    "analyzed": 257,
     "unresolved": 6,
     "unknown": 3,
     "unclaimed": 136,
@@ -5731,6 +5731,35 @@
       "unresolved": []
     },
     {
+      "path": "scripts/release_notes.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "CHANGELOG.md から、指定した版の節を GitHub Release の本文として取り出す。"
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
       "path": "scripts/structural-ci.md",
       "adapter": null,
       "status": "unclaimed",
@@ -8086,6 +8115,35 @@
         "summary": {
           "state": "value",
           "value": "文書を移したとき、provenance 台帳の work_path も移した先へ付け替わること。"
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
+      "path": "tests/test_release_notes_script.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "scripts/release_notes.py（publish.yml が GitHub Release の本文を CHANGELOG から取り出す）。"
         },
         "authentication": {
           "state": "not_configured"
