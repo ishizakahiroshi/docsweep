@@ -314,7 +314,10 @@ def test_repo_scope_dry_run_writes_nothing_and_reports_holds(repo: Path, tmp_pat
     assert code == 0
     assert _names(payload["moved"]) == {"plan_done.md"}
     assert {item["reason"] for item in payload["held"]} >= {"referenced_by_code", "uncommitted"}
-    assert "verify" not in payload
+    # dry-run の verify は見込み（本実行で残る旧パスだけ。実体と切れたリンクは見ない）。
+    assert payload["verify"] == {
+        "stale_refs": [], "missing_targets": [], "broken_links": [], "preview": True, "ok": True,
+    }
     assert {p: _read(p) for p in (repo / "docs").rglob("*.md")} == before
     paths = {Path(u["path"]).name for u in payload["ref_updates"]}
     assert {"plan_keep.md", "note.md", "report.html", "data.json"} <= paths

@@ -222,6 +222,69 @@ def cmd_fix_conflict(args: argparse.Namespace) -> int:
     return 0 if all(i.fixed for i in res.items) or not res.items else 1
 
 
+_ARCHIVE_ACTIONS = frozenset({"discard", "promote"})
+
+
+def _queue_root_routes(routes: list[dict]) -> list[dict]:
+    """``engine._archive_routes`` の結果のうち、root が作業 queue 自身と判定されたもの。"""
+    return [route for route in routes if route.get("root_is_queue")]
+
+
+def _scan_queue_root_routes(cfg: Config, *, project: str | None) -> list[dict]:
+    """移す前に 1 回スキャンし、sweep の dry-run と同じ判定で queue 自身の root を返す（何も書かない）。"""
+    from ... import engine
+
+    result = engine.run_scan(cfg)
+    return _queue_root_routes(engine._archive_routes(result, cfg, project=project))
+
+
+def _queue_root_fields(route: dict, cfg: Config) -> dict[str, str]:
+    from ... import engine
+
+    project_root = str(route["project_root"])
+    work_dir = engine._root_is_queue(Path(project_root), cfg) or ""
+    return {
+        "project_root": project_root,
+        "work_dir": work_dir,
+        "archive": f"{project_root.rstrip('/')}/{route['archive_dir']}",
+    }
+
+
+def _warn_queue_roots(command: str, routes: list[dict], cfg: Config) -> None:
+    """dry-run で、本実行なら止まることを標準エラーへ 1 行ずつ出す（--json でも出す）。"""
+    from ...i18n import t
+
+    for route in routes:
+        print(
+            t("cli_write.root_is_queue_dry", command=command, **_queue_root_fields(route, cfg)),
+            file=sys.stderr,
+        )
+
+
+def _refuse_queue_roots(
+    command: str, routes: list[dict], cfg: Config, *, as_json: bool
+) -> int:
+    """root が作業 queue 自身のとき、何も移さずに終了コード 2 で止める（逃げ道のオプションは無い）。"""
+    from ...i18n import t
+
+    fields = [_queue_root_fields(route, cfg) for route in routes]
+    messages = [t("cli_write.root_is_queue_refused", command=command, **item) for item in fields]
+    for message in messages:
+        print(message, file=sys.stderr)
+    if as_json:
+        print(json.dumps({
+            "moved": [],
+            "failed": [],
+            "archive_routes": routes,
+            "error": {
+                "code": "root_is_queue",
+                "message": "\n".join(messages),
+                "project_roots": [item["project_root"] for item in fields],
+            },
+        }, ensure_ascii=False, indent=2))
+    return 2
+
+
 def cmd_apply(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
     # An explicit single-file action must not scan every configured root first.
@@ -232,6 +295,28 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
         print(f"{t('target.not_found_in_scan')}: {args.path}", file=sys.stderr)
         return 2
+    if (
+        args.action in _ARCHIVE_ACTIONS
+        and args.action in doc.record.allowed_actions
+        and doc.record.docsweep_policy != "never_archive"
+    ):
+        # archive へ実際に移す action だけ（許されない action・never_archive は従来のエラーを先に出す）。
+        # 判定は sweep の dry-run と同じ engine._root_is_queue。
+        project_root = doc.record.project_root
+        from ... import engine
+
+        if engine._root_is_queue(Path(project_root), cfg) is not None:
+            route = {
+                "project": doc.record.project,
+                "project_root": project_root,
+                "archive_dir": archive_route_for_project(Path(project_root), cfg).archive_dir,
+                "root_is_queue": True,
+            }
+            if args.dry_run:
+                _warn_queue_roots("apply", [route], cfg)
+            else:
+                # apply には --json が無く、ほかのエラーと同じく標準エラーだけに出す。
+                return _refuse_queue_roots("apply", [route], cfg, as_json=False)
     report: dict = {}
     try:
         entry = apply_action(
@@ -305,8 +390,16 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     from ...i18n import t
 
     cfg = _build_config(args)
+    project = getattr(args, "project", None)
+    as_json = bool(getattr(args, "json", False))
+    if not args.dry_run:
+        # 本実行は移す前に止める。auto_sweep はスキャンと移送を 1 回で行うため、
+        # dry-run の archive_routes と同じ判定をここで先に通す。
+        queue_routes = _scan_queue_root_routes(cfg, project=project)
+        if queue_routes:
+            return _refuse_queue_roots("sweep", queue_routes, cfg, as_json=as_json)
     moved = auto_sweep(
-        cfg, project=getattr(args, "project", None), dry_run=args.dry_run,
+        cfg, project=project, dry_run=args.dry_run,
         ref_scope=getattr(args, "ref_scope", None),
     )
     if not args.dry_run and cfg.roots:
@@ -314,7 +407,10 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
         write_index(cfg)
     routes = getattr(moved, "routes", [])
-    if getattr(args, "json", False):
+    if args.dry_run and as_json:
+        # 文字の出力では下の route_warning が標準エラーへ出る。--json でも見えるようにする。
+        _warn_queue_roots("sweep", _queue_root_routes(routes), cfg)
+    if as_json:
         payload: list | dict = [m.to_dict() for m in moved]
         if moved.failed or routes or moved.ref_updates or moved.ref_failed or moved.held:
             payload = {"moved": payload, "failed": moved.failed, "archive_routes": routes}
@@ -373,8 +469,10 @@ def _ref_payload(moved) -> dict:
 def _print_verify(verify: dict) -> None:
     from ...i18n import t
 
+    # dry-run の見込み（preview）は、まだ起きていないことと分かる文言にする。
+    stale_key = "cli_write.verify_stale_preview" if verify.get("preview") else "cli_write.verify_stale"
     for item in verify.get("stale_refs", []):
-        print(t("cli_write.verify_stale", path=item["path"], ref=item["ref"]), file=sys.stderr)
+        print(t(stale_key, path=item["path"], ref=item["ref"]), file=sys.stderr)
     for item in verify.get("missing_targets", []):
         print(
             t("cli_write.verify_missing", path=item["path"] or "-", ref=item["ref"]),
@@ -399,7 +497,7 @@ def _print_ref_updates(moved, *, dry_run: bool) -> None:
     verify = getattr(moved, "verify", None)
     if verify is not None:
         if verify.get("ok", True):
-            print(t("cli_write.verify_ok"))
+            print(t("cli_write.verify_ok_preview" if verify.get("preview") else "cli_write.verify_ok"))
         else:
             _print_verify(verify)
 
@@ -438,6 +536,14 @@ def cmd_promote(args: argparse.Namespace) -> int:
 
     cfg = _build_config(args)
     due_expired_only = getattr(args, "due_expired", False)
+    # sweep の dry-run と同じ判定。本実行は下見と --yes の確認より前に止める。
+    queue_routes = _scan_queue_root_routes(cfg, project=args.project)
+    if queue_routes:
+        if not args.dry_run:
+            return _refuse_queue_roots(
+                "promote", queue_routes, cfg, as_json=bool(getattr(args, "json", False))
+            )
+        _warn_queue_roots("promote", queue_routes, cfg)
     if not args.dry_run:
         # 実行前に同じ条件で下見して件数を数える。しきい値以上なら --yes を要求する
         # （UX W4 / P59）。非対話が不変条件なのでプロンプトは出さない。

@@ -296,6 +296,10 @@ archive_refs:
 - 書き換え: repo の中（git の追跡ファイルと、ignore されていない未追跡ファイル。archive の中も含む）の
   `rewrite_extensions` のファイル。本文の repo 相対パス（`docs/local/plan_x.md`）も直し、html は
   `href` / `src` の相対リンクも直します。`exclude` と、未コミットの変更があるファイルには触りません。
+  本文のパスは、バックスラッシュ区切り（`docs\local\plan_x.md`、JSON の中の `docs\\local\\plan_x.md`）と、
+  repo の中を指す絶対パス（`/` 区切り・`\` 区切り。Windows ではドライブ文字の大小を区別しない）も同じに扱い、
+  書かれていた区切りのまま直します。止める判定と検証も同じ形を数えます。区切りを混ぜた書き方・`file:///` の
+  URL・`./` 付きの書き方は扱いません。この本文のパスの読み方は `docsweep mv` も同じです。
 - 止める（JSON の `held`）: `code_paths` か `rewrite_extensions` 以外の拡張子のファイルから参照されている
   （`docs/local/` を付けないファイル名だけの記述も含む。別の名前の一部は数えない）、
   未コミット・未追跡の変更がある、未コミットのファイルから参照されている、移すと git の ignore から外れる、
@@ -303,9 +307,14 @@ archive_refs:
   `code_paths` の既定は `.github/**` `.githooks/**` `.claude/**` `src/**` `CLAUDE.md` `AGENTS.md` です。
 - 検証（JSON の `verify`）: 旧パスの残り（`stale_refs`）・実体のない参照（`missing_targets`）・移す前は
   届いていたリンクの切れ（`broken_links`）。1 件でもあれば終了コード 1 です。
+  `--dry-run` でも見込みを `verify` に出します（`"preview": true`）。見込みは本実行でも残る旧パス
+  （`stale_refs`）だけで、`missing_targets` と `broken_links` は空です。見込みで旧パスが残るときも
+  終了コード 1 です（`sweep` / `promote`。`apply --dry-run` は見込みを出しません）。
 
 `--root` には repo の root を渡します。作業 queue 自身（`--root docs/local`）を渡すと queue が project
-root になり、archive 先が `docs/local/docs/local/archive` と二重になります（`archive_routes` に警告が出ます）。
+root になり、archive 先が `docs/local/docs/local/archive` と二重になるため、`sweep` / `promote` /
+`apply`（discard・promote）の本実行は何も移さずに終了コード 2 で止まります（`--project-dir` に repo を
+渡しても同じです）。`--dry-run` は計画を出したうえで、`archive_routes` と標準エラーに警告を出します。
 
 ### Git release tracking と版別 archive
 
@@ -347,6 +356,7 @@ plan_auth-refactor_c2_frontend.md
 `<short>` は任意で、`python -m docsweep new plan <topic> --split 3 --titles backend,frontend,migration`
 のように渡すと入ります。親子の機械判定の正本は frontmatter の `docsweep_parent` ですが、
 それを失った md では `closeout-check` がこの名前から親子を推定します（`^<親stem>_c\d+(?:_|$)`）。
+旧い命名の `plan_<親topic>-c<N>.md`（ハイフン・接尾辞なし）も子として推定します（archive の系統の判定と同じ規則）。
 
 ### `ai_session_logs`（provenance が入れる・手で書かない）
 

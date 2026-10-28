@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generated": {
-    "commit": "3e4a10311b52e682635ea07caafc00ba26f7d2d0",
+    "commit": "45395290874ee2ef351c60a00927578913a9fe70",
     "dirty": true,
     "tool": "omitnix 0.1.4",
     "partial": false,
@@ -138,8 +138,8 @@
     "discovery_note": ""
   },
   "coverage": {
-    "discovered": 397,
-    "analyzed": 252,
+    "discovered": 400,
+    "analyzed": 255,
     "unresolved": 6,
     "unknown": 3,
     "unclaimed": 136,
@@ -6114,6 +6114,35 @@
       "unresolved": []
     },
     {
+      "path": "tests/test_archive_ref_forms.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "``archive_refs.scope: repo`` — 旧パスの書き方の幅と、dry-run の検証の見込み。"
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
       "path": "tests/test_archive_repo_refs.py",
       "adapter": "python",
       "status": "analyzed",
@@ -6739,6 +6768,35 @@
         "summary": {
           "state": "value",
           "value": "Read-only parent/child closeout inspection fixtures."
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
+      "path": "tests/test_closeout_hyphen_children.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "closeout-check が子の名前を ``archive_guard`` の系統の規則と同じ範囲で読むことを確かめる。"
         },
         "authentication": {
           "state": "not_configured"
@@ -8115,6 +8173,35 @@
         "summary": {
           "state": "value",
           "value": "``docsweep review``（チェックリスト）で、移せない文書を選んでも残りを処理すること。"
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
+      "path": "tests/test_root_is_queue_refuse.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "``--root`` に作業 queue 自身を渡したとき、archive へ移す本実行を止める。"
         },
         "authentication": {
           "state": "not_configured"

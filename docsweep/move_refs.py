@@ -13,8 +13,11 @@ archive への移送や ``docsweep mv`` で文書の場所が変わると、他�
   解決して、移した文書を指していれば移動先へ、移した文書自身のリンクは移した後の場所から
   見た相対パスへ直す。``#fragment`` / ``?query``・``<...>`` の囲み・タイトルはそのまま残す。
   コードフェンスとインラインコードの中、URL・絶対パス、移す前から切れていたリンクは触らない
-- 本文の repo 相対パス（``body=True`` のときだけ）: repo 相対の旧パスの完全一致だけ。
-  basename だけの言及や、前にパスの文字が続く記述（絶対パスの末尾・``./`` 付き）は触らない。
+- 本文の repo 相対パス（``body=True`` のときだけ）: repo 相対の旧パスの完全一致と、repo の
+  root から書いた絶対パス。区切りは ``/``・``\\``・エスケープした ``\\\\``（JSON の文字列）の
+  どれでもよく、書き換えた後も同じ区切り・同じ root の書き方のままにする（Windows では root の
+  大文字小文字を区別しない）。basename だけの言及や、前にパスの文字が続く記述（repo の外の
+  絶対パス・``./`` 付き・URL）は触らない。区切りを混ぜた書き方も触らない。
   相対リンクとして解決できた箇所は、こちらでは書き換えない（同じ箇所を二重に書き換えない）
 
 書き換えは移動ログへ ``op: "ref_rewrite"`` で残し、``undo`` で :func:`revert_ref_rewrite`
@@ -47,7 +50,13 @@ from .detect import mask_code_fences, mask_inline_code
 from .i18n import t
 from .models import MoveLogEntry
 from .scan import ALWAYS_SKIP_DIRS
-from .services.frontmatter import read_frontmatter_text, update_frontmatter_field
+from .services.frontmatter import (
+    LIST_FIELDS,
+    _format_value,
+    _replace_or_insert,
+    read_frontmatter_text,
+    update_frontmatter_field,
+)
 
 REF_FIELDS = ("docsweep_parent", "related")
 
@@ -201,6 +210,11 @@ class ProjectPaths:
 
     def __init__(self, project_root: Path, config: Config) -> None:
         self.root = Path(project_root).resolve()
+        # 本文の絶対パスを repo の中と見なす root の書き方（実体と、渡されたままの場所）
+        self.root_texts: tuple[str, ...] = tuple(dict.fromkeys(
+            Path(value).as_posix().rstrip("/")
+            for value in (self.root, os.path.abspath(project_root))
+        ))
         work_dir = project_work_settings(self.root, config)[0]
         self.queue_logical = resolve_work_dir(self.root, work_dir)
         self.queue_real = self.queue_logical.resolve()
@@ -264,6 +278,31 @@ def _path_key(path: Path) -> str:
     return os.path.normcase(os.path.normpath(os.path.abspath(path)))
 
 
+# 本文の旧パスの区切りの書き方: ``/``・``\``・JSON 等の文字列で ``\`` をエスケープした ``\\``。
+_SEPARATORS: tuple[str, ...] = ("\\\\", "\\", "/")
+
+
+def _abs_tail(rel: str) -> str:
+    """絶対パスの root の後ろに続く repo 相対の部分（``./`` を落とした ``/`` 区切り）。"""
+    return posixpath.normpath(rel)
+
+
+def _root_in(root_text: str, sep: str) -> str | None:
+    """``/`` 区切りの root を ``sep`` 区切りで書いたもの（``\\`` 区切りはドライブ名のある root だけ）。"""
+    if not root_text:
+        return None
+    if sep != "/" and not PureWindowsPath(root_text).drive:
+        return None
+    return root_text.replace("/", sep)
+
+
+def _same_root(written: str, root_sep: str) -> bool:
+    """本文に書かれた root が repo の root か（Windows では大文字小文字を区別しない）。"""
+    if os.name == "nt":
+        return written.casefold() == root_sep.casefold()
+    return written == root_sep
+
+
 class _MoveTable:
     def __init__(self, moves: list[Move], paths: ProjectPaths) -> None:
         self.by_rel: dict[str, str] = {}
@@ -272,6 +311,8 @@ class _MoveTable:
         # 旧パスの照合キー → 旧パス（repo 相対）。どの文書への参照かを返すときに使う
         self.old_by_key: dict[str, str] = {}
         self.old_by_abs: dict[str, str] = {}
+        self.root_texts = paths.root_texts
+        self._pattern: re.Pattern[str] | None = None
         for move in moves:
             old_rel = paths.repo_rel(move.src)
             new_rel = paths.repo_rel(move.dst)
@@ -307,16 +348,58 @@ class _MoveTable:
         return self.by_rel.get(key) if key else None
 
     def body_pattern(self) -> re.Pattern[str] | None:
+        """本文の旧パスの書き方（区切り 3 通り × repo 相対・repo の中を指す絶対パス）の正規表現。"""
         if not self.body_pairs:
             return None
-        olds = sorted({old for old, _new in self.body_pairs}, key=len, reverse=True)
-        alternation = "|".join(re.escape(old) for old in olds)
-        return re.compile(
-            rf"(?<![{_PATH_CHARS}])(?:{alternation})(?![A-Za-z0-9_\-/\\]|\.[A-Za-z0-9_])"
-        )
+        if self._pattern is None:
+            forms: dict[str, int] = {}
+            for old, _new in self.body_pairs:
+                for sep in _SEPARATORS:
+                    rel = old.replace("/", sep)
+                    forms.setdefault(re.escape(rel), len(rel))
+                    tail = sep + _abs_tail(old).replace("/", sep)
+                    for root_text in self.root_texts:
+                        root_sep = _root_in(root_text, sep)
+                        if root_sep is None:
+                            continue
+                        head = re.escape(root_sep)
+                        if os.name == "nt":
+                            head = f"(?i:{head})"
+                        forms.setdefault(head + re.escape(tail), len(root_sep) + len(tail))
+            alternation = "|".join(sorted(forms, key=lambda form: forms[form], reverse=True))
+            self._pattern = re.compile(
+                rf"(?<![{_PATH_CHARS}])(?:{alternation})(?![A-Za-z0-9_\-/\\]|\.[A-Za-z0-9_])"
+            )
+        return self._pattern
 
-    def body_new(self, old: str) -> str:
-        return next(new for candidate, new in self.body_pairs if candidate == old)
+    def _resolve_body(self, matched: str) -> tuple[str, str] | None:
+        """:meth:`body_pattern` に当たった文字列の (旧パスの repo 相対, 書き換え後の文字列)。
+
+        書き換え後は、当たった文字列と同じ区切り・同じ先頭（絶対パスなら書かれていた root の
+        まま）で書く。
+        """
+        for sep in _SEPARATORS:
+            for old, new in self.body_pairs:
+                if matched == old.replace("/", sep):
+                    return old, new.replace("/", sep)
+                tail = sep + _abs_tail(old).replace("/", sep)
+                if len(matched) <= len(tail) or not matched.endswith(tail):
+                    continue
+                head = matched[: len(matched) - len(tail)]
+                for root_text in self.root_texts:
+                    root_sep = _root_in(root_text, sep)
+                    if root_sep is not None and _same_root(head, root_sep):
+                        return old, head + sep + _abs_tail(new).replace("/", sep)
+        return None
+
+    def body_new(self, matched: str) -> str | None:
+        resolved = self._resolve_body(matched)
+        return resolved[1] if resolved else None
+
+    def body_old(self, matched: str) -> str | None:
+        """当たった文字列が指す旧パス（repo 相対・``/`` 区切り）。"""
+        resolved = self._resolve_body(matched)
+        return resolved[0] if resolved else None
 
     def old_of_parent(self, value: object) -> str | None:
         if not isinstance(value, str) or _is_absolute(value.strip()):
@@ -607,14 +690,16 @@ def _link_edits(
 
 
 def _path_edits(text: str, start: int, table: _MoveTable) -> list[_Edit]:
-    """本文の repo 相対の旧パス（完全一致）の置き換え。"""
+    """本文の旧パス（repo 相対・repo の中を指す絶対パス。区切りは書かれたまま）の置き換え。"""
     pattern = table.body_pattern()
     if pattern is None:
         return []
-    return [
-        _Edit(match.start(), match.end(), match.group(0), table.body_new(match.group(0)))
-        for match in pattern.finditer(text, start)
-    ]
+    edits: list[_Edit] = []
+    for match in pattern.finditer(text, start):
+        new = table.body_new(match.group(0))
+        if new is not None:
+            edits.append(_Edit(match.start(), match.end(), match.group(0), new))
+    return edits
 
 
 def _overlaps(edit: _Edit, spans: Iterable[tuple[int, int]]) -> bool:
@@ -734,7 +819,10 @@ def referenced_sources(path: Path, text: str, table: _MoveTable, links: _LinkTab
                 found.add(links.old_rel[key])
     pattern = table.body_pattern()
     if pattern is not None:
-        found.update(match.group(0) for match in pattern.finditer(text, start))
+        for match in pattern.finditer(text, start):
+            old = table.body_old(match.group(0))
+            if old:
+                found.add(old)
     return found
 
 
@@ -829,6 +917,31 @@ def _body_rewrite(
         cursor = edit.end
     pieces.append(text[cursor:])
     return "".join(pieces), RefUpdate("", "body", before, after, offsets)
+
+
+def preview_rewrite(path: Path, text: str, table: _MoveTable, links: _LinkTable) -> str:
+    """repo の範囲の :func:`rewrite_refs` が ``path`` を書き換えた後の全文（何も書かない）。
+
+    frontmatter の参照（:func:`update_frontmatter_field` と同じ置き換え）を当ててから、本文を
+    直す。本実行で frontmatter の書き換えが失敗する形なら、本実行と同じく本文も直さない
+    （元の全文を返す）。``links`` は移す前の場所で作ったもの（``dry_run=True``）。
+    """
+    new_text = text
+    for update in _frontmatter_updates(path, text, table):
+        block_items = (
+            [str(item) for item in update.after]
+            if update.field in LIST_FIELDS and isinstance(update.after, list)
+            else None
+        )
+        try:
+            new_text = _replace_or_insert(
+                new_text, update.field, _format_value(update.field, update.after),
+                block_items=block_items,
+            )
+        except ValueError:
+            return text
+    new_text, _update = _body_rewrite(new_text, table, links, path, repo_paths=True)
+    return new_text
 
 
 def _log(root: Path, project: str, update: RefUpdate, *, batch_id: str | None, op: str) -> None:

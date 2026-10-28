@@ -6,9 +6,10 @@ docs・html・コードの注釈）からも参照される。そのまま移す
 
 - 移す前: 移すと困る文書を止め、理由（``Hold``）を返す（:func:`guard_moves`）
 - 移した後: 旧パスの残り・実体のない参照・新しく切れたリンクを数える（:func:`verify_moves`）
+- dry-run: 書き換えた後にも旧パスが残る見込みを数える（:func:`preview_verify`）
 
 を受け持つ。参照の見つけ方は :mod:`move_refs` の書き換えと同じ（frontmatter・相対リンク・
-repo 相対パスの完全一致）。
+repo 相対パスと repo の中を指す絶対パス。区切りは ``/`` ``\\`` のどちらでも）。
 """
 
 from __future__ import annotations
@@ -513,7 +514,8 @@ def verify_moves(
                 result["stale_refs"].append({"path": rel, "ref": match.group(0)})
         if new_pattern is not None:
             for match in new_pattern.finditer(text):
-                if not (paths.root / match.group(0)).exists():
+                target = new_table.body_old(match.group(0))
+                if target is not None and not (paths.root / target).exists():
                     result["missing_targets"].append({"path": rel, "ref": match.group(0)})
         if not scope.rewritable(path):
             continue
@@ -526,13 +528,70 @@ def verify_moves(
     return result
 
 
+def preview_verify(
+    moves: list[Move],
+    *,
+    project_root: Path,
+    config: Config,
+    settings: ArchiveRefSettings,
+    skip: frozenset[str] = frozenset(),
+) -> dict:
+    """dry-run 用の、移した後の検証の見込み（移す前に呼ぶ。何も書かない）。
+
+    - ``stale_refs``: 本実行で参照を書き換えた後にも旧パスが残る見込みの箇所。:func:`verify_moves`
+      と同じ形（``path`` は本実行のときの場所。移す文書自身なら移動先）。書き換えないファイル
+      （``skip``・``rewrite_extensions`` 以外）は今の全文のまま、書き換えるファイルは書き換えた
+      後の全文を、本実行の検証と同じ見方で探す。``exclude`` のファイルは本実行の検証と同じく数えない
+    - ``missing_targets`` / ``broken_links``: 推定しない（空の一覧）
+
+    見込みであることを ``preview: True`` で示す。``ok`` は ``stale_refs`` が空かどうか。
+    """
+    result: dict = {"stale_refs": [], "missing_targets": [], "broken_links": [], "preview": True}
+    result["ok"] = True
+    if not moves:
+        return result
+    paths = ProjectPaths(project_root, config)
+    table, links = move_refs.move_tables(moves, paths, dry_run=True)
+    pattern = table.body_pattern()
+    if pattern is None:
+        return result
+    needles = move_refs._name_needles(moves)
+    rewritten = {
+        _key(path)
+        for path in move_refs._iter_candidates(
+            paths, [move.src for move in moves], repo=settings.repo_scope(skip), needles=needles
+        )
+    }
+    place_of = {_key(move.src): move.dst for move in moves}
+    for path in _scan_files(paths, settings):
+        if not move_refs._mentions_any(path, needles):
+            continue
+        try:
+            text, readable = _read_text(path)
+        except OSError:
+            continue
+        if readable and _key(path) in rewritten:
+            text = move_refs.preview_rewrite(path, text, table, links)
+        place = place_of.get(_key(path), path)
+        rel = paths.repo_rel(place) or place.as_posix()
+        for match in pattern.finditer(text):
+            result["stale_refs"].append({"path": rel, "ref": match.group(0)})
+    result["ok"] = not result["stale_refs"]
+    return result
+
+
 def merge_verify(results: list[dict]) -> dict | None:
-    """project ごとの検証結果を 1 つにまとめる（検証していなければ ``None``）。"""
+    """project ごとの検証結果を 1 つにまとめる（検証していなければ ``None``）。
+
+    どれも見込み（:func:`preview_verify`）なら、まとめた結果にも ``preview: True`` を付ける。
+    """
     if not results:
         return None
     merged: dict = {"stale_refs": [], "missing_targets": [], "broken_links": []}
     for item in results:
         for key in ("stale_refs", "missing_targets", "broken_links"):
             merged[key].extend(item.get(key, []))
+    if all(item.get("preview") for item in results):
+        merged["preview"] = True
     merged["ok"] = not (merged["stale_refs"] or merged["missing_targets"] or merged["broken_links"])
     return merged

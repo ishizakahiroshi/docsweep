@@ -3,6 +3,30 @@
 本ファイルは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) の考え方を緩く参照しています。
 バージョニングは [SemVer](https://semver.org/lang/ja/) に従います。
 
+## [Unreleased]
+
+### Added
+
+- `archive_refs.scope: repo` の `sweep` / `promote` の `--dry-run` が、本実行でも残る旧パスの見込みを
+  `verify`（`"preview": true`）に出すようにした。これまで dry-run の `verify` は null で、旧パスが残るかは
+  本実行まで分からなかった。見込みで残るときは終了コード 1 で、文字の出力は「検証の見込み」と書く。
+
+### Changed
+
+- `--root` に作業 queue 自身（`--root docs/local`）を渡したとき、`sweep` / `promote` /
+  `apply`（discard・promote）の本実行を、何も移さずに終了コード 2 で止めるようにした。v0.7.0 は警告だけで、
+  移動先が `docs/local/docs/local/archive` と二重になり、repo の `.docsweep.yaml` と移す前に止める仕組みも
+  効かないまま移していた。`--dry-run` は従来どおり計画を出し、`--json` のときも標準エラーに警告を出す。
+- `closeout-check` が、`docsweep_parent` の無い旧い命名の子 `plan_x-c<N>.md`（ハイフン・接尾辞なし）も
+  名前から子として推定するようにした（archive の系統の判定と同じ規則）。
+
+### Fixed
+
+- 移動に伴う本文のパスの書き換え（`archive_refs.scope: repo` と `docsweep mv`）が、バックスラッシュ区切り
+  （`docs\local\plan_x.md`）と repo の中を指す絶対パス（`/` 区切り・`\` 区切り）を見ておらず、書き換えず、
+  移す前に止める判定にも検証の `stale_refs` にも出なかった。書かれていた区切りのまま書き換え、止める判定と
+  検証でも数える。
+
 ## [0.7.0] - 2026-10-28
 
 ### Added

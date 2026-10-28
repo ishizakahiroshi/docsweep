@@ -150,7 +150,8 @@ class MoveBatchResult(list[MoveLogEntry]):
         self.ref_updates = list(ref_updates or [])
         self.ref_failed = list(ref_failed or [])
         # ``archive_refs.scope: repo`` で、移す前に止めた文書（理由つき）と、移した後の検証。
-        # 検証は本実行で repo の範囲を使った project があるときだけ（無ければ None）。
+        # 検証は repo の範囲を使った project があるときだけ（無ければ None）。dry-run では
+        # 旧パスの残りの見込み（``preview: True``）。
         self.held: list[dict] = []
         self.verify: dict | None = None
 
@@ -264,6 +265,24 @@ def _verify(plans: dict[str, _RepoPlan],
             archive_guard.verify_moves(
                 moves, project_root=Path(project_root), config=config,
                 settings=plan.settings, before=plan.before,
+            )
+        )
+    return archive_guard.merge_verify(results)
+
+
+def _preview_verify(plans: dict[str, _RepoPlan],
+                    ref_moves: list[tuple[move_refs.Move, str, Path, str]],
+                    config: Config) -> dict | None:
+    """dry-run の、移した後の検証の見込み（``preview: True``。何も書かない）。"""
+    results: list[dict] = []
+    for project_root, plan in plans.items():
+        moves = [move for move, root, _log, _project in ref_moves if root == project_root]
+        if not moves:
+            continue
+        results.append(
+            archive_guard.preview_verify(
+                moves, project_root=Path(project_root), config=config,
+                settings=plan.settings, skip=plan.skip,
             )
         )
     return archive_guard.merge_verify(results)
@@ -468,8 +487,9 @@ def auto_sweep(
         ref_updates=[u.to_dict() for u in refs.updates], ref_failed=refs.failed,
     )
     batch.held = held
-    if not dry_run:
-        batch.verify = _verify(plans, ref_moves, config)
+    batch.verify = (
+        _preview_verify(plans, ref_moves, config) if dry_run else _verify(plans, ref_moves, config)
+    )
     return batch
 
 
@@ -579,8 +599,9 @@ def promote_state(
         ref_updates=[u.to_dict() for u in refs.updates], ref_failed=refs.failed,
     )
     batch.held = held
-    if not dry_run:
-        batch.verify = _verify(plans, ref_moves, config)
+    batch.verify = (
+        _preview_verify(plans, ref_moves, config) if dry_run else _verify(plans, ref_moves, config)
+    )
     return batch
 
 

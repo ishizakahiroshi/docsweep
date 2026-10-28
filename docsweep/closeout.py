@@ -121,7 +121,14 @@ _COMPLETION_RE = re.compile(_section_title("completion"), re.IGNORECASE)
 _VERIFICATION_RE = re.compile(_section_title("verification"), re.IGNORECASE)
 _ACCEPTANCE_RE = re.compile(_section_title("acceptance"), re.IGNORECASE)
 _CHANGED_FILES_RE = re.compile(_section_title("changed_files", "files_to_change"), re.IGNORECASE)
-_LEGACY_CHILD_RE_TEMPLATE = r"^{parent}_c\d+(?:_|$)"
+# 子のファイル名（拡張子を除く）の規則。親の名前の後ろに ``_c<数字>`` が続き、その先は
+# 無いか ``_<名前>``、または旧い命名の ``-c<数字>`` で終わるもの。
+# ``archive_guard._FAMILY_RE``（archive で同じ系統を判定する規則）と同じ範囲を表す。
+# ハイフンの形は接尾辞を許さない（``plan_x-c1-extra`` は子ではなく、``plan_x-config`` や
+# 別の親の ``plan_xy-c1`` も巻き込まない）。archive_guard を import すると move_refs まで
+# 読むため、ここでは同じ規則を持ち、``tests/test_closeout_hyphen_children.py`` が
+# 両者のずれを検出する。
+_LEGACY_CHILD_RE_TEMPLATE = r"^{parent}(?:_c\d+(?:_|$)|-c\d+$)"
 
 # The standard state order is intentionally local to this read-only service.
 # Custom state models still work for parsing, while unsupported closeout target
