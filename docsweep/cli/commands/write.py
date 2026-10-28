@@ -232,6 +232,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
         print(f"{t('target.not_found_in_scan')}: {args.path}", file=sys.stderr)
         return 2
+    report: dict = {}
     try:
         entry = apply_action(
             doc,
@@ -240,12 +241,22 @@ def cmd_apply(args: argparse.Namespace) -> int:
             to=args.to,
             dry_run=args.dry_run,
             watching_days=getattr(args, "watching_days", None),
+            ref_scope=getattr(args, "ref_scope", None),
+            report=report,
         )
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
-    print(json.dumps(entry.to_dict(), ensure_ascii=False))
-    return 0
+    payload = entry.to_dict()
+    # 参照の書き換えと検証は、repo の範囲を使ったときだけ足す（従来の 1 行 JSON を保つ）。
+    if "verify" in report:
+        payload.update(report)
+    print(json.dumps(payload, ensure_ascii=False))
+    verify = report.get("verify")
+    if verify and not verify.get("ok", True):
+        _print_verify(verify)
+        return 1
+    return 1 if report.get("ref_failed") and "verify" in report else 0
 
 
 def _print_moves_summary(moved, cfg, *, action: str, dry_run: bool) -> None:
@@ -294,7 +305,10 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     from ...i18n import t
 
     cfg = _build_config(args)
-    moved = auto_sweep(cfg, project=getattr(args, "project", None), dry_run=args.dry_run)
+    moved = auto_sweep(
+        cfg, project=getattr(args, "project", None), dry_run=args.dry_run,
+        ref_scope=getattr(args, "ref_scope", None),
+    )
     if not args.dry_run and cfg.roots:
         from ...aggregate_index import write_index
 
@@ -302,7 +316,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     routes = getattr(moved, "routes", [])
     if getattr(args, "json", False):
         payload: list | dict = [m.to_dict() for m in moved]
-        if moved.failed or routes or moved.ref_updates or moved.ref_failed:
+        if moved.failed or routes or moved.ref_updates or moved.ref_failed or moved.held:
             payload = {"moved": payload, "failed": moved.failed, "archive_routes": routes}
             payload.update(_ref_payload(moved))
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -329,19 +343,65 @@ def cmd_sweep(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
         _print_moves_summary(moved, cfg, action="sweep", dry_run=args.dry_run)
-    return 1 if moved.failed or moved.ref_failed else 0
+    return _batch_exit_code(moved)
+
+
+def _batch_exit_code(moved) -> int:
+    """移送の失敗・参照の書き換えの失敗・検証で問題が見つかったときは 1。止めた文書は 0。"""
+    verify = getattr(moved, "verify", None)
+    if moved.failed or moved.ref_failed or (verify and not verify.get("ok", True)):
+        return 1
+    return 0
 
 
 def _ref_payload(moved) -> dict:
-    """移送に伴う参照の書き換え（予定）を JSON に足す。失敗は無いときは出さない。"""
+    """移送に伴う参照の書き換え（予定）を JSON に足す。失敗は無いときは出さない。
+
+    ``held``（移す前に止めた文書）と ``verify``（移した後の検証）は、repo の範囲を
+    使ったときだけ出る。
+    """
     data: dict = {"ref_updates": moved.ref_updates}
     if moved.ref_failed:
         data["ref_failed"] = moved.ref_failed
+    if getattr(moved, "held", None):
+        data["held"] = moved.held
+    if getattr(moved, "verify", None) is not None:
+        data["verify"] = moved.verify
     return data
+
+
+def _print_verify(verify: dict) -> None:
+    from ...i18n import t
+
+    for item in verify.get("stale_refs", []):
+        print(t("cli_write.verify_stale", path=item["path"], ref=item["ref"]), file=sys.stderr)
+    for item in verify.get("missing_targets", []):
+        print(
+            t("cli_write.verify_missing", path=item["path"] or "-", ref=item["ref"]),
+            file=sys.stderr,
+        )
+    for item in verify.get("broken_links", []):
+        print(t("cli_write.verify_broken", path=item["path"], link=item["link"]), file=sys.stderr)
 
 
 def _print_ref_updates(moved, *, dry_run: bool) -> None:
     from ...i18n import t
+
+    for item in getattr(moved, "held", []):
+        print(
+            t(
+                "cli_write.held",
+                path=item["path"],
+                message=item["message"],
+                referrers=", ".join(item["referrers"]) or "-",
+            )
+        )
+    verify = getattr(moved, "verify", None)
+    if verify is not None:
+        if verify.get("ok", True):
+            print(t("cli_write.verify_ok"))
+        else:
+            _print_verify(verify)
 
     body_key = "cli_write.ref_body_dry" if dry_run else "cli_write.ref_body"
     field_key = "cli_write.ref_field_dry" if dry_run else "cli_write.ref_field"
@@ -386,6 +446,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
                 cfg, from_state=args.state, to_state=args.to,
                 project=args.project, dry_run=True,
                 due_expired_only=due_expired_only,
+                ref_scope=getattr(args, "ref_scope", None),
             )
         except ValueError as e:
             print(str(e), file=sys.stderr)
@@ -409,13 +470,14 @@ def cmd_promote(args: argparse.Namespace) -> int:
         moved = promote_state(
             cfg, from_state=args.state, to_state=args.to, project=args.project,
             dry_run=args.dry_run, due_expired_only=due_expired_only,
+            ref_scope=getattr(args, "ref_scope", None),
         )
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
     if getattr(args, "json", False):
         payload: list | dict = [m.to_dict() for m in moved]
-        if moved.failed or moved.ref_updates or moved.ref_failed:
+        if moved.failed or moved.ref_updates or moved.ref_failed or moved.held or moved.verify:
             payload = {"moved": payload, "failed": moved.failed}
             payload.update(_ref_payload(moved))
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -442,7 +504,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
         _print_moves_summary(moved, cfg, action="promote", dry_run=args.dry_run)
-    return 1 if moved.failed or moved.ref_failed else 0
+    return _batch_exit_code(moved)
 
 
 def cmd_capture(args: argparse.Namespace) -> int:

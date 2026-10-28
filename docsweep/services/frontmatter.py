@@ -211,6 +211,8 @@ _FIELD_LINE_TEMPLATE = (
 # block-style list の継続行検出（``  - item`` / ``  -\n`` / ``  -`` EOF）。
 # 行頭スペース/タブ 1 個以上 + ``-`` + (空白 or 行末)。
 _BLOCK_LIST_CONTINUATION_RE = re.compile(r"^[ \t]+-(?:[ \t]|$)")
+# 書き換えてよい block-style list の 1 項目（``  - value``。入れ子・複数行の値は除く）。
+_BLOCK_LIST_ITEM_RE = re.compile(r"^(?P<prefix>[ \t]+-[ \t]+)(?P<item>[^\s#].*?)[ \t]*$")
 
 
 def _field_line_re(field: str) -> re.Pattern[str]:
@@ -233,11 +235,48 @@ def _read_current(text: str, field: str) -> str | None:
     return (lm.group("value") or "").strip() or None
 
 
-def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
+def _block_list_end(inner: str, start: int) -> tuple[int, str] | None:
+    """``start`` から続く block-style list の終わりの位置と、項目の行頭（``  - `` 等）。
+
+    項目がすべて 1 行の単純な値のときだけ返す。入れ子・複数行の値・コメント付きなど、
+    行単位で書き直すと意味が変わりうる形は ``None``（呼び出し側で拒否する）。
+    """
+    pos = start
+    prefix: str | None = None
+    while pos < len(inner):
+        newline = inner.find("\n", pos)
+        end = len(inner) if newline < 0 else newline + 1
+        line = inner[pos:end].rstrip("\r\n")
+        if not line[:1].isspace():
+            break
+        match = _BLOCK_LIST_ITEM_RE.match(line)
+        if match is None or " #" in match.group("item"):
+            return None
+        prefix = prefix or match.group("prefix")
+        pos = end
+    if prefix is None:
+        return None
+    return pos, prefix
+
+
+def _block_list_text(field: str, items: list[str], *, indent: str, prefix: str, eol: str) -> str:
+    """block-style のまま書いた list（末尾の改行は付けない）。空の list はフロー記法 ``[]``。"""
+    if not items:
+        return f"{indent}{field}: []"
+    lines = [f"{indent}{field}:"] + [f"{prefix}{_validate_list_item(str(item))}" for item in items]
+    return eol.join(lines)
+
+
+def _replace_or_insert(
+    text: str, field: str, new_yaml_line: str, *, block_items: list[str] | None = None
+) -> str:
     """frontmatter 内の field 行を置換、無ければ frontmatter を新設・追記する。
 
     ``update_due._replace_or_insert_due`` のロジックをそのまま field 別に汎用化した。
     リプレース時はインデント幅を保つ（ネストフィールド対応・通常は 0 幅）。
+
+    ``block_items`` を渡すと、field が block-style list（``field:\\n  - a``）で書かれて
+    いた場合に、拒否せず block-style のまま ``block_items`` へ書き直す。
     """
     parse_text, bom = _without_bom(text)
     fm = _FRONTMATTER_RE.match(parse_text)
@@ -250,13 +289,28 @@ def _replace_or_insert(text: str, field: str, new_yaml_line: str) -> str:
             # 行単位置換では継続行が孤立して YAML が壊れるので、書き換えを拒否する。
             after = inner[m_line.end():]
             next_line = after.splitlines()[0] if after else ""
-            if next_line and _BLOCK_LIST_CONTINUATION_RE.match(next_line):
-                raise FrontmatterBlockStyleError(
-                    t("services_frontmatter.block_style_list", field=field, next_line=next_line)
-                )
             indent = m_line.group("indent") or ""
-            replacement = f"{indent}{new_yaml_line}{m_line.group('eol') or ''}"
-            new_inner = inner[: m_line.start()] + replacement + inner[m_line.end():]
+            eol = m_line.group("eol") or ""
+            if next_line and _BLOCK_LIST_CONTINUATION_RE.match(next_line):
+                block = (
+                    _block_list_end(inner, m_line.end())
+                    if block_items is not None and not (m_line.group("value") or "").strip()
+                    else None
+                )
+                if block is None:
+                    raise FrontmatterBlockStyleError(
+                        t("services_frontmatter.block_style_list", field=field, next_line=next_line)
+                    )
+                block_end, prefix = block
+                tail = inner[m_line.end():block_end]
+                trailing = tail[len(tail.rstrip("\r\n")):]
+                replacement = _block_list_text(
+                    field, block_items or [], indent=indent, prefix=prefix, eol=eol or "\n"
+                ) + trailing
+                new_inner = inner[: m_line.start()] + replacement + inner[block_end:]
+            else:
+                replacement = f"{indent}{new_yaml_line}{eol}"
+                new_inner = inner[: m_line.start()] + replacement + inner[m_line.end():]
         else:
             newline = _preferred_newline(parse_text)
             sep = "" if not inner or inner.endswith(("\n", "\r")) else newline
@@ -294,6 +348,7 @@ def update_frontmatter_field(
     new_value,
     *,
     expected_mtime: float | None = None,
+    keep_block_style: bool = False,
 ) -> UpdateFrontmatterResult:
     """frontmatter の 1 フィールドだけを書き換える（本文・H1・他フィールドは温存）。
 
@@ -302,6 +357,8 @@ def update_frontmatter_field(
         field: ``tags`` / ``owner`` / ``related`` / ``review_status`` / ``last_reviewed``
         new_value: list フィールドは ``list[str]``、スカラは ``str`` または ``None``
         expected_mtime: 楽観ロック用（None で強制上書き）
+        keep_block_style: list フィールドが block-style（``field:\\n  - a``）で書かれて
+            いたら、拒否せず block-style のまま書き直す（移動に伴う参照の書き換え用）
     """
     if field not in ALLOWED_FIELDS:
         raise FrontmatterValidationError(
@@ -315,8 +372,14 @@ def update_frontmatter_field(
     text_before = Path(abs_path).open("r", encoding="utf-8", newline="").read()
     old_raw = _read_current(text_before, field)
 
+    block_items = (
+        [str(item) for item in (new_value or [])]
+        if keep_block_style and field in LIST_FIELDS
+        else None
+    )
+
     def _xform(text: str) -> str:
-        return _replace_or_insert(text, field, new_line)
+        return _replace_or_insert(text, field, new_line, block_items=block_items)
 
     new_mtime = update_line(Path(abs_path), transform=_xform, expected_mtime=expected_mtime)
 

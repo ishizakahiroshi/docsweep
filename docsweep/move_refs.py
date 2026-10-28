@@ -20,6 +20,12 @@ archive への移送や ``docsweep mv`` で文書の場所が変わると、他�
 書き換えは移動ログへ ``op: "ref_rewrite"`` で残し、``undo`` で :func:`revert_ref_rewrite`
 を通して戻す。本文の書き換え（相対リンクと repo 相対パス）は、1 文書につき 1 行の
 ``field: "body"``（置き換えた位置 ``offsets`` 付き）にまとめる。
+
+``repo``（:class:`RepoScope`）を渡すと、直す範囲を queue の md から repo 全体へ広げる
+（``archive_refs.scope: repo``）。書き換えるのは ``extensions`` の拡張子のファイルだけで、
+md は上のすべて、html は ``href``・``src`` の相対リンクと repo 相対パス、それ以外は
+repo 相対パスだけ。``exclude`` に当たる場所（履歴・旧記録）と ``skip`` のファイル
+（未コミットの変更があるもの）には触らない。
 """
 
 from __future__ import annotations
@@ -27,8 +33,10 @@ from __future__ import annotations
 import os
 import posixpath
 import re
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path, PureWindowsPath
 from urllib.parse import quote, unquote
 
@@ -59,6 +67,93 @@ _REF_DEF_RE = re.compile(
 _SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
 # ``%E6`` のような、ASCII 以外の文字をエスケープした書き方。
 _ENCODED_NON_ASCII_RE = re.compile(r"%[89A-Fa-f][0-9A-Fa-f]")
+# html の ``href="..."`` ``src='...'``。
+_HTML_ATTR_RE = re.compile(
+    r"""(?<![\w-])(?:href|src)[ \t\r\n]*=[ \t\r\n]*(?:"(?P<dq>[^"<>]*)"|'(?P<sq>[^'<>]*)')""",
+    re.IGNORECASE,
+)
+
+DEFAULT_REWRITE_EXTENSIONS: tuple[str, ...] = (".md", ".html", ".htm", ".txt", ".json")
+_HTML_SUFFIXES = (".html", ".htm")
+
+
+def matches_any(rel: str, patterns: Iterable[str]) -> bool:
+    """repo 相対パス ``rel`` が glob のどれかに当たるか。
+
+    ``*`` は ``/`` もまたぐ（``docs/obsidian/evidence/**`` は下の階層すべて）。``/`` を含まない
+    パターンは、どの階層のファイル名にも当てる（``CLAUDE.md.bak*``）。末尾が ``/`` のパターンは
+    そのフォルダの下すべて。
+    """
+    name = rel.rsplit("/", 1)[-1]
+    for raw in patterns:
+        pattern = str(raw).strip().replace("\\", "/")
+        while pattern.startswith("./"):
+            pattern = pattern[2:]
+        if not pattern:
+            continue
+        if pattern.endswith("/"):
+            pattern += "**"
+        if fnmatch(rel, pattern) or ("/" not in pattern and fnmatch(name, pattern)):
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class RepoScope:
+    """参照を直す範囲を repo 全体へ広げるときの指定（``archive_refs.scope: repo``）。"""
+
+    exclude: tuple[str, ...] = ()
+    extensions: tuple[str, ...] = DEFAULT_REWRITE_EXTENSIONS
+    # 書き換えないファイル（``_path_key`` の値。未コミットの変更があるもの）
+    skip: frozenset[str] = frozenset()
+
+    def rewritable(self, path: Path) -> bool:
+        return path.suffix.lower() in {ext.lower() for ext in self.extensions}
+
+
+def repo_files(root: Path) -> list[Path]:
+    """repo の中のファイル（git の追跡と、ignore されていない未追跡）。
+
+    git で一覧を取れないときは、ignore を見ずにフォルダを歩く。どちらも
+    ``ALWAYS_SKIP_DIRS``（``.git``・``.docsweep`` 等）の下は除く。
+    """
+    root = Path(root)
+    rels: list[str] | None = None
+    if (root / ".git").exists() or _inside_git(root):
+        try:
+            completed = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
+                 "--exclude-standard"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError):
+            completed = None
+        if completed is not None and completed.returncode == 0:
+            rels = sorted({rel for rel in completed.stdout.split("\0") if rel})
+    found: list[Path] = []
+    if rels is None:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = sorted(d for d in dirnames if d not in ALWAYS_SKIP_DIRS)
+            found.extend(Path(dirpath) / name for name in sorted(filenames))
+        return found
+    for rel in rels:
+        if any(part in ALWAYS_SKIP_DIRS for part in rel.split("/")[:-1]):
+            continue
+        path = root / rel
+        if path.is_file():
+            found.append(path)
+    return found
+
+
+def _inside_git(root: Path) -> bool:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return completed.returncode == 0 and completed.stdout.strip() == "true"
 
 
 @dataclass(frozen=True)
@@ -174,6 +269,9 @@ class _MoveTable:
         self.by_rel: dict[str, str] = {}
         self.by_abs: dict[str, str] = {}
         self.body_pairs: list[tuple[str, str]] = []
+        # 旧パスの照合キー → 旧パス（repo 相対）。どの文書への参照かを返すときに使う
+        self.old_by_key: dict[str, str] = {}
+        self.old_by_abs: dict[str, str] = {}
         for move in moves:
             old_rel = paths.repo_rel(move.src)
             new_rel = paths.repo_rel(move.dst)
@@ -185,6 +283,8 @@ class _MoveTable:
             self.by_rel[key] = new_rel
             self.by_abs[_abs_key(move.src)] = (paths.root / new_rel).as_posix()
             self.body_pairs.append((old_rel, new_rel))
+            self.old_by_key[key] = old_rel
+            self.old_by_abs[_abs_key(move.src)] = old_rel
 
     def __bool__(self) -> bool:
         return bool(self.by_rel)
@@ -218,6 +318,23 @@ class _MoveTable:
     def body_new(self, old: str) -> str:
         return next(new for candidate, new in self.body_pairs if candidate == old)
 
+    def old_of_parent(self, value: object) -> str | None:
+        if not isinstance(value, str) or _is_absolute(value.strip()):
+            return None
+        key = _rel_key(value)
+        return self.old_by_key.get(key) if key else None
+
+    def old_of_related(self, value: str) -> str | None:
+        text = value.strip()
+        if "/" not in text and "\\" not in text:
+            return None
+        if _is_absolute(text):
+            return self.old_by_abs.get(_abs_key(text))
+        if text.startswith(("./", "../", ".\\", "..\\")):
+            return None
+        key = _rel_key(text)
+        return self.old_by_key.get(key) if key else None
+
 
 def _logical(paths: ProjectPaths, path: Path) -> str | None:
     """repo の下の見かけの絶対パス（queue が junction でも、リンクは repo から見た場所で解決する）。"""
@@ -238,12 +355,15 @@ class _LinkTable:
         self.new_places: set[str] = set()
         # 今その文書がある実体パス（dry-run は移動元・本実行は移動先）→ (移動元, 移動先)
         self.docs: dict[str, tuple[str, str]] = {}
+        # 移動元（normcase したキー）→ 移動元の repo 相対パス
+        self.old_rel: dict[str, str] = {}
         for move in moves:
             old = _logical(paths, move.src)
             new = _logical(paths, move.dst)
             if old is None or new is None or os.path.normcase(old) == os.path.normcase(new):
                 continue
             self.moved_to[os.path.normcase(old)] = new
+            self.old_rel[os.path.normcase(old)] = paths.repo_rel(move.src) or ""
             self.new_places.add(os.path.normcase(new))
             self.docs[_abs_key(move.src if dry_run else move.dst)] = (old, new)
 
@@ -433,6 +553,33 @@ def _new_link_path(
     return _encode_like(old, rel, angle=angle)
 
 
+def _html_link_targets(text: str, start: int) -> list[tuple[int, int, bool]]:
+    """html の ``href`` ``src`` の値の (開始, 終了, ``False``)。"""
+    found: list[tuple[int, int, bool]] = []
+    for match in _HTML_ATTR_RE.finditer(text, start):
+        group = "dq" if match.group("dq") is not None else "sq"
+        found.append((match.start(group), match.end(group), False))
+    return found
+
+
+def _is_html(path: Path) -> bool:
+    return path.suffix.lower() in _HTML_SUFFIXES
+
+
+def _is_md(path: Path) -> bool:
+    return path.suffix.lower() == ".md"
+
+
+def _masked_targets(text: str, start: int, path: Path) -> tuple[str, list[tuple[int, int, bool]]]:
+    """リンクを探す対象の全文（md はコードを伏せた版）と、リンク先の位置。md・html 以外は空。"""
+    if _is_html(path):
+        return text, _html_link_targets(text, start)
+    if not _is_md(path):
+        return text, []
+    masked = text[:start] + mask_inline_code(mask_code_fences(text[start:]))
+    return masked, _link_targets(masked, start)
+
+
 def _link_edits(
     text: str, start: int, links: _LinkTable, path: Path
 ) -> tuple[list[_Edit], list[tuple[int, int]]]:
@@ -440,10 +587,10 @@ def _link_edits(
     place = links.dirs_for(path)
     if place is None:
         return [], []
-    masked = text[:start] + mask_inline_code(mask_code_fences(text[start:]))
+    masked, targets = _masked_targets(text, start, path)
     edits: list[_Edit] = []
     claimed: list[tuple[int, int]] = []
-    for begin, end, angle in _link_targets(masked, start):
+    for begin, end, angle in targets:
         raw = text[begin:end]
         if masked[begin:end] != raw:
             continue
@@ -474,9 +621,58 @@ def _overlaps(edit: _Edit, spans: Iterable[tuple[int, int]]) -> bool:
     return any(edit.start < end and begin < edit.end for begin, end in spans)
 
 
-def _iter_candidates(paths: ProjectPaths, extra: Iterable[Path]) -> list[Path]:
-    """queue の ``.md``（archive を除く）と、同じ操作で動いた文書。"""
+def _mentions_any(path: Path, needles: list[bytes]) -> bool:
+    """ファイルのバイト列に ``needles`` のどれかが含まれるか（読めなければ ``True``）。"""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return True
+    if os.name == "nt":
+        data = data.lower()
+    return any(needle in data for needle in needles)
+
+
+def _name_needles(moves: Iterable[Move]) -> list[bytes]:
+    """移す文書の名前の、本文での書き方（そのまま・``%`` エスケープ）のバイト列。"""
+    needles: set[bytes] = set()
+    for move in moves:
+        name = move.src.name
+        for form in (name, quote(name)):
+            raw = form.encode("utf-8")
+            needles.add(raw.lower() if os.name == "nt" else raw)
+    return sorted(needles)
+
+
+def _iter_candidates(
+    paths: ProjectPaths,
+    extra: Iterable[Path],
+    *,
+    repo: RepoScope | None = None,
+    needles: list[bytes] | None = None,
+) -> list[Path]:
+    """queue の ``.md``（archive を除く）と、同じ操作で動いた文書。
+
+    ``repo`` があれば、repo の中の書き換えられる拡張子のファイル（archive の中も含む）を足し、
+    ``exclude`` と ``skip`` に当たるものを除く。``needles`` があれば、移す文書の名前を
+    含まないファイルを読む前に落とす（repo 全体を開かないため）。
+    """
     found: dict[str, Path] = {}
+
+    def wanted(candidate: Path) -> bool:
+        if repo is None:
+            return True
+        key = _path_key(candidate)
+        if key in repo.skip:
+            return False
+        rel = paths.repo_rel(candidate)
+        if rel is not None and matches_any(rel, repo.exclude):
+            return False
+        return needles is None or _mentions_any(candidate, needles)
+
+    if repo is not None:
+        for candidate in repo_files(paths.root):
+            if repo.rewritable(candidate) and wanted(candidate):
+                found.setdefault(_path_key(candidate), candidate)
     if paths.queue_real.is_dir():
         for dirpath, dirnames, filenames in os.walk(paths.queue_real):
             dirnames[:] = sorted(
@@ -486,7 +682,8 @@ def _iter_candidates(paths: ProjectPaths, extra: Iterable[Path]) -> list[Path]:
             for filename in sorted(filenames):
                 if filename.lower().endswith(".md"):
                     candidate = current / filename
-                    found.setdefault(_path_key(candidate), candidate)
+                    if _path_key(candidate) not in found and wanted(candidate):
+                        found[_path_key(candidate)] = candidate
     for candidate in extra:
         path = Path(candidate)
         if path.is_file() and path.name.lower().endswith(".md"):
@@ -494,7 +691,82 @@ def _iter_candidates(paths: ProjectPaths, extra: Iterable[Path]) -> list[Path]:
     return list(found.values())
 
 
+def _body_start(text: str, path: Path) -> int:
+    """本文の始まり（md は frontmatter の後ろ、それ以外は先頭）。"""
+    if not _is_md(path):
+        return 0
+    _data, body = read_frontmatter_text(text)
+    return len(text) - len(body)
+
+
+def referenced_sources(path: Path, text: str, table: _MoveTable, links: _LinkTable) -> set[str]:
+    """``text`` が参照している、移す文書の旧パス（repo 相対）の集まり。
+
+    書き換えと同じ見方（frontmatter の ``docsweep_parent``・``related``、md・html の相対リンク、
+    repo 相対パスの完全一致）で探す。移す前の場所で解決する（``links`` は dry-run で作る）。
+    """
+    found: set[str] = set()
+    start = _body_start(text, path)
+    if _is_md(path):
+        data, _body = read_frontmatter_text(text)
+        old = table.old_of_parent(data.get("docsweep_parent"))
+        if old:
+            found.add(old)
+        related = data.get("related")
+        if isinstance(related, list):
+            for item in related:
+                old = table.old_of_related(str(item)) if item is not None else None
+                if old:
+                    found.add(old)
+    place = links.dirs_for(path)
+    if place is not None:
+        masked, targets = _masked_targets(text, start, path)
+        for begin, end, _angle in targets:
+            raw = text[begin:end]
+            if masked[begin:end] != raw:
+                continue
+            rel = _relative_path_part(raw)
+            if rel is None:
+                continue
+            decoded = unquote(rel) if "%" in rel else rel
+            key = os.path.normcase(os.path.normpath(os.path.join(place[0], decoded)))
+            if key in links.old_rel:
+                found.add(links.old_rel[key])
+    pattern = table.body_pattern()
+    if pattern is not None:
+        found.update(match.group(0) for match in pattern.finditer(text, start))
+    return found
+
+
+def unresolved_links(path: Path, text: str, paths: ProjectPaths) -> set[str]:
+    """md・html の相対リンクのうち、今のディスクで届かないもの（リンク先の書き方のまま）。"""
+    here = _logical(paths, path)
+    if here is None:
+        return set()
+    folder = os.path.dirname(here)
+    masked, targets = _masked_targets(text, _body_start(text, path), path)
+    missing: set[str] = set()
+    for begin, end, _angle in targets:
+        raw = text[begin:end]
+        if masked[begin:end] != raw:
+            continue
+        rel = _relative_path_part(raw)
+        if rel is None:
+            continue
+        decoded = unquote(rel) if "%" in rel else rel
+        if not os.path.exists(os.path.normpath(os.path.join(folder, decoded))):
+            missing.add(rel)
+    return missing
+
+
+def move_tables(moves: list[Move], paths: ProjectPaths, *, dry_run: bool) -> tuple[_MoveTable, _LinkTable]:
+    """参照を探す・確かめる側（``archive_guard``）が使う、移動の対応表。"""
+    return _MoveTable(moves, paths), _LinkTable(moves, paths, dry_run=dry_run)
+
+
 def _frontmatter_updates(path: Path, text: str, table: _MoveTable) -> list[RefUpdate]:
+    if not _is_md(path):
+        return []
     data, _body = read_frontmatter_text(text)
     if not data:
         return []
@@ -528,8 +800,7 @@ def _body_rewrite(
     offsets は置き換え後の全文での位置。相対リンクとして解決できた箇所は、repo 相対の
     置き換えから除く（同じ箇所を二重に書き換えない）。
     """
-    _data, body = read_frontmatter_text(text)
-    start = len(text) - len(body)
+    start = _body_start(text, path)
     edits, claimed = _link_edits(text, start, links, path)
     if repo_paths:
         spans = claimed + [(edit.start, edit.end) for edit in edits]
@@ -583,6 +854,7 @@ def rewrite_refs(
     batch_id: str | None = None,
     dry_run: bool = False,
     body: bool | None = None,
+    repo: RepoScope | None = None,
 ) -> RefRewriteResult:
     """``moves`` に合わせて同じ project の文書の参照を書き換える。
 
@@ -594,6 +866,8 @@ def rewrite_refs(
     - ``None``（既定。archive へ移す経路）: Markdown の相対リンクだけ移動に追従させる
     - ``True``（``docsweep mv``）: 相対リンクに加えて、repo 相対の旧パスの完全一致も書き換える
     - ``False``（``docsweep mv --no-body``）: 本文には触らない（frontmatter の参照だけ）
+
+    ``repo`` を渡すと範囲を repo 全体へ広げ、本文は ``body=True`` と同じに扱う。
     """
     result = RefRewriteResult()
     if not moves:
@@ -606,9 +880,12 @@ def rewrite_refs(
     table = _MoveTable(moves, paths)
     if not table:
         return result
+    if repo is not None:
+        body = True
     links = _LinkTable(moves, paths, dry_run=dry_run)
     moved_now = [move.src if dry_run else move.dst for move in moves]
-    for path in _iter_candidates(paths, moved_now):
+    needles = _name_needles(moves) if repo is not None else None
+    for path in _iter_candidates(paths, moved_now, repo=repo, needles=needles):
         try:
             _rewrite_one(path, table, links, result, root=root, project=project,
                          batch_id=batch_id, dry_run=dry_run, body=body)
@@ -636,7 +913,9 @@ def _rewrite_one(
             result.updates.append(update)
             continue
         try:
-            written = update_frontmatter_field(path, update.field, update.after, expected_mtime=mtime)
+            written = update_frontmatter_field(
+                path, update.field, update.after, expected_mtime=mtime, keep_block_style=True
+            )
         except (OSError, UnicodeError, ValueError, ConflictError) as exc:
             result.failed.append({"path": update.path, "field": update.field, "error": str(exc)})
             return
@@ -668,10 +947,12 @@ def rewrite_refs_by_project(
     batch_id: str | None = None,
     dry_run: bool = False,
     body: bool | None = None,
+    repo_scopes: dict[str, RepoScope] | None = None,
 ) -> RefRewriteResult:
     """``(move, project_root, root, project)`` の並びを project ごとにまとめて書き換える。
 
-    ``body`` の意味は :func:`rewrite_refs` と同じ。
+    ``body`` の意味は :func:`rewrite_refs` と同じ。``repo_scopes`` に project_root（並びと
+    同じ文字列）があれば、その project は repo 全体を範囲にする。
     """
     groups: dict[tuple[str, str, str], list[Move]] = {}
     for move, project_root, log_root, project in moves:
@@ -683,6 +964,7 @@ def rewrite_refs_by_project(
                 group, project_root=Path(group_project_root), config=config,
                 root=Path(group_root), project=group_project, batch_id=batch_id,
                 dry_run=dry_run, body=body,
+                repo=(repo_scopes or {}).get(group_project_root),
             )
         )
     return result
@@ -731,7 +1013,9 @@ def revert_ref_rewrite(entry: dict) -> RefUpdate:
             if not isinstance(current, str) or current.strip() != str(after or "").strip():
                 raise ValueError(t("move_refs.parent_changed", path=path))
             restored = str(before or "")
-        update_frontmatter_field(path, field_name, restored, expected_mtime=mtime)
+        update_frontmatter_field(
+            path, field_name, restored, expected_mtime=mtime, keep_block_style=True
+        )
         return undone
     if field_name == "body":
         olds = _as_str_list(before)

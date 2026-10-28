@@ -34,6 +34,13 @@ def _add_scope_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--allow-sensitive", action="store_true", help=t("help.scope.allow_sensitive"))
 
 
+def _add_ref_scope_arg(p: argparse.ArgumentParser) -> None:
+    """archive へ移すときに参照を直す範囲（``archive_refs.scope`` より優先）。"""
+    p.add_argument(
+        "--ref-scope", choices=("queue", "repo"), default=None, help=t("help.common.ref_scope")
+    )
+
+
 def _non_negative_int(value: str) -> int:
     """Parse a day offset while rejecting values that would create a past due date."""
     try:
@@ -112,12 +119,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=t("help.apply.watching_days"),
     )
     p_apply.add_argument("--dry-run", action="store_true")
+    _add_ref_scope_arg(p_apply)
 
     p_sweep = sub.add_parser("sweep", help=t("help.sweep._command"))
     _add_scope_args(p_sweep)
     p_sweep.add_argument("--project", help=t("help.sweep.project"))
     p_sweep.add_argument("--dry-run", action="store_true", help=t("help.sweep.dry_run"))
     p_sweep.add_argument("--json", action="store_true")
+    _add_ref_scope_arg(p_sweep)
 
     p_mv = sub.add_parser(
         "mv",
@@ -162,6 +171,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=t("help.promote.yes"),
     )
     p_promote.add_argument("--json", action="store_true")
+    _add_ref_scope_arg(p_promote)
 
     p_index = sub.add_parser("index", help=t("help.index._command"))
     _add_scope_args(p_index)

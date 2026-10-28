@@ -40,6 +40,23 @@
   `lang` → global の `lang` → 表示言語）でテンプレートを作り、概要・変更予定ファイル・完了条件・検証・
   `context配分` の表などの解析は日英どちらの見出しも受け付ける。pre-commit hook も英語の委譲 plan を
   検査でき、文言は隣の `docsweep-check.i18n.json`（`install-hooks` が一緒にコピーする）に置く。
+- archive へ移すときに参照を直す範囲 `archive_refs.scope: repo`（CLI は `sweep` / `promote` / `apply` の
+  `--ref-scope repo`）を追加した。`docs/local` が git で追跡されていて、`docs/local` の外（他の docs・html・
+  json・コードの注釈）からも作業文書が参照される repo 向け。既定の `queue` は従来どおり。`repo` では次をまとめて行う。
+  - 参照を直す範囲を repo 全体（git の追跡ファイルと ignore されていない未追跡ファイル、archive の中も含む）へ
+    広げ、本文の repo 相対パス（`docs/local/plan_x.md`）も書き換える。html は `href` / `src` の相対リンクも直す。
+    書き換えるのは `rewrite_extensions`（既定 `.md` `.html` `.htm` `.txt` `.json`）だけで、`exclude` の glob
+    （履歴・旧記録）と、未コミットの変更があるファイルには触らない。
+  - 移す前に止める: コード・設定（`code_paths`、または `rewrite_extensions` 以外の拡張子）から参照されている
+    文書、未コミット・未追跡の変更がある文書、未コミットのファイルから参照されている文書、移すと git の
+    ignore から外れる文書、同じ系統（`_c<N>` の名前、旧い命名の `-c<N>`、`docsweep_parent`）の文書が queue に残るもの
+    （`sweep` / `promote` だけ）。止めた文書は JSON の `held` に理由と参照元つきで出る。`apply` は止める
+    理由があれば何も変えずに終了コード 2。
+  - 移した後に検証する: 旧パスの残り・実体のない参照・移す前は届いていたリンクの切れを JSON の `verify` に
+    出し、1 件でもあれば終了コード 1（移す前から切れていたリンクは数えない）。
+- `sweep --dry-run --json` の `archive_routes` が、`--root` に作業 queue 自身を渡したとき（project の目印が
+  無く、root の末尾が `work_dir` と同じ）に `root_is_queue` と警告を出すようにした。この指定では archive 先が
+  `docs/local/docs/local/archive` と二重になる。
 
 ### Changed
 
@@ -80,6 +97,9 @@
 
 ### Fixed
 
+- 移動に伴う参照の書き換えが、block-style で書かれた `related:`（次の行から `  - docs/local/plan_x.md`）を
+  書き換えられず `ref_failed` になり、`sweep` が終了コード 1 で終わっていた。block-style のまま書き換え、
+  `undo` も同じ書き方で戻す（Web UI の tags 編集などで block-style を拒む既定の動きは変えない）。
 - Windows 用の Web UI 起動スクリプト `docsweep-ui.cmd` が、リポジトリの場所と既定のスキャン先を
   特定の PC のフォルダで決め打ちしていた。リポジトリは `.cmd` の置き場所から決め（別の場所へ
   コピーしたときは環境変数 `DOCSWEEP_REPO`）、スキャン先は `~/.docsweep/config.yaml` の `roots` を

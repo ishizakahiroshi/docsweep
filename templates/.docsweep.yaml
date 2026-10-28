@@ -68,6 +68,14 @@
 # サブフォルダを保つ（docs/local/app-a/plan_x.md → docs/local/archive/app-a/plan_x.md）。
 # archive_layout: mirror
 
+# archive へ移すときに参照を直す範囲。queue（既定）は queue の md だけ。repo は repo 全体を直し、
+# コード・設定から参照されている文書や未コミットの文書を止め、移した後に旧パスの残りなどを検証する。
+# docs/local を git で追跡していて、docs/local の外からも参照される repo 向け。
+# archive_refs:
+#   scope: repo
+#   exclude: [docs/obsidian/evidence/**]   # 書き換えない場所（履歴・旧記録）
+#   code_paths: [src/**]                   # ここから参照されている文書は移さない
+
 # --- Git release tracking（opt-in。未設定なら従来の flat archive を維持） ---
 # archive_partition: release
 # release_tracking:

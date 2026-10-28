@@ -24,7 +24,7 @@ from .config import (
     release_tracking_for_project,
     resolve_work_dir,
 )
-from . import move_refs
+from . import archive_guard, move_refs
 from .detect import _H1_LABEL_RE, _H1_RE, mask_code_fences
 from .i18n import t
 from .models import Action, Flag, FileRecord, MoveLogEntry
@@ -149,6 +149,128 @@ class MoveBatchResult(list[MoveLogEntry]):
         # 文書そのものの移送失敗（failed）とは分けて返す。
         self.ref_updates = list(ref_updates or [])
         self.ref_failed = list(ref_failed or [])
+        # ``archive_refs.scope: repo`` で、移す前に止めた文書（理由つき）と、移した後の検証。
+        # 検証は本実行で repo の範囲を使った project があるときだけ（無ければ None）。
+        self.held: list[dict] = []
+        self.verify: dict | None = None
+
+
+@dataclass
+class _RepoPlan:
+    """``scope: repo`` の project 1 つ分の、移す前に決めたこと。"""
+
+    settings: archive_guard.ArchiveRefSettings
+    skip: frozenset[str]
+    before: dict[str, set[str]] = field(default_factory=dict)
+
+
+def _guard_candidates(
+    docs: list[ScannedDoc],
+    config: Config,
+    *,
+    ref_scope: str | None,
+    family: bool,
+    failed: list[dict],
+) -> tuple[set[str], list[dict], dict[str, _RepoPlan]]:
+    """``scope: repo`` の project の候補を、移す前に止める仕組みへ通す（何も書かない）。
+
+    返り値は (止めた文書のパス, 止めた理由の一覧, project_root → 決めたこと)。設定が
+    壊れている project の候補は ``failed`` に入れて止める（既定の範囲へ倒さない）。
+    """
+    settings_by_root: dict[str, archive_guard.ArchiveRefSettings | None] = {}
+    planned: dict[str, list[move_refs.Move]] = {}
+    held_paths: set[str] = set()
+    for doc in docs:
+        rec = doc.record
+        if rec.project_root not in settings_by_root:
+            try:
+                settings_by_root[rec.project_root] = archive_guard.archive_ref_settings(
+                    Path(rec.project_root), config, scope=ref_scope
+                )
+            except (OSError, ValueError) as exc:
+                settings_by_root[rec.project_root] = None
+                failed.append({"path": rec.project_root, "error": str(exc)})
+        settings = settings_by_root[rec.project_root]
+        if settings is None:
+            held_paths.add(rec.path)
+            continue
+        if not settings.repo:
+            continue
+        try:
+            project_dir, root = _project_dir_for(doc, config)
+            dst = archive_file(
+                src=Path(rec.path), project_dir=project_dir,
+                archive_dir=_archive_dir_for(doc, config), root=root,
+                project=rec.project, status=rec.state, dry_run=True,
+            )
+        except (OSError, UnicodeError, ValueError):
+            continue  # 移す段階で同じ失敗を出す
+        planned.setdefault(rec.project_root, []).append(move_refs.Move(Path(rec.path), dst))
+    held: list[dict] = []
+    plans: dict[str, _RepoPlan] = {}
+    for project_root, moves in planned.items():
+        settings = settings_by_root[project_root]
+        assert settings is not None
+        try:
+            guard = archive_guard.guard_moves(
+                moves, project_root=Path(project_root), config=config,
+                settings=settings, family=family,
+            )
+        except (OSError, ValueError) as exc:
+            for move in moves:
+                held_paths.add(str(move.src))
+                failed.append({"path": move.src.as_posix(), "error": str(exc)})
+            continue
+        allowed = {os.path.normcase(str(move.src)) for move in guard.allowed}
+        for move in moves:
+            if os.path.normcase(str(move.src)) not in allowed:
+                held_paths.add(str(move.src))
+        held.extend(item.to_dict() for item in guard.held)
+        plans[project_root] = _RepoPlan(settings, guard.skip)
+    return held_paths, held, plans
+
+
+def _is_held(rec: FileRecord, held_paths: set[str]) -> bool:
+    if not held_paths:
+        return False
+    keys = {os.path.normcase(os.path.abspath(path)) for path in held_paths}
+    return os.path.normcase(os.path.abspath(rec.path)) in keys or os.path.normcase(
+        str(Path(rec.path).resolve())
+    ) in keys
+
+
+def _snapshot(plans: dict[str, _RepoPlan], docs: list[ScannedDoc], config: Config,
+              held_paths: set[str]) -> None:
+    """移す直前の、届いていないリンクを記録する（移した後の検証の基準）。"""
+    for project_root, plan in plans.items():
+        moves = [
+            move_refs.Move(Path(doc.record.path), Path(doc.record.path))
+            for doc in docs
+            if doc.record.project_root == project_root and not _is_held(doc.record, held_paths)
+        ]
+        plan.before = archive_guard.snapshot_links(
+            moves, project_root=Path(project_root), config=config, settings=plan.settings
+        )
+
+
+def _verify(plans: dict[str, _RepoPlan],
+            ref_moves: list[tuple[move_refs.Move, str, Path, str]], config: Config) -> dict | None:
+    results: list[dict] = []
+    for project_root, plan in plans.items():
+        moves = [move for move, root, _log, _project in ref_moves if root == project_root]
+        if not moves:
+            continue
+        results.append(
+            archive_guard.verify_moves(
+                moves, project_root=Path(project_root), config=config,
+                settings=plan.settings, before=plan.before,
+            )
+        )
+    return archive_guard.merge_verify(results)
+
+
+def _repo_scopes(plans: dict[str, _RepoPlan]) -> dict[str, move_refs.RepoScope]:
+    return {root: plan.settings.repo_scope(plan.skip) for root, plan in plans.items()}
 
 
 def run_scan(config: Config) -> ScanResult:
@@ -288,12 +410,16 @@ def _project_dir_for(doc: ScannedDoc, config: Config) -> tuple[Path, Path]:
 
 def auto_sweep(
     config: Config, *, project: str | None = None, dry_run: bool = False,
+    ref_scope: str | None = None,
 ) -> MoveBatchResult:
     """--auto: auto_move 対象を各プロジェクトの archive/ へ移送。watching は触らない。
 
     ``project`` を指定すると、その名前のプロジェクトに属する対象だけを処理する
     （個別プロジェクトの gitignore で docs/local が除外される問題を回避するため、
     スキャンルートは config のまま・出力だけ後段で絞る）。
+
+    ``ref_scope`` は参照を直す範囲（``queue`` / ``repo``。省くと ``archive_refs.scope``）。
+    ``repo`` の project では、移す前に止める仕組みを通し、移した後に検証する。
     """
     result = run_scan(config)
     moved: list[MoveLogEntry] = []
@@ -305,9 +431,17 @@ def auto_sweep(
     # 1 回の sweep を 1 バッチとして記録し、``docsweep undo`` で参照の書き換えごと戻せるようにする
     # （Web の archive・``mv`` と同じ）。dry-run は移動ログを書かないので ID も作らない。
     batch_id = None if dry_run else new_batch_id()
-    for doc in result.auto_movable():
+    candidates = [
+        doc for doc in result.auto_movable() if not project or doc.record.project == project
+    ]
+    held_paths, held, plans = _guard_candidates(
+        candidates, config, ref_scope=ref_scope, family=True, failed=failed
+    )
+    if plans and not dry_run:
+        _snapshot(plans, candidates, config, held_paths)
+    for doc in candidates:
         rec = doc.record
-        if project and rec.project != project:
+        if _is_held(rec, held_paths):
             continue
         try:
             project_dir, root = _project_dir_for(doc, config)
@@ -326,12 +460,17 @@ def auto_sweep(
         ))
         ref_moves.append((move_refs.Move(Path(rec.path), dst), rec.project_root, root, rec.project))
     refs = move_refs.rewrite_refs_by_project(
-        ref_moves, config=config, batch_id=batch_id, dry_run=dry_run
+        ref_moves, config=config, batch_id=batch_id, dry_run=dry_run,
+        repo_scopes=_repo_scopes(plans),
     )
-    return MoveBatchResult(
+    batch = MoveBatchResult(
         moved, failed=failed, routes=routes,
         ref_updates=[u.to_dict() for u in refs.updates], ref_failed=refs.failed,
     )
+    batch.held = held
+    if not dry_run:
+        batch.verify = _verify(plans, ref_moves, config)
+    return batch
 
 
 def archive_doc(
@@ -364,12 +503,13 @@ def archive_doc(
 def promote_state(
     config: Config, *, from_state: str = "watching", to_state: str = "done",
     project: str | None = None, dry_run: bool = False,
-    due_expired_only: bool = False,
+    due_expired_only: bool = False, ref_scope: str | None = None,
 ) -> MoveBatchResult:
     """状態を一括昇格して archive へ移送する。
 
     ``due_expired_only`` は ``watching`` のうち due 到来（当日を含む）だけを
     対象にする安全側の絞り込みで、通常の promote の後方互換挙動は維持する。
+    ``ref_scope`` の意味は :func:`auto_sweep` と同じ（止めた文書はラベルも変えない）。
     """
     if due_expired_only and from_state != "watching":
         raise ValueError(t("engine.due_expired_requires_watching"))
@@ -387,16 +527,22 @@ def promote_state(
     ref_moves: list[tuple[move_refs.Move, str, Path, str]] = []
     # 1 回の promote を 1 バッチとして記録する（``docsweep undo`` で参照の書き換えごと戻す）。
     batch_id = None if dry_run else new_batch_id()
-    for doc in result.docs:
-        rec = doc.record
-        if rec.state != from_state:
-            continue
-        if project and rec.project != project:
-            continue
-        if due_expired_only and not _due_reached(rec):
-            continue
+    candidates = [
+        doc for doc in result.docs
+        if doc.record.state == from_state
+        and (not project or doc.record.project == project)
+        and (not due_expired_only or _due_reached(doc.record))
         # docsweep_policy: never_archive は昇格しても archive しない（policy による保持）。
-        if rec.docsweep_policy == "never_archive":
+        and doc.record.docsweep_policy != "never_archive"
+    ]
+    held_paths, held, plans = _guard_candidates(
+        candidates, config, ref_scope=ref_scope, family=True, failed=failed
+    )
+    if plans and not dry_run:
+        _snapshot(plans, candidates, config, held_paths)
+    for doc in candidates:
+        rec = doc.record
+        if _is_held(rec, held_paths):
             continue
         try:
             project_dir, root = _project_dir_for(doc, config)
@@ -425,12 +571,17 @@ def promote_state(
         ))
         ref_moves.append((move_refs.Move(Path(rec.path), dst), rec.project_root, root, rec.project))
     refs = move_refs.rewrite_refs_by_project(
-        ref_moves, config=config, batch_id=batch_id, dry_run=dry_run
+        ref_moves, config=config, batch_id=batch_id, dry_run=dry_run,
+        repo_scopes=_repo_scopes(plans),
     )
-    return MoveBatchResult(
+    batch = MoveBatchResult(
         moved, failed=failed,
         ref_updates=[u.to_dict() for u in refs.updates], ref_failed=refs.failed,
     )
+    batch.held = held
+    if not dry_run:
+        batch.verify = _verify(plans, ref_moves, config)
+    return batch
 
 
 def _due_reached(rec: FileRecord) -> bool:
@@ -475,15 +626,58 @@ def _archive_routes(
         entry["release_tracking"] = tracking.mode
         if tracking.enabled and entry["archive_partition"] == "release":
             entry["release_bucket"] = tracking.archive_group_by
+        warnings: list[str] = []
         if route.legacy_root:
             entry["legacy_root"] = route.legacy_root
-            entry["warning"] = t(
-                "engine.legacy_archive_root",
-                legacy=route.legacy_root,
-                archive_dir=route.archive_dir,
+            warnings.append(
+                t(
+                    "engine.legacy_archive_root",
+                    legacy=route.legacy_root,
+                    archive_dir=route.archive_dir,
+                )
             )
+        queue_root = _root_is_queue(Path(rec.project_root), config)
+        if queue_root is not None:
+            entry["root_is_queue"] = True
+            warnings.append(
+                t(
+                    "engine.root_is_queue",
+                    project_root=rec.project_root,
+                    work_dir=queue_root,
+                    archive=f"{rec.project_root.rstrip('/')}/{route.archive_dir}",
+                )
+            )
+        if warnings:
+            entry["warning"] = " / ".join(warnings)
         seen[rec.project] = entry
     return list(seen.values())
+
+
+def _root_is_queue(project_root: Path, config: Config) -> str | None:
+    """project root が作業 queue 自身に見えるとき、その ``work_dir``（そうでなければ ``None``）。
+
+    ``--root docs/local`` のように queue 自身をスキャンルートにすると、project の目印が無いので
+    queue が project root になり、archive 先が ``docs/local/docs/local/archive`` と二重になる。
+    目印が無く、root の末尾が ``work_dir`` と同じで、その下に ``work_dir`` が無いときに検出する。
+    """
+    try:
+        work_dir = project_work_settings(project_root, config)[0]
+    except (OSError, ValueError):
+        return None
+    parts = [part for part in work_dir.replace("\\", "/").split("/") if part and part != "."]
+    if not parts or len(project_root.parts) < len(parts):
+        return None
+    tail = [part.casefold() for part in project_root.parts[-len(parts):]]
+    if tail != [part.casefold() for part in parts]:
+        return None
+    if any((project_root / marker).exists() for marker in config.project_markers):
+        return None
+    try:
+        if resolve_work_dir(project_root, work_dir).is_dir():
+            return None
+    except ValueError:
+        return None
+    return work_dir
 
 
 def _archive_dir_for(doc: ScannedDoc, config: Config) -> str:
@@ -601,12 +795,19 @@ def apply_action(
     allow_type_override: bool = False,
     watching_days: int | None = None,
     batch_id: str | None = None,
+    ref_scope: str | None = None,
+    report: dict | None = None,
 ) -> MoveLogEntry:
     """triage の閉じた action を 1 ファイルへ機械実行する。
 
     ``watching_days`` は ``relabel --to watching`` の今回だけの due 上書き。
     ``batch_id`` は discard / promote の移送を ``docsweep undo`` で戻す単位。複数の文書を 1 回の
     操作で動かす呼び出し側が同じ ID を渡す。省くとこの 1 件だけのバッチになる。
+
+    ``ref_scope`` の意味は :func:`auto_sweep` と同じ。``repo`` で止める理由があれば、
+    何も変えずに ``ValueError`` で止める（系統がそろわないことでは止めない）。``report`` を
+    渡すと、discard / promote で書き換えた参照（``ref_updates`` / ``ref_failed``）と
+    検証（``verify``）を入れて返す。
     """
     rec = doc.record
     project_dir, root = _project_dir_for(doc, config)
@@ -642,6 +843,24 @@ def apply_action(
         # 手動 apply でも policy を尊重する（Web UI の三点メニューからでも同じ挙動）。
         if rec.docsweep_policy == "never_archive":
             raise ValueError(t("engine.never_archive_policy", path=rec.path))
+        guard_failed: list[dict] = []
+        held_paths, held, plans = _guard_candidates(
+            [doc], config, ref_scope=ref_scope, family=False, failed=guard_failed
+        )
+        if guard_failed:
+            raise ValueError("\n".join(str(item.get("error")) for item in guard_failed))
+        if held_paths:
+            reasons = "\n".join(
+                t(
+                    "engine.held_line",
+                    message=item["message"],
+                    referrers=", ".join(item["referrers"]) or "-",
+                )
+                for item in held
+            )
+            raise ValueError(t("engine.apply_held", path=rec.path, reasons=reasons))
+        if plans and not dry_run:
+            _snapshot(plans, [doc], config, held_paths)
         target_key = "discarded" if action == Action.DISCARD.value else "done"
         st = sm.by_key(target_key)
         status_change: UpdateStatusResult | None = None
@@ -660,10 +879,21 @@ def apply_action(
         if status_change is not None:
             log_state_rewrite(root, rec.project, status_change, batch_id=batch)
         if not dry_run:
-            move_refs.rewrite_refs(
+            scope = _repo_scopes(plans).get(rec.project_root)
+            refs = move_refs.rewrite_refs(
                 [move_refs.Move(path, dst)], project_root=Path(rec.project_root),
                 config=config, root=root, project=rec.project, batch_id=batch,
+                repo=scope,
             )
+            if report is not None:
+                report["ref_updates"] = [u.to_dict() for u in refs.updates]
+                if refs.failed:
+                    report["ref_failed"] = refs.failed
+                if plans:
+                    report["verify"] = _verify(
+                        plans, [(move_refs.Move(path, dst), rec.project_root, root, rec.project)],
+                        config,
+                    )
         return MoveLogEntry(
             ts="", op=action, project=rec.project, status=target_key, src=rec.path,
             dst=dst.as_posix(), batch_id=batch,

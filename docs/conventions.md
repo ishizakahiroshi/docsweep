@@ -276,6 +276,36 @@ queue の中で文書を移すときは `docsweep mv <src>... --to <dir>` を使
 git で追跡されているファイルと archive の中は動かしません。`--dry-run` で予定を確認でき、
 `docsweep undo` でファイルと参照をまとめて戻せます。
 
+block-style で書かれた `related:`（次の行から `  - docs/local/plan_x.md`）も、block-style のまま書き換えます。
+
+#### repo 全体の参照を直す（`archive_refs.scope: repo`）
+
+`docs/local` を git で追跡していて、`docs/local` の外（他の docs・html・json・コードの注釈）からも
+作業文書を参照している repo では、`.docsweep.yaml` に次を書くと、`sweep` / `promote` / `apply` が
+repo 全体の参照を直し、移すと困る文書を止め、移した後に検証します（1 回だけ試すなら `--ref-scope repo`）。
+
+```yaml
+archive_refs:
+  scope: repo                # queue（既定）| repo
+  exclude:                   # 書き換えない・検証しない場所（repo 相対の glob。* は / もまたぐ）
+    - docs/obsidian/evidence/**
+  code_paths: [src/**]       # ここから参照されている文書は移さない
+  rewrite_extensions: [.md, .html, .htm, .txt, .json]   # 書き換える拡張子（既定）
+```
+
+- 書き換え: repo の中（git の追跡ファイルと、ignore されていない未追跡ファイル。archive の中も含む）の
+  `rewrite_extensions` のファイル。本文の repo 相対パス（`docs/local/plan_x.md`）も直し、html は
+  `href` / `src` の相対リンクも直します。`exclude` と、未コミットの変更があるファイルには触りません。
+- 止める（JSON の `held`）: `code_paths` か `rewrite_extensions` 以外の拡張子のファイルから参照されている、
+  未コミット・未追跡の変更がある、未コミットのファイルから参照されている、移すと git の ignore から外れる、
+  同じ系統（`plan_x.md` と `plan_x_c1_ui.md`、旧い命名の `plan_x-c1.md`、`docsweep_parent`）の文書が queue に残る（`apply` では見ない）。
+  `code_paths` の既定は `.github/**` `.githooks/**` `.claude/**` `src/**` `CLAUDE.md` `AGENTS.md` です。
+- 検証（JSON の `verify`）: 旧パスの残り（`stale_refs`）・実体のない参照（`missing_targets`）・移す前は
+  届いていたリンクの切れ（`broken_links`）。1 件でもあれば終了コード 1 です。
+
+`--root` には repo の root を渡します。作業 queue 自身（`--root docs/local`）を渡すと queue が project
+root になり、archive 先が `docs/local/docs/local/archive` と二重になります（`archive_routes` に警告が出ます）。
+
 ### Git release tracking と版別 archive
 
 リリースとの対応付けは既定では無効です。`release_tracking.mode: enabled` と

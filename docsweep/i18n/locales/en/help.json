@@ -13,6 +13,7 @@
   "help.scope.allow_sensitive": "Explicitly allow saving and showing text that looks like a secret",
   "help.common.json_machine": "Output machine-readable JSON",
   "help.common.json": "Output JSON",
+  "help.common.ref_scope": "Where to update references when archiving: queue (the queue's md, default) / repo (the whole repository, with guards before the move and checks after). Overrides archive_refs.scope",
   "help.common.json_human_default": "Output JSON (default: human-readable)",
   "help.common.json_stats": "Output statistics as JSON",
   "help.common.project_filter": "Limit to a project",

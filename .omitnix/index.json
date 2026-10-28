@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "generated": {
-    "commit": "645a4fb776fd6be6ef8a46fb2f41b758f0d0ad5a",
+    "commit": "e745a62de1e169cbfa757c1e59f89f17f21ef7f6",
     "dirty": true,
-    "tool": "omitnix 0.1.3",
+    "tool": "omitnix 0.1.4",
     "partial": false,
     "adapters": [
       {
@@ -138,8 +138,8 @@
     "discovery_note": ""
   },
   "coverage": {
-    "discovered": 395,
-    "analyzed": 250,
+    "discovered": 397,
+    "analyzed": 252,
     "unresolved": 6,
     "unknown": 3,
     "unclaimed": 136,
@@ -929,6 +929,35 @@
         "summary": {
           "state": "value",
           "value": "archive 移送と移動ログ JSONL。"
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
+      "path": "docsweep/archive_guard.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "archive へ移す前に止める仕組みと、移した後の検証（``archive_refs.scope: repo``）。"
         },
         "authentication": {
           "state": "not_configured"
@@ -6063,6 +6092,35 @@
         "summary": {
           "state": "value",
           "value": "作業 queue をリポジトリ外への junction / symlink にした構成で、archive を探す処理が中を見ること。"
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
+      "path": "tests/test_archive_repo_refs.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "``archive_refs.scope: repo`` — repo 全体の参照の書き換え・移す前に止める仕組み・移した後の検証。"
         },
         "authentication": {
           "state": "not_configured"

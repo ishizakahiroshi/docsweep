@@ -13,6 +13,7 @@
   "help.scope.allow_sensitive": "秘密情報らしき本文の保存・表示を明示許可",
   "help.common.json_machine": "機械可読 JSON で出力",
   "help.common.json": "JSON 出力",
+  "help.common.ref_scope": "archive へ移すときに参照を直す範囲: queue（queue の md。既定）/ repo（repo 全体。移す前に止める仕組みと、移した後の検証つき）。archive_refs.scope より優先",
   "help.common.json_human_default": "JSON 出力（既定は人間向け）",
   "help.common.json_stats": "統計を JSON で出力",
   "help.common.project_filter": "対象プロジェクトを絞る",

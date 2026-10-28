@@ -234,6 +234,9 @@ class Config:
     # queue 内の相対フォルダを archive 側でも保つ（app-a/plan_x.md → archive/app-a/plan_x.md）。
     archive_layout: str = "flat"
     archive_layout_base: str | None = field(default=None, repr=False)
+    # archive へ移すときに参照を直す範囲と誤爆防止（``archive_refs:``）。global の生の値で、
+    # project の値とのキー単位の重ね合わせは ``archive_guard.archive_ref_settings`` が行う。
+    archive_refs_base: object = field(default_factory=dict, repr=False)
     # AI execution provenance。既定は opt-in で、個人の global config から有効化する。
     # manager=repo はリポ固有台帳・validator を正典にする明示的な委譲モード。
     provenance_enabled: bool = False
@@ -1116,6 +1119,7 @@ def load_config(
         archive_partition_base=global_partition or "flat",
         archive_layout=archive_layout,
         archive_layout_base=global_layout or "flat",
+        archive_refs_base=g.get("archive_refs") or {},
         provenance_enabled=provenance_enabled,
         provenance_manager=provenance_manager,
         provenance_ledger=provenance_ledger,
