@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docsweep"
-version = "0.6.0"
+version = "0.7.0"
 description = "Sweep, triage and archive AI coding agents' plan/bugfix/pending Markdown across projects."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-authors = [{ name = "ishizakahiroshi", email = "ishizakahiroshi.dev@gmail.com" }]
+authors = [{ name = "ishizakahiroshi", email = "ishizakahiroshi.dev@gmail.com" }] # doxguard: allow ishizakahiroshi.dev@gmail.com
 keywords = ["claude-code", "codex", "markdown", "archive", "ai-agents", "cli", "mcp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
