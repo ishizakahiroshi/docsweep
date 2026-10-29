@@ -806,6 +806,25 @@ def _update_doc_state(
         ) from exc
 
 
+def _check_doc_state(
+    doc: ScannedDoc, target_key: str, *, allow_type_override: bool = False
+) -> None:
+    """Run the type/state check of :func:`_update_doc_state` without writing.
+
+    ``apply_action`` calls this in dry-run too, so the preview refuses what the real
+    run refuses, with the same message (2026-10-29: ``relabel --to done --dry-run``
+    on a pending file reported success and the real run exited 2).
+    """
+    if allow_type_override:
+        return
+    try:
+        validate_state_transition(doc.record.type, target_key)
+    except ValueError as exc:
+        raise ValueError(
+            t("engine.state_update_failed", path=doc.record.path, error=exc)
+        ) from exc
+
+
 def apply_action(
     doc: ScannedDoc,
     action: str,
@@ -884,6 +903,8 @@ def apply_action(
             _snapshot(plans, [doc], config, held_paths)
         target_key = "discarded" if action == Action.DISCARD.value else "done"
         st = sm.by_key(target_key)
+        if st:
+            _check_doc_state(doc, target_key, allow_type_override=allow_type_override)
         status_change: UpdateStatusResult | None = None
         if st and not dry_run:
             # ラベルを書き換えられない（H1 が無い/読めない）まま移送すると、配置と
@@ -924,6 +945,8 @@ def apply_action(
         # 2026-06-23 改修: active/対応中 を in-progress に統合。種別による振り分けは不要に。
         target_key = "in-progress"
         st = sm.by_key(target_key)
+        if st:
+            _check_doc_state(doc, target_key, allow_type_override=allow_type_override)
         if st and not dry_run:
             _update_doc_state(
                 doc, target_key, config, allow_type_override=allow_type_override
@@ -942,6 +965,7 @@ def apply_action(
             raise ValueError(t("engine.unknown_state_label", label=to))
         if watching_days is not None and st.key != "watching":
             raise ValueError(t("engine.watching_days_requires_watching"))
+        _check_doc_state(doc, st.key, allow_type_override=allow_type_override)
         if not dry_run:
             relabeled = _update_doc_state(
                 doc,

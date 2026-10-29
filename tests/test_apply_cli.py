@@ -100,6 +100,43 @@ def test_apply_rejects_invalid_targets_without_writing(project, tmp_path, capsys
     assert (target.read_bytes() if target.exists() else None) == before
 
 
+@pytest.mark.parametrize("dry_run", [True, False])
+@pytest.mark.parametrize("state, action, to, target_state", [
+    ("pending", "relabel", "done", "done"),
+    ("discarded", "resume", None, "in-progress"),
+])
+def test_apply_refuses_a_disallowed_type_transition_in_dry_run_too(
+    project, capsys, dry_run, state, action, to, target_state,
+):
+    """Dry-run refuses a state the file type does not allow, like the real run.
+
+    2026-10-29: ``relabel --to done --dry-run`` on a pending file printed
+    ``"status": "done"`` and exited 0, while the real run exited 2. The type/state
+    check lived only inside ``_update_doc_state()``, which dry-run skips. The same
+    gap in promote was fixed on 2026-09-11 (test_engine).
+    """
+    label = {"pending": "保留", "discarded": "廃止"}[state]
+    target = project / "docs/local/pending_target.md"
+    target.write_text(
+        f"---\ntype: pending\nstatus: draft\ndocsweep_state: {state}\n---\n"
+        f"# [{label}] Sample\n\nKeep this body.\n",
+        encoding="utf-8",
+    )
+    before = target.read_bytes()
+    args = ["apply", "--root", str(project), "--path", str(target), "--action", action]
+    if to:
+        args += ["--to", to]
+    if dry_run:
+        args.append("--dry-run")
+    assert main(args) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    # The pending type allows pending / planned / discarded only.
+    assert f"'{target_state}'" in captured.err
+    assert "'planned'" in captured.err
+    assert target.read_bytes() == before
+
+
 def test_apply_linked_queue_keeps_project_and_due_settings(project, tmp_path, capsys):
     backing = tmp_path / "backing"
     backing.mkdir()
