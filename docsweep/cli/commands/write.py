@@ -401,6 +401,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     moved = auto_sweep(
         cfg, project=project, dry_run=args.dry_run,
         ref_scope=getattr(args, "ref_scope", None),
+        paths=getattr(args, "target_paths", None),
     )
     if not args.dry_run and cfg.roots:
         from ...aggregate_index import write_index

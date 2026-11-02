@@ -41,6 +41,7 @@
   "help.apply.watching_days": "Only with relabel --to watching: set this graduation due date to today + N days",
   "help.sweep._command": "Same as --auto: move done/discarded documents to archive",
   "help.sweep.project": "Limit to a project (same as promote)",
+  "help.sweep.path": "Select an exact document path (repeatable); keep full reference and family guards",
   "help.sweep.dry_run": "Only print what would be moved",
   "help.mv._command": "Move documents within the work queue and rewrite references from other documents",
   "help.mv._description": "Move documents within the work queue. References to the moved documents (docsweep_parent, path-style related entries, and exact repo-relative paths in the body) are rewritten to the new path. Files tracked by git and files inside archive are excluded. Use docsweep undo to revert.",

@@ -41,6 +41,7 @@
   "help.apply.watching_days": "relabel --to watching のときだけ、今回の卒業期限を今日 + N 日にする",
   "help.sweep._command": "--auto 相当: done/discarded を archive へ自動移送",
   "help.sweep.project": "対象プロジェクトを絞る（promote と対称）",
+  "help.sweep.path": "文書の正確なパスを選ぶ（複数指定可）。参照・親子の保護範囲は変えない",
   "help.sweep.dry_run": "移送内容を出力するだけ",
   "help.mv._command": "作業 queue の中で文書を移し、他の文書からの参照も書き換える",
   "help.mv._description": "作業 queue の中で文書を移す。移した文書を指す docsweep_parent・パス形式の related・本文中の repo 相対パス（完全一致）を新しいパスへ書き換える。git で追跡されているファイルと archive の中は対象外。docsweep undo で戻せる。",
