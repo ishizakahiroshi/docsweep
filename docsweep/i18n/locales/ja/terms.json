@@ -172,7 +172,7 @@
     "\\s*(?:件)?\\s*(?:の)?\\s*"
   ],
   "closeout.words.failure_to_count": [
-    "\\s*(?:数)?\\s*[:=]?\\s*"
+    "\\s*(?:[がは]|数)?\\s*[:=]?\\s*"
   ],
   "closeout.words.count_suffix": [
     "\\s*(?:件)?"

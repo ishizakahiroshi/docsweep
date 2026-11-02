@@ -69,6 +69,23 @@ _TODO_RE = re.compile(_words("closeout.words.todo", r"<\s*TODO[^>]*>"), re.IGNOR
 # 英語は前後をハイフン・語構成文字で挟まれた出現を除く（断片の側に書いてある）。
 _FAILURE = _words("closeout.words.failure")
 _FAILED_RE = re.compile(_FAILURE, re.IGNORECASE)
+# PHP's successful lint output contains the failure word "errors".  Match the
+# diagnostic only, so another failure on the same line remains visible.
+_NO_SYNTAX_ERRORS_RE = re.compile(
+    r"(?<![\w-])No syntax errors(?: detected)?(?![\w-])", re.IGNORECASE,
+)
+_PHP_LINT_RE = re.compile(r"\bphp\s+-l(?=\s|`|$)", re.IGNORECASE)
+_PHP_LINT_RESULT_RE = re.compile(
+    r"^\s*(?:[-*+]\s*)?(?:\[[ xX]\]\s*)?`?php\s+-l\s+"
+    r"(?:\"[^\"\r\n]+\"|'[^'\r\n]+'|[^\s`;]+?)`?\s*(?:→|->|:)\s*"
+    r"`?No syntax errors(?: detected(?: in [^\s`;]+)?)?`?\s*$",
+    re.IGNORECASE,
+)
+_LINT_COMMAND_FAILURE_RE = re.compile(
+    r"\b(?:exit(?:\s+(?:status|code))?|return\s+code)\s*[:=]?\s*[1-9]\d*\b"
+    r"|\bCould not open input file\b",
+    re.IGNORECASE,
+)
 # 失敗語に件数が結び付いた形。``0 failed`` / ``failed: 0`` / ``失敗 3 件`` を数値ごと拾う。
 # ここで 0 と正の数を分けるのが分類の要で、``failed`` の出現有無だけでは決めない。
 # 件数と失敗語の間・後ろに置ける語（``件`` ``の`` ``数``）は言語ごとの断片。
@@ -526,9 +543,13 @@ def _classify_verification(section: str, line: str) -> str:
     2. 正の失敗件数（``1 failed`` / ``errors: 2``）
     3. 件数ゼロの失敗 summary（``0 failed`` / ``エラーなし``）— 検証 section の
        機械結果としてだけ ``passed`` へ昇格する
-    4. 件数の無い失敗語（``failed`` / ``エラー`` 単独）
+    4. 件数の無い失敗語 — 失敗の主張か自動検査の結果なら ``failed``、
+       診断・仕様の散文は ``claimed`` とし、人の確認を残す
     5. 明示的な成功
     6. それ以外は ``claimed``
+
+    PHP の ``No syntax errors`` は失敗語から除く。ただし同じ行の別の失敗は
+    先に検出する。検証節に lint コマンドもある場合だけ ``passed`` にする。
 
     ``未検出`` / ``空集合`` / ``0件`` / ``vulnerability 0`` のような曖昧な散文は
     どれにも当たらず ``claimed`` に落ちる。自動 pass へ昇格させない境界は動かさない。
@@ -540,15 +561,39 @@ def _classify_verification(section: str, line: str) -> str:
     if any(c > 0 for c in counts):
         return "failed"
 
+    if _NO_SYNTAX_ERRORS_RE.search(line):
+        remaining = _NO_SYNTAX_ERRORS_RE.sub("", line)
+        if _LINT_COMMAND_FAILURE_RE.search(remaining):
+            return "failed"
+        if not _FAILED_RE.search(remaining) and not _is_asserted_failure(remaining):
+            # A bare quotation is not machine proof; require the lint command
+            # and the verification section to identify this successful result.
+            if _section_kind(section) == "verification" and _PHP_LINT_RESULT_RE.fullmatch(line):
+                return "passed"
+            return "claimed"
+
     zero_failure = bool(counts) or bool(_ZERO_FAILURE_RE.search(line))
     if zero_failure:
+        # A successful tool's zero count must not hide a different tool's
+        # failure on the same line (e.g. "pytest 0 failed; mypy failure").
+        remaining = _ZERO_FAILURE_RE.sub("", _FAILURE_COUNT_RE.sub("", line))
+        if _LINT_COMMAND_FAILURE_RE.search(remaining):
+            return "failed"
+        if _FAILED_RE.search(remaining):
+            if _is_asserted_failure(remaining) or _AUTO_RE.search(remaining):
+                return "failed"
+            return "claimed"
         # ゼロ失敗 summary は「機械が出した検証結果」のときだけ成功と見なす。
         if _section_kind(section) == "verification" and _AUTO_RE.search(line):
             return "passed"
         return "claimed" if not _SUCCESS_RE.search(line) else "passed"
 
     if _FAILED_RE.search(line):
-        return "failed"
+        # Diagnostics and expected negative controls are not assertions that
+        # the verification failed. Keep them for human review, never auto-pass.
+        if _is_asserted_failure(line) or _AUTO_RE.search(line):
+            return "failed"
+        return "claimed"
     if _SUCCESS_RE.search(line):
         return "passed"
     return "claimed"
@@ -558,7 +603,7 @@ def _verification_entry(path: Path, section: str, line: str) -> dict[str, str]:
     status = _classify_verification(section, line)
     if _MANUAL_RE.search(line):
         kind = "manual"
-    elif _AUTO_RE.search(line):
+    elif _AUTO_RE.search(line) or _PHP_LINT_RE.search(line):
         kind = "automatic"
     else:
         kind = "unspecified"
@@ -706,7 +751,17 @@ def _inspect_document(
                 if kind == "verification":
                     entry = _verification_entry(doc.path, title, line)
                     evidence.append(entry)
-                    if entry["status"] == "failed" and not _is_asserted_failure(line):
+                    if (
+                        entry["status"] in {"failed", "claimed"}
+                        and (
+                            _FAILED_RE.search(_NO_SYNTAX_ERRORS_RE.sub("", line))
+                            or (
+                                entry["status"] == "claimed"
+                                and _NO_SYNTAX_ERRORS_RE.search(line)
+                            )
+                        )
+                        and not _is_asserted_failure(line)
+                    ):
                         # 失敗語を含むだけで、失敗したとは言っていない文
                         # （仕様説明の名詞としての「エラー」等）。人の確認へ落とす。
                         manual.append(_manual_check(
