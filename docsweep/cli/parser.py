@@ -124,6 +124,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_sweep = sub.add_parser("sweep", help=t("help.sweep._command"))
     _add_scope_args(p_sweep)
     p_sweep.add_argument("--project", help=t("help.sweep.project"))
+    p_sweep.add_argument(
+        "--path", action="append", dest="target_paths", metavar="PATH",
+        help=t("help.sweep.path"),
+    )
     p_sweep.add_argument("--dry-run", action="store_true", help=t("help.sweep.dry_run"))
     p_sweep.add_argument("--json", action="store_true")
     _add_ref_scope_arg(p_sweep)

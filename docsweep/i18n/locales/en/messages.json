@@ -1,4 +1,5 @@
 {
+  "engine.sweep_target_invalid": "Sweep selection rejected before moving any document: {path} ({reason})",
   "work_queue.private_tracked": "The private work queue contains files tracked by Git",
   "work_queue.private_not_ignored": "The private work queue is not ignored by Git",
   "work_queue.privacy_downgraded": "{error} (reported as a warning because work_dir / work_policy is not set; set work_policy explicitly in .docsweep.yaml to enforce it)",

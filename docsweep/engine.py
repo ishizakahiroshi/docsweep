@@ -34,7 +34,7 @@ from .release import (
     release_archive_root,
     release_tag_exists,
 )
-from .scan import ScannedDoc, _build_doc, detect_project_root, scan
+from .scan import ScannedDoc, _build_doc, detect_project_root, scan, work_dir_aliases
 from .services.status import (
     UpdateStatusResult,
     log_state_rewrite,
@@ -427,9 +427,37 @@ def _project_dir_for(doc: ScannedDoc, config: Config) -> tuple[Path, Path]:
     return (project_dir, project_dir)
 
 
+def _configured_sweep_spelling(requested: Path, doc: ScannedDoc, config: Config) -> bool:
+    """Accept only exact lexical variants of the resolved document in owned roots/queues."""
+    physical = Path(doc.record.path).resolve()
+    owner = Path(doc.record.project_root).resolve()
+    owners = {owner}
+    variants: set[str] = set()
+    for root in config.roots:
+        root = Path(root)
+        resolved_root = root.resolve()
+        if physical.is_relative_to(resolved_root):
+            variants.add(os.path.normcase(os.path.abspath(root / physical.relative_to(resolved_root))))
+        if owner.is_relative_to(resolved_root):
+            owners.add(root / owner.relative_to(resolved_root))
+        owners.update(
+            project_root for project_root in work_dir_aliases(root, config).values()
+            if project_root.resolve() == owner
+        )
+    for project_root in owners:
+        queue = resolve_work_dir(project_root, project_work_settings(project_root, config)[0])
+        real_queue = queue.resolve()
+        if physical.is_relative_to(real_queue):
+            # Construct from the physical suffix, never accept arbitrary links merely
+            # because their lexical names are somewhere below the queue prefix.
+            variants.add(os.path.normcase(os.path.abspath(queue / physical.relative_to(real_queue))))
+    return os.path.normcase(os.path.abspath(requested)) in variants
+
+
 def auto_sweep(
     config: Config, *, project: str | None = None, dry_run: bool = False,
     ref_scope: str | None = None,
+    paths: list[str | Path] | None = None,
 ) -> MoveBatchResult:
     """--auto: auto_move 対象を各プロジェクトの archive/ へ移送。watching は触らない。
 
@@ -439,6 +467,8 @@ def auto_sweep(
 
     ``ref_scope`` は参照を直す範囲（``queue`` / ``repo``。省くと ``archive_refs.scope``）。
     ``repo`` の project では、移す前に止める仕組みを通し、移した後に検証する。
+    ``paths`` があれば候補だけを絞る。走査・参照探索・親子判定の範囲は変えない。
+    指定のいずれかが不正なら、移送前にバッチ全体を止める。None / [] は従来の全候補。
     """
     result = run_scan(config)
     moved: list[MoveLogEntry] = []
@@ -447,12 +477,46 @@ def auto_sweep(
     ]
     routes = _archive_routes(result, config, project=project)
     ref_moves: list[tuple[move_refs.Move, str, Path, str]] = []
-    # 1 回の sweep を 1 バッチとして記録し、``docsweep undo`` で参照の書き換えごと戻せるようにする
-    # （Web の archive・``mv`` と同じ）。dry-run は移動ログを書かないので ID も作らない。
-    batch_id = None if dry_run else new_batch_id()
     candidates = [
         doc for doc in result.auto_movable() if not project or doc.record.project == project
     ]
+    if paths is not None and not isinstance(paths, (list, tuple)):
+        failed.append({"path": None, "error": t(
+            "engine.sweep_target_invalid", path=str(paths), reason="invalid_path_list",
+        )})
+        return MoveBatchResult([], failed=failed, routes=routes)
+    if paths:
+        # The scanner records resolved paths. Reject alternate link spellings instead
+        # of letting aliases select an unexpected document or select one twice.
+        available = {os.path.normcase(str(Path(d.record.path).resolve())): d for d in candidates}
+        selected: set[str] = set()
+        for value in paths:
+            reason = None
+            try:
+                if not isinstance(value, (str, Path)) or not str(value).strip():
+                    raise ValueError
+                requested = Path(value)
+                absolute = os.path.normcase(os.path.abspath(requested))
+                key = os.path.normcase(str(requested.resolve(strict=True)))
+                if key in selected:
+                    reason = "duplicate_path"
+                elif key not in available:
+                    reason = "not_scanned_auto_movable_in_project"
+                elif absolute != key and not _configured_sweep_spelling(requested, available[key], config):
+                    reason = "alias_path"
+                else:
+                    selected.add(key)
+            except (OSError, ValueError, RuntimeError):
+                reason = "invalid_or_missing_path"
+            if reason:
+                failed.append({"path": str(value), "error": t(
+                    "engine.sweep_target_invalid", path=str(value), reason=reason,
+                )})
+        if failed:
+            return MoveBatchResult([], failed=failed, routes=routes)
+        candidates = [d for key, d in available.items() if key in selected]
+    # Keep one normal undo batch and the same complete repo/family guards.
+    batch_id = None if dry_run else new_batch_id()
     held_paths, held, plans = _guard_candidates(
         candidates, config, ref_scope=ref_scope, family=True, failed=failed
     )

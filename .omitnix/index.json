@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generated": {
-    "commit": "d54a6b9a488b0e2d7c3ae5d70f90ef1b17111de7",
+    "commit": "aaee62561aa3a4306a8329ae76d66710a3e61b56",
     "dirty": true,
     "tool": "omitnix 0.1.4",
     "partial": false,
@@ -138,8 +138,8 @@
     "discovery_note": ""
   },
   "coverage": {
-    "discovered": 403,
-    "analyzed": 258,
+    "discovered": 404,
+    "analyzed": 259,
     "unresolved": 6,
     "unknown": 3,
     "unclaimed": 136,
@@ -8666,6 +8666,35 @@
         "summary": {
           "state": "value",
           "value": "state.json (postpone_count / due_history / label_history) のテスト。"
+        },
+        "authentication": {
+          "state": "not_configured"
+        },
+        "authorization": {
+          "state": "not_configured"
+        },
+        "reads": {
+          "state": "none_observed",
+          "value": []
+        },
+        "writes": {
+          "state": "none_observed",
+          "value": []
+        },
+        "screen_to_api": {
+          "state": "out_of_scope"
+        }
+      },
+      "unresolved": []
+    },
+    {
+      "path": "tests/test_sweep_selected_paths.py",
+      "adapter": "python",
+      "status": "analyzed",
+      "fields": {
+        "summary": {
+          "state": "value",
+          "value": "Explicit sweep selection preserves the complete repo/family reference guards."
         },
         "authentication": {
           "state": "not_configured"

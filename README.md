@@ -256,6 +256,9 @@ python -m docsweep scan --all --json        # 全件を機械可読 JSON で
 python -m docsweep sweep --dry-run
 python -m docsweep sweep
 
+# 明示した文書だけを候補にする（複数指定可）。親子・参照・dirty の保護範囲は絞らない
+python -m docsweep sweep --path docs/local/plan_x.md --path docs/local/plan_y.md --dry-run
+
 # 作業 queue の中で文書を移す。その文書を指す docsweep_parent・パス形式の related・本文の相対リンク・
 # 本文中の repo 相対パス（完全一致）も書き換える（--no-body で本文は触らない）。archive への移送も相対リンクを直す
 python -m docsweep mv docs/local/plan_x.md --to docs/local/app-a --dry-run
