@@ -12,6 +12,7 @@ import io
 import os
 import posixpath
 import re
+import subprocess
 import sys
 import time
 import uuid
@@ -88,6 +89,70 @@ _CONTEXT_HEADINGS: dict[str, str] = {
 _CONTEXT_SECTION = " / ".join(heading_variants("context"))
 _AI_EXECUTION_COLUMNS = frozenset(column_variants("ai_execution"))
 _EXECUTION_MODEL_COLUMNS = frozenset(column_variants("execution_model"))
+
+_PLANNED_FILES_LABELS = tuple(heading_variants("files_to_change"))
+_C_HEADING_RE = re.compile(r"^#{2,6}[ \t]+(?P<id>C\d+)(?!\d)", re.MULTILINE)
+_ANY_HEADING_RE = re.compile(r"^#{1,6}[ \t]+\S", re.MULTILINE)
+
+
+def _planned_files(text: str, contexts: list[str]) -> list[str]:
+    """対象 C の節にある「変更予定ファイル」の箇条書きから、バッククォート内のパスを取り出す。
+
+    節が無い・パスが書かれていない C は空を返す（警告の材料が無いだけで、開始は止めない）。
+    """
+    found: list[str] = []
+    headings = list(_C_HEADING_RE.finditer(text))
+    for index, match in enumerate(headings):
+        if match.group("id") not in contexts:
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        body = text[match.end():end]
+        in_block = False
+        for line in body.splitlines():
+            stripped = line.strip()
+            if any(label in stripped for label in _PLANNED_FILES_LABELS) and not stripped.startswith(("-", "*")):
+                in_block = True
+                continue
+            if not in_block:
+                continue
+            if not stripped:
+                continue
+            if _ANY_HEADING_RE.match(stripped) or not stripped.startswith(("-", "*", "+")):
+                in_block = False
+                continue
+            code = re.search(r"`([^`]+)`", stripped)
+            value = code.group(1) if code else ""
+            value = value.strip()
+            if value and not value.startswith("<") and value not in found:
+                found.append(value)
+    return found
+
+
+def _started_after_implementation_warnings(project_dir: Path, files: list[str]) -> list[dict]:
+    """変更予定のファイルに未コミットの変更が既にあれば警告を返す（実装の後に start を打った疑い）。
+
+    git が使えない・失敗したときは何も返さない（確認できないものを警告にしない）。
+    """
+    if not files or not (project_dir / ".git").exists():
+        return []
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project_dir), "status", "--porcelain=v1", "--untracked-files=all", "--", *files],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    changed = [line[3:].strip().strip('"') for line in result.stdout.splitlines() if len(line) > 3]
+    if not changed:
+        return []
+    return [{
+        "code": "started_after_implementation",
+        "message": t("provenance.started_after_implementation", count=len(changed), files=", ".join(changed[:5])),
+        "files": changed,
+    }]
+
 
 
 def _find_context_section(lines: list[str]) -> tuple[int | None, str]:
@@ -949,6 +1014,9 @@ def start_execution(
     # Validate the context table before taking an ID into the ledger. This avoids
     # leaving an orphan execution when the requested C does not exist.
     original_text = path.open("r", encoding="utf-8", newline="").read()
+    warnings = _started_after_implementation_warnings(
+        project_dir, _planned_files(original_text, normalized)
+    )
     _append_context_execution(
         original_text,
         normalized,
@@ -999,6 +1067,7 @@ def start_execution(
             "model_source": metadata.model_source,
         },
         "ledger": str(config.provenance_ledger),
+        "warnings": warnings,
     }
 
 

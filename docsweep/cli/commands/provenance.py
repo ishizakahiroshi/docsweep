@@ -91,6 +91,10 @@ def _emit(result: dict, *, as_json: bool) -> int:
         execution = result.get("execution_id")
         suffix = f" execution={execution}" if execution else ""
         print(f"provenance {result.get('status')}:{suffix}")
+        for item in result.get("warnings", []):
+            # start の警告は {"code", "message", ...} の辞書。check の警告（文字列）とは別。
+            text = item.get("message", "") if isinstance(item, dict) else str(item)
+            print(t("cli_provenance.check_warning", message=text), file=sys.stderr)
     return 0 if result.get("valid", True) else 1
 
 

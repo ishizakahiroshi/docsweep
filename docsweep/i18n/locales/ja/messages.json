@@ -248,6 +248,7 @@
   "provenance.document_missing": "対象MDがありません: {path}",
   "provenance.invalid_role": "role は implementation/review/verification のいずれかです: {role}",
   "provenance.context_required": "context を1件以上指定してください",
+  "provenance.started_after_implementation": "変更予定のファイルに、開始前から未コミットの変更が {count} 件あります（実装の後に provenance start を打った可能性）: {files}",
   "provenance.not_applicable_exclusive": "not-applicable は他のcontextと併用できません",
   "provenance.invalid_context": "不正なcontext IDです: {contexts}",
   "provenance.invalid_result": "result は completed/partial/failed/cancelled のいずれかです: {result}",

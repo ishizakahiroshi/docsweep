@@ -248,6 +248,7 @@
   "provenance.document_missing": "Target Markdown not found: {path}",
   "provenance.invalid_role": "role must be one of implementation/review/verification: {role}",
   "provenance.context_required": "Specify at least one context",
+  "provenance.started_after_implementation": "{count} planned file(s) already have uncommitted changes before start (provenance start may be running after implementation): {files}",
   "provenance.not_applicable_exclusive": "not-applicable cannot be combined with other contexts",
   "provenance.invalid_context": "Invalid context ID: {contexts}",
   "provenance.invalid_result": "result must be one of completed/partial/failed/cancelled: {result}",

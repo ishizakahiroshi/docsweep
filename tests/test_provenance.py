@@ -691,3 +691,101 @@ def test_check_warns_on_nonstandard_context_status(tmp_path: Path):
     assert len(flagged) == 2
     assert "C4" in flagged[0] and "in-progress" in flagged[0]
     assert "C5" in flagged[1] and "実装・検証済み" in flagged[1]
+
+
+_PLAN_WITH_FILES = """\
+# [計画] sample
+
+## context配分
+
+| C | 種別 | 内容 | 備考/注意点 |
+|---|---|---|---|
+| C1 | planned | 実装 | — |
+| C2 | planned | 検証 | — |
+
+## C 詳細
+
+### C1 実装
+
+#### 変更予定ファイル
+
+- `src/app.py` — 実装
+- `docs/notes.md`
+
+#### 完了条件
+
+- テストが通る
+
+### C2 検証
+
+#### 変更予定ファイル
+
+- `tests/test_app.py`
+"""
+
+
+def _git(project: Path, *args: str) -> None:
+    import subprocess
+
+    subprocess.run(
+        ["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+        check=True, capture_output=True,
+    )
+
+
+def _planned_plan(tmp_path: Path):
+    import shutil
+
+    project, config = _config(tmp_path)
+    shutil.rmtree(project / ".git")
+    _git(project, "init", "-q")
+    (project / ".gitignore").write_text("docs/local/\n", encoding="utf-8")
+    doc = new_doc("plan", "warn", project_dir=project, config=config, offset_days={})
+    text = doc.path.read_text(encoding="utf-8")
+    front = text.split("---", 2)
+    doc.path.write_text("---" + front[1] + "---\n\n" + _PLAN_WITH_FILES, encoding="utf-8")
+    (project / "src").mkdir()
+    (project / "src" / "app.py").write_text("x = 1\n", encoding="utf-8")
+    _git(project, "add", "-A")
+    _git(project, "commit", "-q", "-m", "base")
+    return project, config, doc.path
+
+
+def test_start_warns_when_planned_files_already_changed(tmp_path: Path):
+    project, config, path = _planned_plan(tmp_path)
+    (project / "src" / "app.py").write_text("x = 2\n", encoding="utf-8")
+
+    result = start_execution(
+        path, project_dir=project, config=config, contexts=["C1"],
+        role="implementation", metadata=_metadata(),
+    )
+
+    assert result["status"] == "started"
+    assert [w["code"] for w in result["warnings"]] == ["started_after_implementation"]
+    assert result["warnings"][0]["files"] == ["src/app.py"]
+
+
+def test_start_does_not_warn_for_clean_or_other_context_files(tmp_path: Path):
+    project, config, path = _planned_plan(tmp_path)
+    # C2 の予定ファイル（tests/test_app.py）だけが新しい。C1 の開始では警告しない。
+    (project / "tests").mkdir()
+    (project / "tests" / "test_app.py").write_text("pass\n", encoding="utf-8")
+
+    result = start_execution(
+        path, project_dir=project, config=config, contexts=["C1"],
+        role="implementation", metadata=_metadata(),
+    )
+
+    assert result["warnings"] == []
+
+
+def test_start_without_planned_files_section_has_no_warning(tmp_path: Path):
+    project, config = _config(tmp_path)
+    doc = new_doc("plan", "plain", project_dir=project, config=config, offset_days={})
+
+    result = start_execution(
+        doc.path, project_dir=project, config=config, contexts=["C1"],
+        role="implementation", metadata=_metadata(),
+    )
+
+    assert result["warnings"] == []
