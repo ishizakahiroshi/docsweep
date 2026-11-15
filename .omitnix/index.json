@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generated": {
-    "commit": "aaee62561aa3a4306a8329ae76d66710a3e61b56",
+    "commit": "3471d2a60d6ce503b1fde9ae54c643129b075dce",
     "dirty": true,
     "tool": "omitnix 0.1.4",
     "partial": false,
@@ -138,11 +138,11 @@
     "discovery_note": ""
   },
   "coverage": {
-    "discovered": 404,
+    "discovered": 405,
     "analyzed": 259,
     "unresolved": 6,
     "unknown": 3,
-    "unclaimed": 136,
+    "unclaimed": 137,
     "skipped_by_config": 0
   },
   "files": [
@@ -5662,6 +5662,14 @@
     },
     {
       "path": "portfolio/overview-2026-09-28.jpg",
+      "adapter": null,
+      "status": "unclaimed",
+      "fields": {},
+      "unresolved": [],
+      "reason": "no adapter claims '.jpg'"
+    },
+    {
+      "path": "portfolio/promo-cover-v0.9.0.jpg",
       "adapter": null,
       "status": "unclaimed",
       "fields": {},

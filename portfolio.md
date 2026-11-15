@@ -1,10 +1,10 @@
 ---
 cover:
-  path: portfolio/overview-2026-09-28.jpg
-  alt: {ja: "docsweep の紹介動画", en: "docsweep overview video"}
+  path: portfolio/promo-cover-v0.9.0.jpg
+  alt: {ja: "docsweep v0.9.0 の紹介動画", en: "docsweep v0.9.0 overview video"}
 video:
   provider: youtube
-  id: "UBuD0XyxwZQ"
+  id: "9WxCgepU-gY"
   durationSeconds: 20
 schemaVersion: 1
 color: "#7a9e2f"
