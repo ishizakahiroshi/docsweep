@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- `sweep --path <文書>`（複数指定可）で、移送の候補を明示した文書だけに絞れるようにした。これまでは
+  `--root` / `--project` で範囲を絞るしかなく、選んだ文書以外が一緒に移る余地があった。親子・参照・
+  未コミット変更の保護は、絞り込んでも外れない。作業 queue の別名（junction / symlink）経由の指定は
+  正規の経路として受け付け、任意のファイルの symlink や、同じ文書の二重指定は拒否する。
+- `provenance start` が、対象の C の「変更予定ファイル」にすでに未コミットの変更があるとき、
+  実装の後に開始を記録している可能性を知らせる警告（`started_after_implementation`）を返すようにした。
+  止めはしない。文字出力では標準エラー、`--json` では `warnings` に出る。コミット済みの変更は検出しない。
+
 ### Changed
 
 - GitHub Release の本文を、`CHANGELOG.md` のその版の節から作るようにした（`scripts/release_notes.py`。
@@ -17,6 +27,10 @@
   （例: pending の文書への `relabel --to done`、[廃止] の pending への `resume`）。本実行は終了コード 2 で
   拒否するのに、dry-run は `"status": "done"` を返して 0 で終わっていた。dry-run でも本実行と同じ確かめを通し、
   同じメッセージと終了コード 2 で止める。一括の `promote` の dry-run は、2026-09-11 に同じ形で直していた。
+- `closeout-check` が、検証節の PHP の `php -l file.php → No syntax errors detected in file.php` を、
+  「errors」という語だけで失敗と読んでいた。コマンドと正常診断が 1 行で揃い、検証節にあるときだけ成功として
+  扱う。診断の引用や期待した負例の説明は成功にも失敗にもせず、人の確認（`claimed`）に残す。同じ行に別の失敗や
+  非ゼロ終了があれば、正常診断で隠さず失敗のまま出す。
 
 ## [0.8.0] - 2026-10-28
 
