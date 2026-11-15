@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import time
+from datetime import date
 
 import pytest
 
 from docsweep.brief.score import (
+    DEP_CHAIN_CAP,
     W_DEP_CHAIN,
     ScoreBreakdown,
     score_record,
@@ -66,6 +68,24 @@ def test_score_dep_chain_adds_weight() -> None:
     s_alone = score_record(rec_alone).total
     s_linked = score_record(rec_linked).total
     assert s_linked == pytest.approx(s_alone + 3 * W_DEP_CHAIN)
+
+
+def test_score_dep_chain_is_capped() -> None:
+    """related を多く書いても、加点は DEP_CHAIN_CAP 本ぶんで止まる。"""
+    rec_cap = _rec(state="planned", related=[f"r{i}.md" for i in range(DEP_CHAIN_CAP)])
+    rec_many = _rec(state="planned", related=[f"r{i}.md" for i in range(17)])
+    assert score_record(rec_many).dep_chain == pytest.approx(DEP_CHAIN_CAP * W_DEP_CHAIN)
+    assert score_record(rec_many).total == pytest.approx(score_record(rec_cap).total)
+
+
+def test_score_many_related_does_not_beat_due_today_in_progress() -> None:
+    """related の多い古い計画より、実行中で期日が来た作業が上に来る。"""
+    old_hub = _rec(state="planned", age_days=30, related=[f"r{i}.md" for i in range(17)])
+    due_now = _rec(state="in-progress", age_days=1, due=date.today().isoformat(),
+                   flags=[])
+    # 上限前は old_hub が 136 点ぶん上回った。上限後は差が related 3 本ぶんまでに縮む。
+    gap = score_record(old_hub).total - score_record(due_now).total
+    assert gap < 17 * W_DEP_CHAIN - DEP_CHAIN_CAP * W_DEP_CHAIN
 
 
 def test_score_breakdown_to_dict_roundtrip() -> None:

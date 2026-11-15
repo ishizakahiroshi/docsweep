@@ -25,6 +25,11 @@ W_REVIEW_STATUS = 5.0      # review_status 別の追加点（review > draft > pu
 W_TOUCHED_DECAY = 0.3      # 直近触ったものを下げる（同じファイルに張り付かない誘導）
 W_DEP_CHAIN = 8.0          # related の本数（プロジェクト中枢ファイルを浮かせる）
 
+# related の加点に数える本数の上限。上限が無いと、related を多く書いた古い文書が
+# 期日・状態より強く効き、今日の 1 個を独占する（実例: related 17 本で 136 点となり、
+# 合計 235.5 点の 58% を占めた）。3 本 = 最大 24 点で、中枢の文書を浮かせる意図は残す。
+DEP_CHAIN_CAP = 3
+
 # stale 寄与の上限日数（無制限だと古い凍結ファイルが top_pick を独占してしまう）。
 # 30 日 = 最大 45 点。urgency boost (= NEEDS_DECISION 40 点) と同等のオーダーになる。
 STALE_DAY_CAP = 30
@@ -113,7 +118,7 @@ def score_record(rec: FileRecord, *, today: date | None = None) -> ScoreBreakdow
     review_status = _REVIEW_STATUS_WEIGHT.get(rec.review_status or "", 0.0) * W_REVIEW_STATUS
     # 触ったばかりのファイルは下げる（同じものに張り付かない誘導）
     touched_decay = max(0.0, 14.0 - float(rec.age_days or 0)) * W_TOUCHED_DECAY
-    dep_chain = float(len(rec.related or [])) * W_DEP_CHAIN
+    dep_chain = float(min(len(rec.related or []), DEP_CHAIN_CAP)) * W_DEP_CHAIN
 
     total = state_base + urgency + stale + review_status - touched_decay + dep_chain
     return ScoreBreakdown(
