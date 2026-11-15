@@ -73,7 +73,7 @@ def test_cli_writes_notes_and_fails_without_a_section(tmp_path: Path):
 
 def test_every_released_version_in_the_real_changelog_has_notes():
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    for tag in ("v0.6.0", "v0.7.0", "v0.8.0"):
+    for tag in ("v0.6.0", "v0.7.0", "v0.8.0", "v0.9.0"):
         notes = release_notes.section(text, tag)
         assert notes, tag
         assert "## [" not in notes
