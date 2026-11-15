@@ -6,6 +6,7 @@ video:
   provider: youtube
   id: "9WxCgepU-gY"
   durationSeconds: 20
+  aspect: vertical
 schemaVersion: 1
 color: "#7a9e2f"
 initials: "do"
