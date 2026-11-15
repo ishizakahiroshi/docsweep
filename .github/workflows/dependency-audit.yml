@@ -31,13 +31,20 @@ jobs:
           python -m pip install --upgrade "setuptools>=83"
           python -m pip install -e ".[web,mcp,review]"
 
+      # Record what docsweep itself installs BEFORE the audit tool is added, so
+      # pip-audit's own dependencies (e.g. filelock via CacheControl, which has no
+      # fixed release for Python 3.10) are not audited as if they shipped with docsweep.
+      # --all keeps pip / setuptools / wheel in the list, as before.
+      - name: Record installed runtime dependencies
+        run: python -m pip freeze --all --exclude-editable > "${{ runner.temp }}/runtime-requirements.txt"
+
       - name: Install pip-audit
         run: python -m pip install pip-audit
 
       - name: Audit installed runtime dependencies
         # A vulnerability or unavailable resolver result must be visible in
         # this scheduled/manual audit.
-        run: pip-audit --strict
+        run: pip-audit --strict --no-deps -r "${{ runner.temp }}/runtime-requirements.txt"
 
       - name: Verify audit exit behavior with pinned fixtures
         shell: bash
